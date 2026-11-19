@@ -14,7 +14,10 @@ struct Macmosh: AsyncParsableCommand {
             FoldersCommand.self,
             ListCommand.self,
             PairCommand.self,
+            RestartCommand.self,
+            ScreenCommand.self,
             StatusCommand.self,
+            UnlockCommand.self,
         ]
     )
 }
