@@ -202,6 +202,19 @@ private let alexPaths = Paths(supportDir: URL(fileURLWithPath: "/Users/alex/Libr
         #expect(keys.identityState(for: .sample(identityFile: nil)) == .usable)
     }
 
+    @Test func aLinkToAKeyIsFollowed() throws {
+        let paths = try temporaryPaths()
+        let keys = KeyManager(paths: paths, runner: FakeRunner { _ in FakeRunner.ok() })
+        let fm = FileManager.default
+        let link = paths.sshDir.appendingPathComponent("linked_ed25519")
+        try fm.createSymbolicLink(at: link, withDestinationURL: paths.defaultIdentity)   // the link itself is 0755
+        #expect(keys.identityState(for: .sample(identityFile: link.path)) == .usable)
+
+        let broken = paths.sshDir.appendingPathComponent("broken_ed25519")
+        try fm.createSymbolicLink(at: broken, withDestinationURL: paths.sshDir.appendingPathComponent("gone"))
+        #expect(keys.identityState(for: .sample(identityFile: broken.path)) == .missing)
+    }
+
     @Test func aFolderIsNotAUsableKey() throws {
         let paths = try temporaryPaths()
         let keys = KeyManager(paths: paths, runner: FakeRunner { _ in FakeRunner.ok() })
