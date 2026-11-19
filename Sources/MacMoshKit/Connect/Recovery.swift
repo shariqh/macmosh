@@ -221,7 +221,15 @@ public struct Recovery: Sendable {
         guard result.state != .cantVerify, let address = result.answeredAt, !address.isEmpty else { return nil }
         var parts = URLComponents()
         parts.scheme = "vnc"
-        if !result.workhorse.user.isEmpty { parts.user = result.workhorse.user }
+        // Encoded here, not through `parts.user`: older Foundation leaves a `:` in the user as it
+        // is, which would split the name into a user and a password (seen on CI's macOS 15 and 26).
+        var allowed = CharacterSet.urlUserAllowed
+        allowed.remove(charactersIn: ":")
+        let user = result.workhorse.user
+        if !user.isEmpty {
+            guard let encoded = user.addingPercentEncoding(withAllowedCharacters: allowed) else { return nil }
+            parts.percentEncodedUser = encoded
+        }
         parts.host = address
         return parts.url
     }

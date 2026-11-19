@@ -357,7 +357,9 @@ private func passwordOnly() throws -> CommandResult {
         #expect(parts.scheme == "vnc")
         #expect(parts.host == "192.168.1.20")
         #expect(parts.user == "a@b/c d:e")
+        #expect(parts.password == nil)
         #expect(parts.path.isEmpty)
+        #expect(url.absoluteString == "vnc://a%40b%2Fc%20d%3Ae@192.168.1.20")
     }
 
     @Test func screenSharingNeedsAnAddressThatAnswered() {
