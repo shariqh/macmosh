@@ -74,6 +74,7 @@ Design: `superpowers/specs/2026-11-18-macmosh-v1-design.md`. Plan: `superpowers/
 | 08:38 | Agent Inbox | Shariq | Answered the second: which Apple certificate signs the app | The company Developer ID already on the MacBook Pro, so no second $99-a-year membership. The design now records both answers as his decisions. Still open: approving the design, and the go-ahead for the MacBook Pro. |
 | 08:39 | Agent Inbox | Shariq | Answered the third: MacMosh on the MacBook Pro | "Install, but no restart yet." The install beside the hand-built setup and the first test sitting can go ahead. The restart and the lid-closed test wait until he says. |
 | 08:40 | MBP | agent | Reworked the build order around that answer | Restart recovery still gets built, from Apple's documentation and the real restart of the hand-built setup, and is marked "not yet proven" until MacMosh's own restart test. The lid-closed switch is not built until its test has run, because reports disagree on whether the setting works at all. Only the design approval is open now. |
+| 08:48 | Agent Inbox | Shariq | Approved the design | All four decisions are in, the morning after the design went up and 15 minutes after his first answer. Next: merge PR #1, make the repo public, write the build plan, file the issues. |
 
 ## Shot list (video)
 

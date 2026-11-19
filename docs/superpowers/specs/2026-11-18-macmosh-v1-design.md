@@ -1,6 +1,6 @@
 # MacMosh v1 design
 
-Status: draft for Shariq's approval. Date: 2026-11-18. Repo: `shariqh/macmosh` (private until this design is approved, then public).
+Status: approved by Shariq on 2026-11-19. Written: 2026-11-18. Repo: `shariqh/macmosh`.
 
 ## 1. The short version
 
@@ -558,8 +558,11 @@ v1 is done when Shariq runs his day from the native app, has recovered from a re
 | The repo goes public once this design is approved | 2026-11-19 |
 | The app is signed with the company Developer ID certificate already on the MacBook Pro, not a new personal one | 2026-11-19 |
 | MacMosh may be installed on the MacBook Pro beside the current setup, and sitting 1 can go ahead. No restart and no lid-closed test until he says | 2026-11-19 |
+| This design is approved as written, including the calls below | 2026-11-19 |
 
 ### Calls the agent made, for Shariq to check
+
+Shariq approved these with the design on 2026-11-19.
 
 1. **MacMosh has its own ssh key with no passphrase**, so background checks always work and the key can be revoked on its own. This is the one security trade-off in the list (section 7.6).
 2. **The app runs only on the daily Mac.** The workhorse gets a script and a login agent, not an app (section 6).
@@ -592,12 +595,14 @@ v1 is done when Shariq runs his day from the native app, has recovered from a re
 - How "focus the tab that already has this desk" works, if it can be done cleanly; otherwise a second click opens a second tab.
 - The typing-prediction default for mosh (`adaptive` is mosh's own default; the hand-built helper used `experimental`).
 
-## 15. Questions for Shariq
+## 15. Shariq's answers
 
-1. **Signing.** Answered on 2026-11-19: use the company Developer ID certificate already on the MacBook Pro (section 13).
-2. **Your Macs.** Answered on 2026-11-19: install MacMosh's script and login agent on the MacBook Pro beside what is there now, and run sitting 1. The restart and the lid-closed test (sitting 2) wait until you say (sections 9 and 12).
-3. **The affiliate link.** Amazon's rules keep it out of the app. Are you happy for it to live on your blog or video page instead, and do you have (or want) an Amazon Associates account? This doesn't hold up the build.
-4. **The v1 list** in section 4 and the calls in section 13: anything to cut, add or change? The first call, the ssh key with no passphrase, is the one to look at hardest.
+The draft ended with four questions for Shariq. He answered them on 2026-11-19.
+
+1. **Signing:** use the company Developer ID certificate already on the MacBook Pro (section 13).
+2. **His Macs:** install MacMosh's script and login agent on the MacBook Pro beside what is there now, and run sitting 1. The restart and the lid-closed test (sitting 2) wait until he says (sections 9 and 12).
+3. **The affiliate link:** still open, and it doesn't hold up the build. Amazon's rules keep the link out of the app. Whether it lives on his blog or video page, and whether he wants an Amazon Associates account, is decided when the lid-closed guide is written.
+4. **The v1 list in section 4 and the calls in section 13:** approved as written.
 
 ## 16. Sources
 
