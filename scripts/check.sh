@@ -32,4 +32,7 @@ fi
 echo "check.sh: shellcheck scripts/embed-host-script.sh"
 shellcheck scripts/embed-host-script.sh
 
+echo "check.sh: shellcheck scripts/build-app.sh"
+shellcheck scripts/build-app.sh
+
 echo "check.sh: all checks passed"

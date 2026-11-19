@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>io.github.shariqh.macmosh</string>
+    <key>CFBundleName</key>
+    <string>MacMosh</string>
+    <key>CFBundleDisplayName</key>
+    <string>MacMosh</string>
+    <key>CFBundleExecutable</key>
+    <string>MacMosh</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.0.0</string>
+    <key>CFBundleVersion</key>
+    <string>0.0.0</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>15.0</string>
+    <key>LSUIElement</key>
+    <true/>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>MacMosh opens terminal tabs for your desks.</string>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>MacMosh checks on your workhorse over your home network.</string>
+    <key>NSHumanReadableCopyright</key>
+    <string>MIT licence. Mac and macOS are trademarks of Apple Inc.</string>
+</dict>
+</plist>
