@@ -159,5 +159,29 @@ extension HostScriptTests {
         #expect(FileManager.default.fileExists(atPath: h.home.appendingPathComponent(".macmosh").path))
         #expect(launchctlLog(h).isEmpty)
     }
+
+    @Test func uninstallLeavesFilesItDidNotCreate() throws {
+        let h = try HostHarness(); defer { h.cleanUp() }
+        try succeedingLaunchctl(h)
+        _ = h.run(["start"])
+        _ = h.run(["desk-new", "stay", h.home.path])
+        #expect(h.run(["install-agent"]).exitCode == 0)
+        let folder = h.home.appendingPathComponent(".macmosh")
+        let notes = folder.appendingPathComponent("notes.txt")
+        try "mine".write(to: notes, atomically: true, encoding: .utf8)
+        try FileManager.default.createDirectory(at: folder.appendingPathComponent("lock"),
+                                                withIntermediateDirectories: true)
+        try "x".write(to: folder.appendingPathComponent("desks.tsv.123.tmp"), atomically: true, encoding: .utf8)
+        try "x".write(to: folder.appendingPathComponent("host.log.456.tmp"), atomically: true, encoding: .utf8)
+        try "x".write(to: folder.appendingPathComponent("macmosh-host.new"), atomically: true, encoding: .utf8)
+
+        let r = h.run(["uninstall", "--key", keys[1]])
+        #expect(r.exitCode == 0)
+        #expect(r.stderr.contains("kept"))
+        #expect(try String(contentsOf: notes, encoding: .utf8) == "mine")
+        let left = try FileManager.default.contentsOfDirectory(atPath: folder.path)
+        #expect(left == ["notes.txt"])
+        #expect(!FileManager.default.fileExists(atPath: plistURL(h).path))
+    }
 }
 }

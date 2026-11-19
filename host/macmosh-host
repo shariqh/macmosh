@@ -661,9 +661,17 @@ cmd_uninstall() {
     fi
     launchctl bootout "gui/$(id -u)/$AGENT_LABEL" >/dev/null 2>&1
     rm -f "$HOME/Library/LaunchAgents/$AGENT_LABEL.plist"
-    # The desk server and open desks keep running. The log lives in the folder being deleted,
+    # The desk server and open desks keep running. The log lives in the folder being emptied,
     # so this subcommand logs nothing: a log line would bring the folder back.
-    rm -rf "$MACMOSH_HOME"
+    # Remove only the names MacMosh makes there; a folder named by an environment variable
+    # may hold other things.
+    rm -f "$MACMOSH_HOME/macmosh-host" "$MACMOSH_HOME/macmosh-host.new" \
+        "$MACMOSH_HOME/tmux.conf" "$MACMOSH_HOME/$DESKS_FILE_NAME" "$MACMOSH_HOME/host.log" \
+        "$MACMOSH_HOME/$DESKS_FILE_NAME".*.tmp "$MACMOSH_HOME/host.log".*.tmp
+    rmdir "$MACMOSH_HOME/lock" 2>/dev/null
+    if [ -e "$MACMOSH_HOME" ] && ! rmdir "$MACMOSH_HOME" 2>/dev/null; then
+        echo "macmosh-host: kept $MACMOSH_HOME because it holds files MacMosh didn't put there" >&2
+    fi
     return 0
 }
 
