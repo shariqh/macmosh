@@ -2,7 +2,7 @@
 
 MacMosh turns a spare Mac into a workhorse: a machine that stays on, stays reachable, and runs long jobs. You drive it from your daily Mac using a menu-bar icon instead of memorised commands.
 
-**Status: design stage.** There is nothing to install yet.
+**Status: early.** The design is approved and the build has not started. There is nothing to install yet.
 
 ## What it will do
 
@@ -16,7 +16,7 @@ It is for one person with one or two spare Macs, and it is not tied to any AI to
 ## Where things are
 
 - [`docs/build-log.md`](docs/build-log.md): what was done, in order, with the decisions and the surprises.
-- `docs/superpowers/specs/`: the design.
+- [`docs/superpowers/specs/2026-11-18-macmosh-v1-design.md`](docs/superpowers/specs/2026-11-18-macmosh-v1-design.md): the design for version 1.
 - `docs/superpowers/plans/`: the build plan.
 
 ## Licence
