@@ -1,6 +1,6 @@
 # MacMosh v1 design
 
-Status: draft for Shariq's approval. Date: 2026-11-18. Repo: `shariqh/macmosh` (private until approved).
+Status: draft for Shariq's approval. Date: 2026-11-18. Repo: `shariqh/macmosh` (private until this design is approved, then public).
 
 ## 1. The short version
 
@@ -502,10 +502,10 @@ Results go in the build log. A failed test changes the design before code depend
 ## 11. Distribution, naming and legal
 
 - **Licence:** MIT.
-- **Signing:** a Developer ID certificate, the hardened runtime, notarization and stapling, which is what Apple requires for an app that opens without a warning [24]. Without it, macOS 15 and later make the user go to System Settings > Privacy & Security > Open Anyway [24]. A Developer ID certificate is already in the keychain on the MacBook Pro (question 1 in section 15). The Apple Developer Program costs $99 a year, and Apple waives the fee only for nonprofits, schools and governments [24].
+- **Signing:** a Developer ID certificate, the hardened runtime, notarization and stapling, which is what Apple requires for an app that opens without a warning [24]. Without it, macOS 15 and later make the user go to System Settings > Privacy & Security > Open Anyway [24]. MacMosh is signed with the Developer ID certificate already in the keychain on the MacBook Pro, which belongs to Shariq's company account (his decision, section 13). That avoids a second Apple Developer membership at $99 a year; Apple waives the fee only for nonprofits, schools and governments [24].
 - **Releases** are built, signed and notarized on Shariq's Mac by a script, so the certificate never leaves it. CI only builds and runs tests.
-- **The app is signed with the chosen certificate from its first development build.** macOS ties the Automation and Local Network permissions to the signature, so a build signed differently each time would keep asking again. The engine, the command and the SwiftBar prototype don't need the certificate, so phases 0 to 2 don't wait on question 1.
-- **Phase 4 needs the repo public.** A release download and a Homebrew tap only work from public repositories. Making the repo public, creating the tap and publishing a release are each asked of Shariq first.
+- **The app is signed with that certificate from its first development build.** macOS ties the Automation and Local Network permissions to the signature, so a build signed differently each time would keep asking again. The engine, the command and the SwiftBar prototype don't need the certificate, so phases 0 to 2 don't need it.
+- **Phase 4 needs the repo public.** A release download and a Homebrew tap only work from public repositories. Shariq chose to make the repo public once this design is approved (section 13). Creating the tap and publishing a release are each asked of him first.
 - **Downloads:** a GitHub release.
 - **Homebrew:** a cask in Shariq's own tap (`brew install --cask shariqh/tap/macmosh`). A personal tap has no popularity threshold; the main cask repository asks for 90 forks, 90 watchers or 225 stars when the author submits their own app [23]. Since Homebrew 6.0, a third-party tap has to be trusted before Homebrew will load it (`brew trust`), so the README gives the exact commands, checked at release time [23]. The cask depends on the mosh formula [23].
 - **Other people's software:** MacMosh runs mosh (GPL-3) and tmux (ISC) as separate programs that Homebrew installs. It doesn't include them.
@@ -552,6 +552,8 @@ v1 is done when Shariq runs his day from the native app, has recovered from a re
 | A lid-closed setting, tested with `pmset` first; a dummy plug offered, with an affiliate link | 2026-11-17 |
 | The name MacMosh, MIT licence, repo `shariqh/macmosh` | 2026-11-18 |
 | mosh is the default connection | 2026-11-18 |
+| The repo goes public once this design is approved | 2026-11-19 |
+| The app is signed with the company Developer ID certificate already on the MacBook Pro, not a new personal one | 2026-11-19 |
 
 ### Calls the agent made, for Shariq to check
 
@@ -587,7 +589,7 @@ v1 is done when Shariq runs his day from the native app, has recovered from a re
 
 ## 15. Questions for Shariq
 
-1. **Signing.** The only Developer ID certificate on the MacBook Pro belongs to a company account, not to you personally. Sign MacMosh with it, or with a personal Developer ID (a separate $99 a year [24])? This is needed before phase 3, not before.
+1. **Signing.** Answered on 2026-11-19: use the company Developer ID certificate already on the MacBook Pro (section 13).
 2. **Your Macs.** Two things need your go-ahead:
    - installing MacMosh's script and login agent on the MacBook Pro, beside what is there now (section 7.13);
    - two test sittings of about 45 minutes each (section 9), the second with a restart of the MacBook Pro and the lid-closed test.
