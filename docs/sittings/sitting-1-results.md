@@ -2,7 +2,7 @@
 
 Filled in after the sitting, from `~/macmosh-sitting-1/results.txt` on the Air. Before this file is committed, every address, host name and key fingerprint is replaced by a placeholder: `alex`, `workhorse`, `192.168.1.20` and `SHA256:<fingerprint>`.
 
-The verdicts below are read by the tasks that build on them. Item 1 is read by Task 13, item 2 by Task 16, item 3 and item 4 by Task 15, and item 5 by Task 26.
+The verdicts below are read by the tasks that build on them. Item 1 is read by Task 13, item 2 by Task 16, and item 3 and item 4 by Task 15.
 
 Date of the sitting:
 
@@ -35,13 +35,5 @@ Verdict: pass / fail / skipped
 What was run:
 
 What was seen (did the loop retry, did ssh ask for the password again, did the tabs come back):
-
-Verdict: pass / fail / skipped
-
-## Item 5: Local Network prompt and the home address
-
-What was run:
-
-What was seen (the exact wording of the prompt, the menu before and after Allow):
 
 Verdict: pass / fail / skipped
