@@ -89,6 +89,10 @@ Design: `superpowers/specs/2026-11-18-macmosh-v1-design.md`. Plan: `superpowers/
 | | | | The best catch | `tmux new-session` quietly starts a server when none is running. So "New desk" over ssh, with the desk server down, would have started the wrong kind of server: one that can't read the keychain. That is the biggest gotcha of the hand-built setup, nearly rebuilt by accident. Now only the login agent's `start` can start the server, and a test proves it. |
 | | | | The safety catch | After the first sitting, MacMosh's real login agent will exist on this MacBook Pro. A test that reached the real `launchctl` would have started the real desk server. The test harness now always puts a stand-in `launchctl` first. |
 | | | | Also caught | Without Tailscale, a locked Mac would have shown as "Not paired". `ssh-copy-id` refuses two `-i` options. `fdesetup authrestart` only works with FileVault on. A dropped Tabs-mode connection would have retried forever against a changed host key. |
+| 09:38 | MBP | agent | Asked the same reviewer to check the fixes | Eleven of its thirteen blocking points were fixed; the last two went in before the merge. |
+| 09:40 | GitHub | agent | Opened and merged PR #2 with the plan | The plan is on `main`. |
+| 09:42 to 09:45 | GitHub | agent | Filed the issues with `gh issue create --parent … --blocked-by …`: one per task, plus a parent | 37 issues. #3 is the parent, and task N is issue N+3. Each says what it delivers, when it is done and what it waits on; GitHub shows the "blocked by" links. The four that need Shariq are labelled `needs Shariq`. |
+| | | | A small lesson | Every issue text went through the local editing pass. For the parent issue the edit changed a fact: it said Shariq would write the steps for the app tasks, when the build agent does. The check that compares the edit with the original flagged it, and the original wording stayed. |
 
 ## Shot list (video)
 
