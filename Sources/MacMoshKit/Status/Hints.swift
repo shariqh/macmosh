@@ -162,6 +162,16 @@ public struct SystemHints: HintsProvider {
         return (status.running, status.peer(matching: mainAddress)?.online)
     }
 
+    /// The whole `tailscale status --json`, for listing the devices (`macmosh pair` with no argument).
+    /// Nil when Tailscale isn't installed, its command didn't answer in time, or its answer isn't a status.
+    public func tailscaleStatus() async -> TailscaleStatus? {
+        guard let command = tailscaleCommand() else { return nil }
+        let result = await runner.run(command, ["status", "--json"], environment: ["TAILSCALE_BE_CLI": "1"],
+                                      stdin: nil, timeout: Self.timeLimit)
+        if result.timedOut { return nil }
+        return try? TailscaleStatus.parse(json: Data(result.stdout.utf8))
+    }
+
     /// A default route means a network. Any other answer, a command stopped at its time limit
     /// included, means none, as the plan says: a non-zero exit means no network.
     private func hasNetwork() async -> Bool {
