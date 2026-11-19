@@ -69,6 +69,8 @@ Design: `superpowers/specs/2026-11-18-macmosh-v1-design.md`. Plan: `superpowers/
 | | | | The second catch | "Sign-ins off → Fix" would have restarted the desk server, which closes every open desk. It now lists the desks and asks first. |
 | | | | Also settled | MacMosh runs beside the hand-built setup on the MacBook Pro and takes nothing over. Tests run against a throwaway tmux socket, never the live one. |
 | 18:16 | MBP | agent | Opened PR #1 with the design, and put four decisions on the Agent Inbox board for Shariq | Waiting on him: approve the design; allow MacMosh on the MacBook Pro and two test sittings; choose the signing certificate; choose when the repo goes public. The plan and the issues come after his approval. |
+| 11-19 08:33 | Agent Inbox | Shariq | Answered the first of the four: when the repo goes public | "Public after design approval." The build will happen in the open. The other three are still open. |
+| 08:36 | MBP | agent | Privacy check ahead of going public: searched the files, every commit in the git history and PR #1 for addresses, host names, tokens, file paths and private project names | No tokens, host names, network names or file paths. Swapped the two real project names in the menu sketch for generic ones. The repo stays private until the design is approved. |
 
 ## Shot list (video)
 

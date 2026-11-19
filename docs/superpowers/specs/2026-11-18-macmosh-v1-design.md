@@ -96,8 +96,8 @@ Nothing found prepares the workhorse and gets you back in after a restart. That 
 
 MacBook Pro · Ready
    Desks
-      oris              2 windows
-      agent-inbox       1 window
+      website           2 windows
+      notes             1 window
       New desk…
    Share screen
    Restart…
