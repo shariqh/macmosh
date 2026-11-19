@@ -185,6 +185,11 @@ private let silence = ProbeSet(main: .timedOut, home: .timedOut, local: nil)
         #expect(resolve(probes, workhorse: .sample(lastKeyAccepted: someTimeAgo), hints: hints) == .notSetUp(.notPaired))
     }
 
+    @Test func aRefusalAtATailscaleAddressOfANewWorkhorseIsNotPaired() {
+        let probes = ProbeSet(main: .authDenied(methods: keysOffered), home: nil, local: nil)
+        #expect(resolve(probes, workhorse: .sample(paired: false, lastKeyAccepted: nil)) == .notSetUp(.notPaired))
+    }
+
     // MARK: rule 10: a key that worked before is refused
 
     @Test func aKeyThatWorkedBeforeAndIsRefusedAtHomeIsLocked() {

@@ -201,11 +201,11 @@ private func answers(tailscale json: String) -> Answers {
         }
     }
 
-    @Test func aRouteCommandThatHangsIsNotNoNetwork() async {
+    @Test func aRouteCommandThatHangsMeansNoNetwork() async {
         var a = Answers()
         a.route = CommandResult(exitCode: -1, stdout: "", stderr: "", timedOut: true)
         let hints = await systemHints(runner(a)).hints(for: .sample())
-        #expect(hints.hasNetwork)
+        #expect(!hints.hasNetwork)
     }
 
     // MARK: at home

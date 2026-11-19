@@ -162,12 +162,12 @@ public struct SystemHints: HintsProvider {
         return (status.running, status.peer(matching: mainAddress)?.online)
     }
 
-    /// No default route means no network. A command that didn't answer in time says nothing, so
-    /// it counts as a network.
+    /// A default route means a network. Any other answer, a command stopped at its time limit
+    /// included, means none, as the plan says: a non-zero exit means no network.
     private func hasNetwork() async -> Bool {
         let result = await runner.run(Self.routePath, ["-n", "get", "default"], environment: [:],
                                       stdin: nil, timeout: Self.timeLimit)
-        return result.timedOut || result.exitCode == 0
+        return result.exitCode == 0 && !result.timedOut
     }
 
     /// A connected VPN service other than Tailscale's own.
