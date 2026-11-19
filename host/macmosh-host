@@ -29,7 +29,7 @@ mm_log() {
     if [ -f "$log" ]; then
         size=$(wc -c < "$log" 2>/dev/null | tr -d ' ')
         if [ "${size:-0}" -gt 1000000 ]; then
-            tail -n 2000 "$log" > "$log.tmp" 2>/dev/null && mv "$log.tmp" "$log" 2>/dev/null
+            tail -n 2000 "$log" > "$log.$$.tmp" 2>/dev/null && mv "$log.$$.tmp" "$log" 2>/dev/null
         fi
     fi
     printf '%s\t%s\t%s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$1" "$2" >> "$log" 2>/dev/null

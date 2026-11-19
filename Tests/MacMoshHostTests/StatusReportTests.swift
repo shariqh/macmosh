@@ -266,6 +266,30 @@ import Testing
         #expect(out.contains("\ndef\tplain\t0\t1\t/Users/alex\t\n"))
     }
 
+    @Test func definitionsWithABadNameAreLeftOut() throws {
+        let h = try HostHarness(); defer { h.cleanUp() }
+        let folder = h.home.appendingPathComponent(".macmosh")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try "bad name\t0\t0\t/tmp\t\ngood\t0\t0\t/tmp\t\n"
+            .write(to: folder.appendingPathComponent("desks.tsv"), atomically: true, encoding: .utf8)
+        let out = h.run(["status"]).stdout
+        #expect(out.contains("\ndef\tgood\t"))
+        #expect(!out.contains("bad name"))
+    }
+
+    @Test func aLongLogIsCutBack() throws {
+        let h = try HostHarness(); defer { h.cleanUp() }
+        let folder = h.home.appendingPathComponent(".macmosh")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let line = "2026-01-01T00:00:00+0000\tstatus\tok\n"
+        try String(repeating: line, count: 40_000)
+            .write(to: folder.appendingPathComponent("host.log"), atomically: true, encoding: .utf8)
+        #expect(h.run(["version"]).exitCode == 0)
+        let log = try String(contentsOf: folder.appendingPathComponent("host.log"), encoding: .utf8)
+        #expect(log.split(separator: "\n").count <= 2001)
+        #expect(log.contains("\tversion\t"))
+    }
+
     @Test func toolsAreReported() throws {
         let h = try HostHarness(); defer { h.cleanUp() }
         try h.stub("brew", script: "exit 0")
