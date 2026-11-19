@@ -72,6 +72,8 @@ Design: `superpowers/specs/2026-11-18-macmosh-v1-design.md`. Plan: `superpowers/
 | 11-19 08:33 | Agent Inbox | Shariq | Answered the first of the four: when the repo goes public | "Public after design approval." The build will happen in the open. The other three are still open. |
 | 08:36 | MBP | agent | Privacy check ahead of going public: searched the files, every commit in the git history and PR #1 for addresses, host names, tokens, file paths and private project names | No tokens, host names, network names or file paths. Swapped the two real project names in the menu sketch for generic ones. The repo stays private until the design is approved. |
 | 08:38 | Agent Inbox | Shariq | Answered the second: which Apple certificate signs the app | The company Developer ID already on the MacBook Pro, so no second $99-a-year membership. The design now records both answers as his decisions. Still open: approving the design, and the go-ahead for the MacBook Pro. |
+| 08:39 | Agent Inbox | Shariq | Answered the third: MacMosh on the MacBook Pro | "Install, but no restart yet." The install beside the hand-built setup and the first test sitting can go ahead. The restart and the lid-closed test wait until he says. |
+| 08:41 | MBP | agent | Reworked the build order around that answer | Restart recovery still gets built, from Apple's documentation and the real restart of the hand-built setup, and is marked "not yet proven" until MacMosh's own restart test. The lid-closed switch is not built until its test has run, because reports disagree on whether the setting works at all. Only the design approval is open now. |
 
 ## Shot list (video)
 

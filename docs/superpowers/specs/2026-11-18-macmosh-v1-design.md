@@ -461,7 +461,7 @@ Each fact is marked: **Vendor** (the vendor's own current documentation), **Seen
 
 ## 9. To test on the real Macs first
 
-These are the things no document settles. Each needs Shariq's go-ahead, and several need him to type a password or flip a switch. They are grouped so he is needed for two short sittings.
+These are the things no document settles. Each needs Shariq's go-ahead, and several need him to type a password or flip a switch. They are grouped so he is needed for two short sittings. On 2026-11-19 he agreed to the install on the MacBook Pro and to sitting 1. Sitting 2 waits until he says.
 
 **Sitting 1, from the Air (about 45 minutes, no restart):**
 
@@ -473,7 +473,7 @@ These are the things no document settles. Each needs Shariq's go-ahead, and seve
 | 4 | Does Tabs mode reconnect by itself with a retry loop? | Wi-Fi off and on, and the iTerm2 tabs come back |
 | 5 | What does macOS ask when the menu first reaches the home address? | One Local Network prompt, and status works after Allow |
 
-**Sitting 2, a restart and the lid (about 45 minutes):**
+**Sitting 2, a restart and the lid (about 45 minutes; not agreed yet, so nobody restarts the MacBook Pro or changes its sleep settings until Shariq says):**
 
 | # | Question | Pass looks like |
 |---|---|---|
@@ -522,7 +522,7 @@ Each phase ends with something Shariq tries on his own Macs. The implementation 
 
 | Phase | What | Ends with |
 |---|---|---|
-| 0 | The tests in section 9, sittings 1 and 2 | Results in the build log; the design updated if a test failed |
+| 0 | The tests in section 9: sitting 1 now, sitting 2 when Shariq says | Results in the build log; the design updated if a test failed |
 | 1 | MacMoshKit, the `macmosh` command and `macmosh-host`, with tests | `macmosh status` and `macmosh connect` working from the Air |
 | 2 | The SwiftBar prototype: status and every button | Shariq uses it in place of `rmosh` and the cheat sheet for a few days, then says what to change |
 | 3 | The native app: menu, Add a Mac, Settings, notifications | The prototype is retired |
@@ -534,6 +534,9 @@ How the plan handles the tests in phase 0:
 - The whole of v1 is planned now, as one issue per PR-sized task.
 - Phase 1 work that depends on no test (the list of workhorses, reading the status report, the command's skeleton, the script's tests) starts alongside phase 0.
 - Each task that depends on a test names it and says what to do if the test failed: stop and bring the choice to Shariq, not work around it.
+- Sitting 2 has no date yet, so the two things it tests are handled differently:
+  - **Restart recovery** (the Locked and Waiting for login states, Unlock disk, Log in) is built from Apple's documentation [10][11] and what the hand-built setup saw on a real restart [30], and tested against recorded output. Its guide says it is not yet proven by MacMosh's own restart test. The task that proves it on the MacBook Pro stays open until Shariq agrees to a restart.
+  - **The lid-closed switch** is not built before test 7, because reports disagree on whether `disablesleep` works at all (section 8.5). Its task waits for sitting 2. The lid-closed guide, with Apple's own options, doesn't wait.
 - Phases 3 to 5 are filed as issues now and checked again after Shariq's review of the prototype, because that review is meant to change them.
 
 v1 is done when Shariq runs his day from the native app, has recovered from a real restart using only its buttons, and a fresh setup following only the README works.
@@ -554,6 +557,7 @@ v1 is done when Shariq runs his day from the native app, has recovered from a re
 | mosh is the default connection | 2026-11-18 |
 | The repo goes public once this design is approved | 2026-11-19 |
 | The app is signed with the company Developer ID certificate already on the MacBook Pro, not a new personal one | 2026-11-19 |
+| MacMosh may be installed on the MacBook Pro beside the current setup, and sitting 1 can go ahead. No restart and no lid-closed test until he says | 2026-11-19 |
 
 ### Calls the agent made, for Shariq to check
 
@@ -575,6 +579,7 @@ v1 is done when Shariq runs his day from the native app, has recovered from a re
 16. **The relay for unlocking from away is a guide and a status light**, not something the app sets up.
 17. **MacMosh runs beside the hand-built setup** and never takes it over (section 7.13).
 18. **The Locked state never comes from a missing key**, and "Fix…" never closes desks without asking (sections 5.2 and 7.6).
+19. **While the restart test waits, restart recovery is still built**, from Apple's documentation and the hand-built setup's real restart, and marked as not yet proven. **The lid-closed switch is not built until its test has run** (section 12).
 
 ## 14. Left to the builder
 
@@ -590,9 +595,7 @@ v1 is done when Shariq runs his day from the native app, has recovered from a re
 ## 15. Questions for Shariq
 
 1. **Signing.** Answered on 2026-11-19: use the company Developer ID certificate already on the MacBook Pro (section 13).
-2. **Your Macs.** Two things need your go-ahead:
-   - installing MacMosh's script and login agent on the MacBook Pro, beside what is there now (section 7.13);
-   - two test sittings of about 45 minutes each (section 9), the second with a restart of the MacBook Pro and the lid-closed test.
+2. **Your Macs.** Answered on 2026-11-19: install MacMosh's script and login agent on the MacBook Pro beside what is there now, and run sitting 1. The restart and the lid-closed test (sitting 2) wait until you say (sections 9 and 12).
 3. **The affiliate link.** Amazon's rules keep it out of the app. Are you happy for it to live on your blog or video page instead, and do you have (or want) an Amazon Associates account? This doesn't hold up the build.
 4. **The v1 list** in section 4 and the calls in section 13: anything to cut, add or change? The first call, the ssh key with no passphrase, is the one to look at hardest.
 
