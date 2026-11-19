@@ -8,8 +8,10 @@ struct Macmosh: AsyncParsableCommand {
         abstract: "Drive a spare Mac that works as your workhorse.",
         version: MacMoshInfo.version,
         subcommands: [
+            AddCommand.self,
             DesksCommand.self,
             ListCommand.self,
+            PairCommand.self,
             StatusCommand.self,
         ]
     )
