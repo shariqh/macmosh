@@ -14,6 +14,11 @@ if matches=$(grep -rnF --include='*.swift' 'Paths.standard(' Tests); then
     exit 1
 fi
 
+echo "check.sh: the built-in copy of the host script is up to date"
+# The macmosh binary carries its own copy of host/macmosh-host (Sources/MacMoshKit/Host/HostScriptSource.swift).
+# This fails, naming scripts/embed-host-script.sh, when the script changed and the copy was not regenerated.
+scripts/embed-host-script.sh --check
+
 echo "check.sh: swift build"
 swift build
 
@@ -24,5 +29,7 @@ if [ -f host/macmosh-host ]; then
     echo "check.sh: shellcheck host/macmosh-host"
     shellcheck host/macmosh-host
 fi
+echo "check.sh: shellcheck scripts/embed-host-script.sh"
+shellcheck scripts/embed-host-script.sh
 
 echo "check.sh: all checks passed"

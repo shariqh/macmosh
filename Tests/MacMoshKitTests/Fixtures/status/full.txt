@@ -1,0 +1,21 @@
+macmosh-host	1	0.1.0
+os	27.3	arm64
+console	alex
+server	up
+signins	ok
+filevault	on
+authrestart	yes
+power	sleep=0	womp=1	autorestart=-	disablesleep=-
+battery	present	ac	82
+home	192.168.1.20	24	workhorse.local
+firewall	off
+screensharing	on
+agent	installed
+tool	brew	/opt/homebrew/bin/brew	-
+tool	mosh-server	/opt/homebrew/bin/mosh-server	1.4.0
+tool	tmux	/opt/homebrew/bin/tmux	3.8
+desk	website	2	1
+window	website	0	zsh
+window	website	1	vim
+def	website	1	0	/Users/alex/Development/website	npm run dev
+end
