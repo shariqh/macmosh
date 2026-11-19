@@ -89,9 +89,13 @@ public struct Recovery: Sendable {
         // works, and a wrong password ends it too. The check that follows decides.
         _ = await interactive.runAttached(unlockArgv(for: w, address: address), environment: [:])
 
+        // Up to 2 minutes: the time asked of `sleep` counts, and so does the clock, because each
+        // check can itself take seconds when nothing answers. Whichever reaches 2 minutes first ends it.
         var last = r
         var waited: Duration = .zero
-        while waited < Self.recheckFor {
+        let clock = ContinuousClock()
+        let started = clock.now
+        while waited < Self.recheckFor, clock.now - started < Self.recheckFor {
             await sleep(Self.recheckEvery)
             waited += Self.recheckEvery
             last = await checker.check(w)

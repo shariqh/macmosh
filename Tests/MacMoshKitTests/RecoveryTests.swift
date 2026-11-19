@@ -99,6 +99,17 @@ private func passwordOnly() throws -> CommandResult {
         #expect(target == "alex@192.168.1.20")
     }
 
+    @Test func unlockUsesTheMainAddressWhenOnlyItRefused() async {
+        // A workhorse whose main address is its home-network address: nothing else was tried.
+        let w = Workhorse.sample(mainAddress: "192.168.1.20", lastKeyAccepted: Date(timeIntervalSince1970: 1_799_000_000))
+        let locked = ScriptedCheck(.locked, answeredAt: "192.168.1.20",
+                                   probes: ProbeSet(main: .authDenied(methods: ["password"])))
+        let f = RecoveryFixture(script: [locked, .usual(.waitingForLogin)])
+        _ = await f.recovery.unlock(w, ui: f.ui)
+        let target = f.interactive.calls.first.flatMap(sshTarget)
+        #expect(target == "alex@192.168.1.20")
+    }
+
     @Test func unlockStopsWhenNoAddressAnswered() async {
         let f = RecoveryFixture(script: [ScriptedCheck(.locked)])
         let code = await f.recovery.unlock(.recoverySample(), ui: f.ui)
