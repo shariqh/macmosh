@@ -1,0 +1,416 @@
+#!/bin/bash
+# macmosh-host: the script MacMosh keeps on a workhorse (a Mac you reach from another Mac).
+# It starts the desk server, prints the status report and, in later versions, manages desks.
+# Plain bash 3.2 (what macOS ships at /bin/bash): no associative arrays, no mapfile, no ${var,,}.
+set -u
+
+MACMOSH_HOST_VERSION=0.1.0
+MACMOSH_PROTOCOL=1
+AGENT_LABEL=io.github.shariqh.macmosh.host
+
+MACMOSH_HOME="${MACMOSH_HOME:-$HOME/.macmosh}"
+MACMOSH_SOCKET="${MACMOSH_SOCKET:-macmosh}"
+# Homebrew's folders go at the END of PATH, so a stand-in tool earlier on PATH wins in tests.
+PATH="$PATH:/opt/homebrew/bin:/usr/local/bin"
+export MACMOSH_HOME MACMOSH_SOCKET PATH
+
+TAB=$'\t'
+
+# Every tmux call goes through this one function, so it always names the desk server's socket.
+mm_tmux() { command tmux -L "$MACMOSH_SOCKET" "$@"; }
+
+# ---------------------------------------------------------------- log
+
+# One line per subcommand: an ISO 8601 time, the subcommand and the result.
+# The log never makes a subcommand fail, and it is cut back when it grows past about 1 MB.
+mm_log() {
+    local log="$MACMOSH_HOME/host.log" size
+    mkdir -p "$MACMOSH_HOME" 2>/dev/null || return 0
+    if [ -f "$log" ]; then
+        size=$(wc -c < "$log" 2>/dev/null | tr -d ' ')
+        if [ "${size:-0}" -gt 1000000 ]; then
+            tail -n 2000 "$log" > "$log.$$.tmp" 2>/dev/null && mv "$log.$$.tmp" "$log" 2>/dev/null
+        fi
+    fi
+    printf '%s\t%s\t%s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$1" "$2" >> "$log" 2>/dev/null
+    return 0
+}
+
+# ---------------------------------------------------------------- small helpers
+
+# Tabs and newlines become spaces, so one value can never break the record around it.
+mm_clean() { printf '%s' "$1" | tr '\t\n\r' '   '; }
+
+mm_valid_desk_name() {
+    case "$1" in
+        '' | *[!A-Za-z0-9_-]*) return 1 ;;
+    esac
+    [ "${#1}" -le 64 ]
+}
+
+mm_server_up() { mm_tmux list-sessions >/dev/null 2>&1; }
+
+# The user logged in at the screen, or nothing.
+mm_console_user() {
+    local who
+    who=$(stat -f %Su /dev/console 2>/dev/null)
+    case "$who" in
+        root | loginwindow | _mbsetupuser) who="" ;;
+    esac
+    printf '%s' "$who"
+}
+
+# ---------------------------------------------------------------- start
+
+# The file tmux itself would read: ~/.tmux.conf, otherwise the XDG one.
+mm_user_tmux_conf() {
+    if [ -f "$HOME/.tmux.conf" ]; then
+        printf '%s' "$HOME/.tmux.conf"
+    else
+        printf '%s' "${XDG_CONFIG_HOME:-$HOME/.config}/tmux/tmux.conf"
+    fi
+}
+
+mm_write_tmux_conf() {
+    mkdir -p "$MACMOSH_HOME" || return 1
+    {
+        echo '# MacMosh defaults. Your own tmux settings are loaded next, so your settings win.'
+        echo 'set -g mouse on'
+        echo 'set -g history-limit 50000'
+        echo "source-file -q \"$(mm_user_tmux_conf)\""
+        echo 'set -s exit-empty off'
+    } > "$MACMOSH_HOME/tmux.conf"
+}
+
+cmd_start() {
+    if mm_server_up; then
+        mm_log start "already up"
+        return 0
+    fi
+    if ! mm_write_tmux_conf; then
+        mm_log start "failed: cannot write tmux.conf"
+        echo "macmosh-host: cannot write $MACMOSH_HOME/tmux.conf" >&2
+        return 5
+    fi
+    mm_tmux -f "$MACMOSH_HOME/tmux.conf" start-server >/dev/null 2>&1
+    if mm_server_up; then
+        mm_log start "started"
+        return 0
+    fi
+    mm_log start "failed: server did not start"
+    echo "macmosh-host: the desk server did not start" >&2
+    return 5
+}
+
+# ---------------------------------------------------------------- status
+
+# A value from the "AC Power:" section of `pmset -g custom`: the first whole number after the name.
+mm_power_value() {
+    # $1 setting name, $2 the pmset text
+    local v
+    v=$(printf '%s\n' "$2" | awk -v key="$1" '
+        /^AC Power:/ { ac = 1; next }
+        /^[^ \t]/ { ac = 0 }
+        ac && $1 == key {
+            for (i = 2; i <= NF; i++) if ($i ~ /^[0-9]+$/) { print $i; exit }
+        }')
+    if [ -n "$v" ]; then printf '%s' "$v"; else printf '%s' "-"; fi
+}
+
+# 255.255.255.0 -> 24. Prints nothing for anything that is not a dotted mask.
+mm_mask_to_prefix() {
+    local mask="$1" a b c d bits=0 octet
+    case "$mask" in
+        *[!0-9.]* | '') return 0 ;;
+    esac
+    IFS=. read -r a b c d <<EOF
+$mask
+EOF
+    for octet in "$a" "$b" "$c" "$d"; do
+        case "$octet" in
+            '' | *[!0-9]*) return 0 ;;
+        esac
+        [ "$octet" -le 255 ] || return 0
+        while [ "$octet" -gt 0 ]; do
+            bits=$((bits + (octet & 1)))
+            octet=$((octet >> 1))
+        done
+    done
+    printf '%s' "$bits"
+}
+
+# A hex mask such as 0xffffff00 -> 24.
+mm_hexmask_to_prefix() {
+    local hex="${1#0x}" value bits=0
+    case "$hex" in
+        '' | *[!0-9a-fA-F]*) return 0 ;;
+    esac
+    value=$((16#$hex))
+    while [ "$value" -gt 0 ]; do
+        bits=$((bits + (value & 1)))
+        value=$((value >> 1))
+    done
+    printf '%s' "$bits"
+}
+
+# True for 100.64.0.0/10, the range Tailscale uses.
+mm_is_tailscale_address() {
+    local a b rest
+    IFS=. read -r a b rest <<EOF
+$1
+EOF
+    [ "$a" = 100 ] || return 1
+    case "$b" in
+        '' | *[!0-9]*) return 1 ;;
+    esac
+    [ "$b" -ge 64 ] && [ "$b" -le 127 ]
+}
+
+mm_home_record() {
+    local iface addr="" n mask prefix="" localname="" line
+
+    iface=$(route -n get default 2>/dev/null | awk '/interface:/ { print $2; exit }')
+    if [ -n "$iface" ]; then
+        addr=$(ipconfig getifaddr "$iface" 2>/dev/null)
+    fi
+    # A tunnel (or an address in Tailscale's range) is not the home address: use the first en0..en9 that has one.
+    case "$iface" in
+        utun*) addr="" ;;
+    esac
+    if [ -n "$addr" ] && mm_is_tailscale_address "$addr"; then
+        addr=""
+    fi
+    if [ -z "$addr" ] && [ -n "$iface" ]; then
+        n=0
+        while [ "$n" -le 9 ]; do
+            addr=$(ipconfig getifaddr "en$n" 2>/dev/null)
+            if [ -n "$addr" ]; then
+                iface="en$n"
+                break
+            fi
+            n=$((n + 1))
+        done
+    fi
+
+    if [ -n "$addr" ]; then
+        mask=$(ipconfig getoption "$iface" subnet_mask 2>/dev/null)
+        prefix=$(mm_mask_to_prefix "$mask")
+        if [ -z "$prefix" ]; then
+            # A fixed address has no DHCP option: read the mask from ifconfig instead.
+            line=$(ifconfig "$iface" 2>/dev/null | awk '/^[ \t]*inet / { for (i = 1; i < NF; i++) if ($i == "netmask") { print $(i + 1); exit } }')
+            prefix=$(mm_hexmask_to_prefix "$line")
+        fi
+    fi
+
+    localname=$(scutil --get LocalHostName 2>/dev/null)
+    if [ -n "$localname" ]; then localname="$localname.local"; fi
+
+    printf 'home\t%s\t%s\t%s\n' "$(mm_clean "$addr")" "$prefix" "$(mm_clean "$localname")"
+}
+
+mm_battery_record() {
+    local text present=absent source=ac pct="-" first
+    text=$(pmset -g batt 2>/dev/null)
+    first=$(printf '%s\n' "$text" | head -n 1)
+    case "$first" in
+        *"'Battery Power'"*) source=battery ;;
+    esac
+    case "$text" in
+        *InternalBattery*)
+            present=present
+            pct=$(printf '%s\n' "$text" | sed -n 's/.*[^0-9]\([0-9][0-9]*\)%.*/\1/p' | head -n 1)
+            [ -n "$pct" ] || pct="-"
+            ;;
+    esac
+    printf 'battery\t%s\t%s\t%s\n' "$present" "$source" "$pct"
+}
+
+mm_tool_record() {
+    # $1 name, $2 path or empty, $3 version or empty
+    printf 'tool\t%s\t%s\t%s\n' "$1" "${2:--}" "${3:--}"
+}
+
+mm_tool_records() {
+    local path version
+
+    path=$(command -v brew 2>/dev/null)
+    mm_tool_record brew "$path" ""
+
+    path=$(command -v mosh-server 2>/dev/null)
+    version=""
+    if [ -n "$path" ]; then
+        version=$(mosh-server --version 2>&1 | sed -n 's/.*(mosh \([^)]*\)).*/\1/p' | head -n 1)
+    fi
+    mm_tool_record mosh-server "$path" "$version"
+
+    path=$(command -v tmux 2>/dev/null)
+    version=""
+    if [ -n "$path" ]; then
+        version=$(tmux -V 2>/dev/null | awk '{ print $2; exit }')
+    fi
+    mm_tool_record tmux "$path" "$version"
+}
+
+# The windows of one desk. A window name can hold odd characters; a line that does not start with
+# "index|" is the rest of the previous name.
+mm_window_records() {
+    local desk="$1" text
+    text=$(mm_tmux list-windows -t "=$desk:" -F '#{window_index}|#{window_name}' 2>/dev/null)
+    printf '%s\n' "$text" | {
+        local line prev=""
+        while IFS= read -r line; do
+            case "$line" in
+                [0-9]*"|"*)
+                    if [ -n "$prev" ]; then
+                        printf 'window\t%s\t%s\t%s\n' "$desk" "${prev%%|*}" "$(mm_clean "${prev#*|}")"
+                    fi
+                    prev="$line"
+                    ;;
+                *) prev="$prev $line" ;;
+            esac
+        done
+        if [ -n "$prev" ]; then
+            printf 'window\t%s\t%s\t%s\n' "$desk" "${prev%%|*}" "$(mm_clean "${prev#*|}")"
+        fi
+    }
+}
+
+mm_desk_records() {
+    local text line name rest windows attached
+    mm_server_up || return 0
+    # Format: name|windows|attached. A name that breaks the naming rule is left out.
+    text=$(mm_tmux list-sessions -F '#{session_name}|#{session_windows}|#{session_attached}' 2>/dev/null)
+    printf '%s\n' "$text" | while IFS= read -r line; do
+        attached="${line##*|}"
+        rest="${line%|*}"
+        windows="${rest##*|}"
+        name="${rest%|*}"
+        mm_valid_desk_name "$name" || continue
+        case "$windows$attached" in
+            '' | *[!0-9]*) continue ;;
+        esac
+        printf 'desk\t%s\t%s\t%s\n' "$name" "$windows" "$attached"
+        mm_window_records "$name"
+    done
+}
+
+mm_def_records() {
+    local file="$MACMOSH_HOME/desks.tsv" line name
+    [ -f "$file" ] || return 0
+    while IFS= read -r line || [ -n "$line" ]; do
+        name="${line%%"$TAB"*}"
+        mm_valid_desk_name "$name" || continue
+        printf 'def\t%s\n' "$line"
+    done < "$file"
+}
+
+cmd_status() {
+    local os_version arch console server signins fv ar custom firewall_text sharing_line sharing agent_file
+    os_version=$(sw_vers -productVersion 2>/dev/null)
+    arch=$(uname -m 2>/dev/null)
+
+    if mm_server_up; then
+        server=up
+        # shellcheck disable=SC2016  # the command is expanded by the desk server's shell, not here
+        signins=$(mm_tmux run-shell 'security show-keychain-info "$HOME/Library/Keychains/login.keychain-db" >/dev/null 2>&1 && echo ok || echo off' 2>/dev/null | head -n 1)
+        case "$signins" in
+            ok | off) ;;
+            *) signins=unknown ;;
+        esac
+    else
+        server=down
+        signins=unknown
+    fi
+
+    case "$(fdesetup status 2>/dev/null | head -n 1)" in
+        "FileVault is On"*) fv=on ;;
+        "FileVault is Off"*) fv=off ;;
+        *) fv=unknown ;;
+    esac
+    case "$(fdesetup supportsauthrestart 2>/dev/null | head -n 1)" in
+        true) ar=yes ;;
+        false) ar=no ;;
+        *) ar=unknown ;;
+    esac
+
+    custom=$(pmset -g custom 2>/dev/null)
+
+    firewall_text=$(/usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate 2>/dev/null | head -n 1)
+    case "$firewall_text" in
+        *disabled*) firewall=off ;;
+        *enabled*) firewall=on ;;
+        *) firewall=unknown ;;
+    esac
+
+    sharing_line=$(launchctl print-disabled system 2>/dev/null | grep '"com.apple.screensharing"' | head -n 1)
+    case "$sharing_line" in
+        *"=> enabled"*) sharing=on ;;
+        *"=> disabled"*) sharing=off ;;
+        *) sharing=unknown ;;
+    esac
+
+    agent_file="$HOME/Library/LaunchAgents/$AGENT_LABEL.plist"
+
+    {
+        printf 'macmosh-host\t%s\t%s\n' "$MACMOSH_PROTOCOL" "$MACMOSH_HOST_VERSION"
+        printf 'os\t%s\t%s\n' "$(mm_clean "$os_version")" "$(mm_clean "$arch")"
+        console=$(mm_console_user)
+        printf 'console\t%s\n' "$(mm_clean "$console")"
+        printf 'server\t%s\n' "$server"
+        printf 'signins\t%s\n' "$signins"
+        printf 'filevault\t%s\n' "$fv"
+        printf 'authrestart\t%s\n' "$ar"
+        printf 'power\tsleep=%s\twomp=%s\tautorestart=%s\tdisablesleep=%s\n' \
+            "$(mm_power_value sleep "$custom")" "$(mm_power_value womp "$custom")" \
+            "$(mm_power_value autorestart "$custom")" "$(mm_power_value disablesleep "$custom")"
+        mm_battery_record
+        mm_home_record
+        printf 'firewall\t%s\n' "$firewall"
+        printf 'screensharing\t%s\n' "$sharing"
+        if [ -f "$agent_file" ]; then
+            printf 'agent\tinstalled\n'
+        else
+            printf 'agent\tmissing\n'
+        fi
+        mm_tool_records
+        mm_desk_records
+        mm_def_records
+        printf 'end\n'
+    }
+    mm_log status "ok"
+    return 0
+}
+
+# ---------------------------------------------------------------- main
+
+usage() {
+    cat >&2 <<EOF
+usage: macmosh-host <subcommand>
+  version   print the script version
+  start     start the desk server if it is down
+  status    print the status report
+EOF
+}
+
+main() {
+    local sub="${1:-}"
+    case "$sub" in
+        version)
+            echo "$MACMOSH_HOST_VERSION"
+            mm_log version "ok"
+            ;;
+        start)
+            cmd_start
+            ;;
+        status)
+            cmd_status
+            ;;
+        *)
+            usage
+            mm_log "${sub:-none}" "usage error"
+            return 2
+            ;;
+    esac
+}
+
+main "$@"

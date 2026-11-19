@@ -21,5 +21,6 @@ let package = Package(
             ]
         ),
         .testTarget(name: "MacMoshKitTests", dependencies: ["MacMoshKit"]),
+        .testTarget(name: "MacMoshHostTests", dependencies: ["MacMoshKit"]),
     ]
 )
