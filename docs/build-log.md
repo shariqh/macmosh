@@ -8,7 +8,7 @@ This is raw material for a blog post and a YouTube video about building MacMosh.
 - what was done, with the command where there was one;
 - what happened, including the surprises.
 
-Design: `superpowers/specs/2026-11-18-macmosh-v1-design.md`. Plan: `superpowers/plans/` (written after the design is approved).
+Design: `superpowers/specs/2026-11-18-macmosh-v1-design.md`. Plan: `superpowers/plans/2026-11-19-macmosh-v1.md`.
 
 ## The setup
 
