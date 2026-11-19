@@ -3,6 +3,8 @@ import Testing
 
 extension HostScriptTests {
 @Suite struct KeepTests {
+    // Every wait below ends as soon as its condition holds. The limits are long because CI runners
+    // are slow: on one, three runs of a one-line command with pauses of 1 and 2 seconds took over 15 seconds.
     private func runs(_ h: HostHarness) -> Int {
         let text = (try? String(contentsOf: h.home.appendingPathComponent("runs.txt"), encoding: .utf8)) ?? ""
         return text.split(separator: "\n").count
@@ -33,7 +35,7 @@ extension HostScriptTests {
         h.setEnvironment("MACMOSH_KEEP_PAUSE", "1")
         _ = h.run(["start"])
         #expect(h.run(["desk-new", "kept", h.home.path, "--keep", "--command", "echo run >> runs.txt; exit 1"]).exitCode == 0)
-        try waitFor(seconds: 8) { runs(h) >= 2 }
+        try waitFor(seconds: 40) { runs(h) >= 2 }
         #expect(runs(h) >= 2)
         endDesk(h, "kept")
     }
@@ -43,7 +45,7 @@ extension HostScriptTests {
         h.setEnvironment("MACMOSH_KEEP_PAUSE", "1")
         _ = h.run(["start"])
         _ = h.run(["desk-new", "kept", h.home.path, "--keep", "--command", "echo run >> runs.txt; exit 1"])
-        try waitFor(seconds: 15) { waits(in: screen(h, "kept")).count >= 3 }
+        try waitFor(seconds: 60) { waits(in: screen(h, "kept")).count >= 3 }
         let text = screen(h, "kept")
         #expect(Array(waits(in: text).prefix(3)) == [1, 2, 4])
         #expect(text.contains("echo run >> runs.txt; exit 1 ended (exit 1). Starting it again in 1 seconds. Press Ctrl-C to stop."))
@@ -55,7 +57,7 @@ extension HostScriptTests {
         h.setEnvironment("MACMOSH_KEEP_PAUSE", "1")
         _ = h.run(["start"])
         #expect(h.run(["desk-new", "once", h.home.path, "--command", "echo run >> runs.txt; exit 1"]).exitCode == 0)
-        try waitFor(seconds: 5) { runs(h) >= 1 }
+        try waitFor(seconds: 30) { runs(h) >= 1 }
         Thread.sleep(forTimeInterval: 5)
         #expect(runs(h) == 1)
         endDesk(h, "once")
@@ -98,19 +100,19 @@ extension HostScriptTests {
         h.setEnvironment("MACMOSH_KEEP_PAUSE", "1")
         _ = h.run(["start"])
         #expect(h.run(["desk-new", "kept", h.home.path, "--reopen", "--keep", "--command", "echo run >> runs.txt; exit 1"]).exitCode == 0)
-        try waitFor(seconds: 8) { runs(h) >= 2 }
+        try waitFor(seconds: 40) { runs(h) >= 2 }
 
         // The desk server restarts: start reopens the desk, and it is kept again.
         _ = h.tmux(["kill-server"])
         try FileManager.default.removeItem(at: h.home.appendingPathComponent("runs.txt"))
         _ = h.run(["start"])
-        try waitFor(seconds: 8) { runs(h) >= 2 }
+        try waitFor(seconds: 40) { runs(h) >= 2 }
         endDesk(h, "kept")
 
         // attach recreates a desk that was closed.
         try FileManager.default.removeItem(at: h.home.appendingPathComponent("runs.txt"))
         #expect(h.run(["attach", "--dry-run", "kept"]).exitCode == 0)
-        try waitFor(seconds: 8) { runs(h) >= 2 }
+        try waitFor(seconds: 40) { runs(h) >= 2 }
         endDesk(h, "kept")
     }
 
@@ -119,13 +121,13 @@ extension HostScriptTests {
         h.setEnvironment("MACMOSH_KEEP_PAUSE", "30")
         _ = h.run(["start"])
         _ = h.run(["desk-new", "kept", h.home.path, "--keep", "--command", "echo run >> runs.txt; exit 1"])
-        try waitFor(seconds: 8) { !waits(in: screen(h, "kept")).isEmpty }
+        try waitFor(seconds: 40) { !waits(in: screen(h, "kept")).isEmpty }
         _ = h.tmux(["send-keys", "-t", "=kept:", "C-c"])
         // The loop has ended and the desk's own shell is back: it answers a command.
         Thread.sleep(forTimeInterval: 1)
         _ = h.tmux(["send-keys", "-t", "=kept:", "-l", "--", "echo alive > alive.txt"])
         _ = h.tmux(["send-keys", "-t", "=kept:", "Enter"])
-        try waitFor(seconds: 8) { FileManager.default.fileExists(atPath: h.home.appendingPathComponent("alive.txt").path) }
+        try waitFor(seconds: 40) { FileManager.default.fileExists(atPath: h.home.appendingPathComponent("alive.txt").path) }
         #expect(h.tmux(["has-session", "-t", "=kept"]).exitCode == 0)
         #expect(runs(h) == 1)
         endDesk(h, "kept")
@@ -143,7 +145,7 @@ extension HostScriptTests {
         _ = h.shell("\(quoted) start")
         let made = h.shell("\(quoted) desk-new kept '\(h.home.path)' --keep --command 'echo run >> runs.txt; exit 1'")
         #expect(made.exitCode == 0)
-        try waitFor(seconds: 8) { runs(h) >= 2 }
+        try waitFor(seconds: 40) { runs(h) >= 2 }
         endDesk(h, "kept")
     }
 }
