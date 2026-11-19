@@ -1,0 +1,23 @@
+# macOS
+.DS_Store
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved.orig
+
+# Xcode
+DerivedData/
+xcuserdata/
+*.xcuserstate
+*.xcresult
+
+# Build output
+dist/
+*.dmg
+*.zip
+
+# Local-only files
+.env
+.env.*
+*.local
