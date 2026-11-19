@@ -1,5 +1,5 @@
 #!/bin/bash
-# sitting-1.sh: walks through the five short tests of "sitting 1" and records what happened.
+# sitting-1.sh: walks through the four short tests of "sitting 1" and records what happened.
 # Run it on the daily Mac (the Air), from a checkout of the macmosh repository:
 #   scripts/sitting-1.sh <destination>          (the name you ssh to the workhorse with, or user@host)
 #   scripts/sitting-1.sh --dry-run <destination>     (prints every command, runs none)
@@ -15,11 +15,11 @@ usage: scripts/sitting-1.sh [--dry-run] <destination>
 
 <destination> is anything ssh accepts: the short name from your ssh config, or user@host.
 
-Walks you through the five tests of sitting 1. For each one it says what is about to happen,
+Walks you through the four tests of sitting 1. For each one it says what is about to happen,
 shows the command, waits for Enter, runs it and asks what you saw. Everything goes into
 ~/macmosh-sitting-1/results.txt.
 
-  --dry-run   print every command for all five items, run none of them, create no files
+  --dry-run   print every command for all four items, run none of them, create no files
               and open no connection
 EOF
 }
@@ -62,7 +62,7 @@ if [ -z "$HOST" ] || [[ $HOST == -* ]] || ! [[ $HOST =~ $dest_re ]]; then
 fi
 
 # The real host name, port and user come from "ssh -G <destination>" (it opens no connection).
-# ssh-keyscan and the item 5 plugin do not read ssh's config, so they need these. The dry run
+# ssh-keyscan does not read ssh's config, so it needs these. The dry run
 # shows the placeholders, because it runs nothing.
 REAL_HOST="<hostname from ssh -G>"
 REAL_PORT="<port from ssh -G>"
@@ -103,11 +103,8 @@ def() {
     printf -v "$1" '%s' "${text%$'\n'}"
 }
 
-ADDR=""
-PLUGDIR=""
 fill() {
-    local s=$1 target
-    target="$REAL_USER@${ADDR:-192.168.1.20}"
+    local s=$1
     s=${s//@W@/$HOST}
     s=${s//@H@/$REAL_HOST}
     s=${s//@P@/$REAL_PORT}
@@ -116,8 +113,6 @@ fill() {
     s=${s//@R@/$REMOTE_SCRIPT}
     s=${s//@PINDIR@/$PIN_DIR}
     s=${s//@PIN@/$PIN}
-    s=${s//@T@/$target}
-    s=${s//@PLUGDIR@/${PLUGDIR:-<your SwiftBar plugin folder>}}
     printf '%s' "$s"
 }
 
@@ -275,7 +270,7 @@ end_item() {
     done
 }
 
-# ---------------------------------------------------------------- the five items
+# ---------------------------------------------------------------- the four items
 
 item_1() {
     begin_item 1 "Install the script and the login agent over ssh" \
@@ -491,104 +486,6 @@ EOF
     end_item "the iTerm2 tabs come back after Wi-Fi returns, without you typing anything."
 }
 
-item_5() {
-    begin_item 5 "The home address and macOS's Local Network question" \
-"Puts a tiny SwiftBar plugin in the menu bar. It tries ssh to the workhorse's home address every 10 seconds.
-macOS should ask once whether SwiftBar may use the local network. Before you click Allow, ssh should say No route to host.
-Open SwiftBar yourself first, and pick a plugin folder if it asks." || return 0
-
-    if [ ! -s "$PIN" ] && [ "$DRY" != 1 ]; then
-        say "  The pinned key from item 3 is missing. Building it now."
-        def CMD <<'EOF'
-mkdir -p "@PINDIR@" && ssh-keyscan -t ed25519 -p @P@ @H@ 2>/dev/null | awk 'NF >= 3 && $1 !~ /^#/ { $1 = "macmosh-sitting"; print }' > "@PIN@" && test -s "@PIN@" && cat "@PIN@"
-EOF
-        run_step "Pin the workhorse's host key" \
-            "Same as item 3, step 1." cap "Did it print a key?" "$CMD"
-    fi
-
-    def CMD <<'EOF'
-ssh @M@ @W@ '@R@ status' | awk -F'\t' '$1 == "home" { print $2 }'
-EOF
-    run_step "Find the workhorse's home address" \
-        "Reads the home line of the status report, second field." \
-        cap "Is that the workhorse's address on your home network?" "$CMD"
-    if [ "$DRY" != 1 ]; then
-        local addr_re='^[0-9]{1,3}(\.[0-9]{1,3}){3}$' line
-        ADDR=""
-        while IFS= read -r line; do
-            if [[ $line =~ $addr_re ]]; then
-                ADDR=$line
-                break
-            fi
-        done < "$TMP"
-        while ! [[ $ADDR =~ $addr_re ]]; do
-            ask "  Type the workhorse's home address (like 192.168.1.20): "
-            ADDR=$REPLY
-        done
-        say "  Using $ADDR."
-    fi
-
-    run_step "Find SwiftBar's plugin folder" \
-        "Reads SwiftBar's setting. If it prints nothing, open SwiftBar and choose a plugin folder first." \
-        cap "Is that the folder SwiftBar uses?" \
-        'defaults read com.ameba.SwiftBar PluginDirectory'
-    if [ "$DRY" != 1 ]; then
-        PLUGDIR=$(tail -n 1 "$TMP")
-        case "$PLUGDIR" in
-            /* | "~"/*) ;;
-            *) PLUGDIR="" ;;
-        esac
-        PLUGDIR=${PLUGDIR/#\~/$HOME}
-        while :; do
-            case "$PLUGDIR" in
-                '' | *[\"\$\`\\]*) ;;
-                *)
-                    if [ -d "$PLUGDIR" ]; then break; fi
-                    ;;
-            esac
-            ask "  Type the full path of SwiftBar's plugin folder: "
-            PLUGDIR=${REPLY/#\~/$HOME}
-        done
-        say "  Using $PLUGDIR."
-    fi
-
-    def CMD <<'EOF'
-cat > "@PLUGDIR@/macmosh-sitting-5.10s.sh" <<'PLUGIN'
-#!/bin/bash
-out=$(/usr/bin/ssh -o BatchMode=yes -o ConnectTimeout=5 -o ControlPath=none -o HostKeyAlias=macmosh-sitting -o 'UserKnownHostsFile="@PIN@"' -o StrictHostKeyChecking=yes -p @P@ @T@ true 2>&1)
-rc=$?
-echo "ssh exit $rc"
-echo '---'
-echo "$out" | tr '|' ' '
-echo "$(date +%T) exit $rc: $(echo "$out" | tr '\n' ' ')" >> "$HOME/macmosh-sitting-1/item-5.log"
-PLUGIN
-chmod +x "@PLUGDIR@/macmosh-sitting-5.10s.sh"
-EOF
-    run_step "Install the plugin" \
-        "Writes the plugin into SwiftBar's folder. SwiftBar picks it up within a few seconds and runs it every 10 seconds." \
-        cap "Did it finish without an error message?" "$CMD"
-
-    run_note "Before you click Allow" \
-        "Wait up to 15 seconds. macOS should ask whether SwiftBar may find and connect to devices on your local network. Do NOT click Allow yet. Click SwiftBar's icon in the menu bar and read the menu." \
-        "Copy the exact wording of the macOS prompt. What does the menu say (ssh exit number and message)?"
-
-    run_note "After you click Allow" \
-        "Click Allow. Wait 15 seconds, then read the menu again." \
-        "What does the menu say now? A pass is ssh exit 0 or Permission denied. No route to host is still a fail."
-
-    run_step "Read the plugin's log" \
-        "The plugin wrote one line per run, so the change from No route to host is on record." \
-        cap "Does the log show No route to host first and something else after Allow?" \
-        "cat \"\$HOME/macmosh-sitting-1/item-5.log\""
-
-    run_step "Remove the plugin" \
-        "Deletes the test plugin, so SwiftBar stops running it." \
-        cap "Did it finish without an error message?" \
-        "rm -f \"@PLUGDIR@/macmosh-sitting-5.10s.sh\""
-
-    end_item "before Allow, ssh says No route to host; after Allow it doesn't. An exit 0 or Permission denied both count."
-}
-
 finish() {
     rule
     say "Clean up"
@@ -633,14 +530,14 @@ setup() {
 ssh -G @W@ | grep -E '^(hostname|port|user) '
 EOF
     run_step "Read the real host name, port and user" \
-        "Shows the host name, port and user ssh would use for this name, from your ssh config. It opens no connection. ssh-keyscan (item 3) and the home-address test (item 5) don't read ssh's config, so they need these." \
+        "Shows the host name, port and user ssh would use for this name, from your ssh config. It opens no connection. ssh-keyscan (item 3) doesn't read ssh's config, so it needs these." \
         cap "Do the host name, port and user look right?" "$CMD"
     [ "$DRY" = 1 ] && return 0
-    local key value line
+    local key value
     REAL_HOST=""
     REAL_PORT=""
     REAL_USER=""
-    while IFS=' ' read -r key value line; do
+    while IFS=' ' read -r key value _; do
         case "$key" in
             hostname) REAL_HOST=$value ;;
             port) REAL_PORT=$value ;;
@@ -661,7 +558,7 @@ EOF
 main() {
     if [ "$DRY" = 1 ]; then
         rule
-        say "DRY RUN: every command for all five items is printed below and none is run."
+        say "DRY RUN: every command for all four items is printed below and none is run."
         say "No files are created and no connection is opened."
         say "Workhorse: $HOST   Repository: $REPO"
     else
@@ -683,7 +580,7 @@ main() {
         rec "Workhorse: $HOST"
         rec "Helper: scripts/sitting-1.sh"
         rule
-        say "MacMosh sitting 1. Five short tests. About 45 minutes."
+        say "MacMosh sitting 1. Four short tests. About 35 minutes."
         say "At each step: Enter runs it, s skips it. The helper never asks for a password."
         say "If ssh asks for a password, type the MacBook Pro's login password. With your own ssh key set up, as it is today, it won't ask."
         say "Results go to $RESULTS"
@@ -694,7 +591,6 @@ main() {
     item_2
     item_3
     item_4
-    item_5
     finish
 }
 

@@ -1,25 +1,20 @@
-# Sitting 1: five short tests
+# Sitting 1: four short tests
 
-This sitting checks whether five things MacMosh depends on work on your two Macs. A helper script runs each one, asks what you saw, and writes it all down.
+This sitting checks whether four things MacMosh depends on work on your two Macs. A helper script runs each one, asks what you saw, and writes it all down.
 
 Nothing here restarts the MacBook Pro, logs it out, or changes a power, sleep, or security setting. Your own tmux sessions on it are not touched.
+
+A fifth question, what macOS asks when MacMosh first reaches your home network, needs the menu-bar app itself. It comes later, the first time you run the app.
 
 ## What you need
 
 - The MacBook Air (the "Air").
-- About 45 minutes.
+- About 35 minutes.
 - iTerm2 on the Air, for item 4.
 
-## Two things to do first
+## One thing to do first
 
-On the Air:
-
-1. Get the repository: `git clone https://github.com/shariqh/macmosh`
-2. Install SwiftBar, needed for item 5: `brew install --cask swiftbar`
-
-SwiftBar is a small app that puts the output of a script in the menu bar. It is how the first version of MacMosh will show the MacBook Pro's state.
-
-Open SwiftBar once from Applications. If it asks for a plugin folder, make a folder (say `~/swiftbar-plugins`) and choose it.
+On the Air, get the repository: `git clone https://github.com/shariqh/macmosh`
 
 ## Start the helper
 
@@ -41,7 +36,7 @@ If a step fails, the helper carries on. A failure is a result. Write down what y
 
 If ssh asks for a password, type the MacBook Pro's login password. With your own ssh key set up, as it is today, it won't ask. The helper never sees a password.
 
-The helper's first step runs `ssh -G` on that name. It prints the real host name, port and user from your ssh config and opens no connection. Two later steps need the real host name. The helper keeps one ssh connection open for most steps. mosh and the item 4 loop make their own.
+The helper's first step runs `ssh -G` on that name. It prints the real host name, port and user from your ssh config and opens no connection. One later step needs the real host name. The helper keeps one ssh connection open for most steps. mosh and the item 4 loop make their own.
 
 If ssh asks "Are you sure you want to continue connecting?", type `yes` only if you expect this Mac. If ssh warns that a host key has changed, stop and tell the build agent.
 
@@ -93,19 +88,6 @@ If ssh asks "Are you sure you want to continue connecting?", type `yes` only if 
 To finish, press Esc in the first tab, or choose Shell > tmux > Detach. Ctrl-C ends the loop.
 
 **If it fails.** Write down what you saw. Say whether the loop printed its message, whether the tabs came back, and whether anything was stuck. Go on.
-
-## Item 5: what macOS asks about the home network
-
-**What it tests.** Since macOS 15, an app needs permission to talk to other devices on your home network. SwiftBar will run MacMosh's checks, so it needs that permission. What does macOS ask, and does it work after you allow it?
-
-**What to run.** The helper's item 5 steps. It reads the MacBook Pro's home address from its status report, puts a small test plugin in SwiftBar's folder, and tries ssh to that address every 10 seconds. SwiftBar must be open.
-
-1. Wait up to 15 seconds. macOS should ask whether SwiftBar may find and connect to devices on your local network. **Don't click Allow yet.** Click SwiftBar's icon in the menu bar and read it. Copy the exact words of the prompt.
-2. Click Allow. Wait 15 seconds and read the menu again.
-
-**What you should see.** Before Allow, the menu says `No route to host`. After Allow, it doesn't. `ssh exit 0` or `Permission denied` both count as a pass: either one means the home network is reachable.
-
-**If it fails.** If no prompt appears, say so. The permission may be set already. Write down what the menu said, and go on.
 
 ## Finish
 

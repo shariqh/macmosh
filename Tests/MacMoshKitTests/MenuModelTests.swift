@@ -268,3 +268,82 @@ private func shortClock(_ date: Date) -> String {
     f.dateFormat = "HH:mm"
     return f.string(from: date)
 }
+
+@Suite struct MenuDataTests {
+    @Test func rendersWithinTheBudgetWhenNothingAnswers() async {
+        let slow = FakeRunner.sleeping(.seconds(30))
+        let clock = ContinuousClock()
+        let start = clock.now
+        let gathered = await MenuData.gather([.sample(id: "a"), .sample(id: "b")],
+                                             checker: StatusChecker(runner: slow, paths: .test, hints: FixedHints(.allFine)),
+                                             budget: .seconds(1))
+        #expect(clock.now - start < .seconds(3))
+        #expect(MenuModel.build(gathered).items.contains { $0.title.hasSuffix("Still checking…") })
+        #expect(gathered == [.stillChecking(.sample(id: "a")), .stillChecking(.sample(id: "b"))])
+    }
+
+    @Test func aFastWorkhorseIsCheckedAndASlowOneIsNot() async {
+        let runner = FakeRunner { argv in
+            guard sshTarget(argv) == "alex@fast" else { return sshTimedOut }
+            return FakeRunner.ok("")
+        }
+        // The slow one's runner never answers in time: a runner that sleeps only for its address.
+        let mixed = MixedRunner(fast: "alex@fast", fastAnswer: runner)
+        let list = [Workhorse.sample(id: "slow", mainAddress: "slow"), Workhorse.sample(id: "fast", mainAddress: "fast")]
+        let gathered = await MenuData.gather(list, checker: StatusChecker(runner: mixed, paths: .test, hints: FixedHints(.allFine)),
+                                             budget: .seconds(2))
+        #expect(gathered.count == 2)
+        #expect(gathered[0] == .stillChecking(list[0]))
+        if case .checked(let result) = gathered[1] { #expect(result.workhorse.id == "fast") } else { Issue.record("fast was not checked") }
+    }
+
+    @Test func noWorkhorsesGatherNothingAtOnce() async {
+        let clock = ContinuousClock()
+        let start = clock.now
+        let gathered = await MenuData.gather([], checker: StatusChecker(runner: FakeRunner.sleeping(.seconds(30)), paths: .test,
+                                                                       hints: FixedHints(.allFine)), budget: .seconds(20))
+        #expect(gathered.isEmpty)
+        #expect(clock.now - start < .seconds(1))
+    }
+
+    @Test func everythingAnsweringEndsTheCallBeforeTheBudget() async {
+        let quick = FakeRunner { _ in sshTimedOut }
+        let clock = ContinuousClock()
+        let start = clock.now
+        let gathered = await MenuData.gather([.sample(id: "a"), .sample(id: "b")],
+                                             checker: StatusChecker(runner: quick, paths: .test, hints: FixedHints(.allFine)),
+                                             budget: .seconds(30))
+        #expect(clock.now - start < .seconds(5))
+        #expect(gathered.count == 2)
+        for entry in gathered { if case .stillChecking = entry { Issue.record("expected a checked result") } }
+    }
+
+    @Test func theResultsKeepTheOrderOfTheInput() async {
+        let quick = FakeRunner { _ in sshTimedOut }
+        let list = (0..<6).map { Workhorse.sample(id: "w\($0)", name: "W\($0)") }
+        let gathered = await MenuData.gather(list, checker: StatusChecker(runner: quick, paths: .test, hints: FixedHints(.allFine)),
+                                             budget: .seconds(30))
+        let ids: [String] = gathered.map { entry in
+            switch entry {
+            case .checked(let r): return r.workhorse.id
+            case .stillChecking(let w): return w.id
+            }
+        }
+        #expect(ids == list.map(\.id))
+    }
+}
+
+/// Answers quickly for one ssh target and hangs (until cancelled) for every other.
+private struct MixedRunner: CommandRunner {
+    let fast: String
+    let fastAnswer: FakeRunner
+
+    func run(_ executable: String, _ arguments: [String], environment: [String: String],
+             stdin: Data?, timeout: Duration) async -> CommandResult {
+        if (([executable] + arguments).contains(fast)) {
+            return await fastAnswer.run(executable, arguments, environment: environment, stdin: stdin, timeout: timeout)
+        }
+        try? await Task.sleep(for: .seconds(30))
+        return CommandResult(exitCode: -1, stdout: "", stderr: "", timedOut: true)
+    }
+}

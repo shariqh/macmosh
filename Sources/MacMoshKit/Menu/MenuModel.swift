@@ -45,7 +45,7 @@ public enum Gathered: Sendable, Equatable {
 }
 
 /// Words that are safe as arguments of a menu action: letters, digits and `@%+=:,./_-`. A later
-/// task's `macmosh open` refuses anything else, and a plugin line can't quote them.
+/// task's `macmosh open` refuses anything else, and the menu passes them on without quoting.
 public enum PlainWords {
     private static let allowed = Set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@%+=:,./_-")
 
@@ -54,8 +54,8 @@ public enum PlainWords {
     }
 }
 
-/// The menu as a list of lines, from what the checks found. Shared by the SwiftBar prototype and
-/// the native app. Wording that exists already comes from `StatusFormat`.
+/// The menu as a list of lines, from what the checks found. Built for the native
+/// menu-bar app. Wording that exists already comes from `StatusFormat`.
 public enum MenuModel {
     /// The icon for one state. A different shape for each (design 5.1), so it reads in a monochrome menu bar.
     public static func symbol(for state: WorkhorseState) -> String {
