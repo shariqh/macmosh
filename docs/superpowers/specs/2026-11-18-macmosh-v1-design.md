@@ -125,9 +125,10 @@ The icon shows state by shape as well as colour, so it reads in a monochrome men
 | State | What it means | How MacMosh knows | What you can do |
 |---|---|---|---|
 | **Ready** | Logged in, desks available, sign-ins working | ssh works, someone is logged in at the Mac, the desk server is running and can read the keychain | Open desks, share screen, restart |
-| **Ready, sign-ins off** | Desks work, but tools that keep logins in the keychain look signed out | As above, but the keychain check fails | "Fix…" restarts the desk server from the login session |
+| **Ready, sign-ins off** | Desks work, but tools that keep logins in the keychain look signed out | As above, but the keychain check fails. "Sign-ins working" means only this: desks can use the keychain | "Fix…" restarts the desk server from the login session |
 | **Waiting for login** | The Mac is on and unlocked, but nobody has logged in | ssh works with your key at the home address, and no one is logged in at the screen | Log in with Screen Sharing |
 | **Locked** | Restarted, disk still locked | The home address answers on the ssh port but refuses your key (only passwords work before unlock [11]) | Unlock disk |
+| **Can't verify it** | Something answers at the workhorse's address with a different key | ssh reports a host-key mismatch | Stop. Don't type a password. Check or unlock at the Mac |
 | **Can't reach it** | Off, asleep, no network, or locked while you are away | Nothing answers | Read the likely reason |
 
 MacMosh works out the state itself each time it checks. It never assumes what comes after an unlock, because Apple's documents don't say (section 8.3).
@@ -139,7 +140,7 @@ Part A happens at the workhorse, by hand, once. The app shows these steps with a
 1. Turn on **Remote Login**: System Settings > General > Sharing [13].
 2. Turn on **Screen Sharing** in the same place. It has to be switched on here: the command-line way stopped working in macOS 12.1 [14].
 3. Optional, for reaching it from anywhere: install **Tailscale** and sign in.
-4. Note the user name and the address the Sharing pane shows.
+4. Note the user name and the computer name the Sharing pane shows. This is what you give the app as the main address if the workhorse isn't in your Tailscale list. You never type the home address: the app reads it from the workhorse.
 
 Part B happens on the daily Mac, in the app:
 
@@ -162,7 +163,9 @@ If a step fails, the app says what it tried, what came back, and the one thing t
 
 Shariq chose mosh as the default on 2026-11-18: "mosh should be the default so we can provide the most reliability." Tabs mode can't run over mosh: iTerm2's author says tmux integration "can't accept random dropouts" and mosh drops output by design, and the matching mosh issue is still open [5].
 
-Inside a desk, tmux gives you several windows (for example two agents in one project). The app lists a desk's windows and can add one.
+In Tabs mode, `macmosh connect` itself keeps trying: when ssh drops, it reconnects in the same tab every few seconds until the workhorse answers, and iTerm2 rebuilds the tabs (section 9, item 4 tests this). In Plain ssh mode it does not retry.
+
+Inside a desk, tmux gives you several windows (for example two agents in one project). The app lists a desk's windows and can add one. Scrolling back happens in tmux, with the mouse wheel, because mosh carries only the visible screen.
 
 ### 5.5 After a restart: which button do I use?
 
@@ -273,6 +276,7 @@ Other subcommands are not interactive: `status`, `desks`, `add`, `prepare`, `swi
 - The app checks every 30 seconds while the workhorse is reachable, less often while it is not, and at once when you open the menu.
 - The order of a check: the main address first (the Tailscale name), then the home address. The result maps to the states in 5.2.
 - Tailscale itself is asked only for hints: is Tailscale running on this Mac, and does it think the workhorse is online? The Tailscale command needs `TAILSCALE_BE_CLI=1` when an app runs it, and its `Online` field means "connected to Tailscale's servers", not "reachable" [22].
+- **The reason shown under "Can't reach it"** is the first of these that applies: Tailscale is off on the daily Mac; the daily Mac has no network; another VPN is running on the daily Mac; Tailscale says the workhorse is offline, and you are away from home (it may have restarted: the home address is out of reach from here); nothing answers at either address (it is off, asleep or disconnected).
 - **Notifications** when the state changes: locked after a restart, waiting for login, back to ready, and "the workhorse is on battery".
 - Nothing runs on the workhorse between checks. There is no MacMosh daemon.
 
@@ -300,7 +304,7 @@ On the workhorse:
 | Your ssh key is accepted | Password tab: `macmosh pair` |
 | macOS version and chip | Info. Decides whether restart recovery over ssh is offered |
 | Homebrew, mosh and tmux are installed | Auto for mosh and tmux. Homebrew's own installer runs in a password tab |
-| `macmosh-host` and the login agent are installed and current | Auto |
+| `macmosh-host` and the login agent are installed and current | Auto. The files are copied over ssh into the user's home folder; running it again is safe, and the version line in the script decides whether to replace it |
 | The desk server is running and sign-ins work | Auto. If it can't be started over ssh: log out and in once |
 | The Mac stays awake on power (`pmset -c sleep 0`) and wakes for network access [15] | Password tab |
 | It restarts after a power cut (desktop Macs: `pmset autorestart 1` [15]) | Password tab |
@@ -317,6 +321,8 @@ The checklist can be run again at any time from Settings.
 - MacMosh keeps the workhorse's ssh host key in its own file and checks **both** addresses against that one key, with strict checking on. If the key doesn't match, ssh refuses, and the app tells you to stop and unlock at the Mac. This matters most at the unlock step, where you type the disk password.
 - MacMosh uses the system `ssh` and your normal ssh keys and settings. It adds options on the command line and leaves `~/.ssh/config` and `~/.ssh/known_hosts` alone.
 - A reserved address on the router makes the home address stable across restarts. The app explains how, and that the Mac's "Private Wi-Fi Address" setting must be Fixed or Off for a reservation to hold [27]. This is advice, not a requirement: in most homes the address survives a restart anyway.
+- The home address can only be refreshed while the workhorse is up. If the router hands out a different address during a restart, the last known one stops answering. MacMosh then tries the workhorse's local network name (`name.local`), which it also records. Whether that name answers before the disk is unlocked is not known (section 9, item 6). If neither answers, the state is "Can't reach it", the hint says the address may have changed, and the fix is to unlock at the Mac and reserve the address.
+- If the key offered at the workhorse's address ever differs from the pinned one, including at the locked screen, the state is "Can't verify it" and no unlock button is offered. One report says the key can differ before the unlock; it did not on the MacBook Pro (section 8.3). Section 9, item 6 settles it. If Apple's locked screen turns out to use a second key, the design changes to pin that key during "practise a restart", at the Mac, never by trusting it over the network.
 
 ### 7.7 Opening terminal tabs
 
@@ -375,7 +381,7 @@ Everything is in the user's home folder. Nothing needs root, and nothing listens
 | iTerm2 or Terminal | Any current version | Where desks open |
 | Tailscale | Optional | Reaching the workhorse from anywhere |
 
-The workhorse needs macOS 15 or later on Apple silicon for the Homebrew tools [23], and macOS 26 or later for restart recovery over ssh [10]. Intel Macs may work but are not tested.
+The workhorse needs macOS 15 or later on Apple silicon for the Homebrew tools [23]. Restart recovery over ssh also needs macOS 26 or later [10]. A workhorse on macOS 15 can still be added and used: the app hides the unlock button and says to unlock at the Mac after a restart. Intel Macs may work but are not tested.
 
 ## 8. Facts this rests on
 
@@ -454,7 +460,7 @@ These are the things no document settles. Each needs Shariq's go-ahead, and seve
 
 | # | Question | Pass looks like |
 |---|---|---|
-| 6 | What does each check see at the FileVault screen, at the login window, and after login? Is the host key the same at all three? | The three states in 5.2 can be told apart, and the key matches |
+| 6 | What does each check see at the FileVault screen, at the login window, and after login? Is the host key the same at all three? Does the `.local` name answer at the FileVault screen? | The three states in 5.2 can be told apart, and the key matches |
 | 7 | Does `sudo pmset -a disablesleep 1` keep the MacBook Pro reachable with the lid closed, on power, with no display? Does the screen stay lit, how hot does it get in 15 minutes, and does the setting survive a restart? | The desk stays reachable for 15 minutes with the lid closed |
 
 **Later, when there is something to test with:**
