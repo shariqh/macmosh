@@ -182,7 +182,9 @@ public struct WorkhorseStore: Sendable {
     }
 
     private func ensureSupportDir() throws {
-        try FileManager.default.createDirectory(at: paths.supportDir, withIntermediateDirectories: true)
+        // Created at 0700 from the start; the second call fixes a folder that already existed.
+        try FileManager.default.createDirectory(at: paths.supportDir, withIntermediateDirectories: true,
+                                                attributes: [.posixPermissions: 0o700])
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: paths.supportDir.path)
     }
 

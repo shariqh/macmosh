@@ -2,6 +2,14 @@ import Foundation
 import Testing
 @testable import MacMoshKit
 
+/// Collects errors from concurrent work, so a failed write is reported with its cause.
+private final class Failures: @unchecked Sendable {
+    private let lock = NSLock()
+    private var items: [String] = []
+    func add(_ text: String) { lock.withLock { items.append(text) } }
+    var all: [String] { lock.withLock { items } }
+}
+
 @Suite struct WorkhorseStoreTests {
     private func mode(_ url: URL) throws -> Int {
         let attrs = try FileManager.default.attributesOfItem(atPath: url.path)
@@ -189,11 +197,14 @@ import Testing
     @Test func simultaneousSavesDoNotLoseEachOther() throws {
         let paths = try temporaryPaths()
         let count = 24
+        let failures = Failures()
         // Separate store values (and so separate lock file descriptors), as two processes would have.
         DispatchQueue.concurrentPerform(iterations: count) { i in
             let store = WorkhorseStore(paths: paths)
-            try? store.upsert(.sample(id: "h\(i)", name: "Host \(i)", hostKey: "ssh-ed25519 K\(i)"))
+            do { try store.upsert(.sample(id: "h\(i)", name: "Host \(i)", hostKey: "ssh-ed25519 K\(i)")) }
+            catch { failures.add("\(error)") }
         }
+        #expect(failures.all.isEmpty, "\(failures.all)")
         let store = WorkhorseStore(paths: paths)
         #expect(try store.load().count == count)
         let pinned = try String(contentsOf: paths.knownHostsFile, encoding: .utf8)
@@ -204,9 +215,12 @@ import Testing
         let paths = try temporaryPaths()
         try WorkhorseStore(paths: paths).upsert(.sample(id: "mbp"))
         let count = 24
+        let failures = Failures()
         DispatchQueue.concurrentPerform(iterations: count) { i in
-            try? WorkhorseStore(paths: paths).update(id: "mbp") { $0.powerChanges.append("change \(i)") }
+            do { try WorkhorseStore(paths: paths).update(id: "mbp") { $0.powerChanges.append("change \(i)") } }
+            catch { failures.add("\(error)") }
         }
+        #expect(failures.all.isEmpty, "\(failures.all)")
         #expect(try WorkhorseStore(paths: paths).find("mbp").powerChanges.count == count)
     }
 
