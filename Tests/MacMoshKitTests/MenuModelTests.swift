@@ -62,6 +62,19 @@ private func menu(_ state: WorkhorseState, workhorse: Workhorse = .sample(), sta
         #expect(item(m, "api (2 windows: a, b, open in 2 tabs)") != nil)
     }
 
+    @Test func aKeptDeskSaysSo() {
+        var status = HostStatus.sampleWithDesk
+        status.definitions = [
+            .init(name: DeskName("website")!, reopen: true, keep: true, folder: "/Users/alex/site", command: "npm run dev"),
+            .init(name: DeskName("notes")!, reopen: false, keep: false, folder: "/Users/alex/notes", command: ""),
+        ]
+        status.desks.append(
+            .init(name: DeskName("notes")!, windows: [.init(index: 0, name: "zsh")], windowCount: 1, attached: 0))
+        let m = menu(.ready(signIns: true), status: status)
+        #expect(item(m, "website (2 windows: zsh, vim, kept running, open in 1 tab)") != nil)
+        #expect(item(m, "notes (1 window: zsh)") != nil)
+    }
+
     @Test func theHomeLightIsLeftOutWhenUnknownAndSaysNoWhenNo() {
         let unknown = menu(.ready(signIns: true), status: .sampleWithDesk, homeReachable: nil)
         #expect(!titles(unknown).contains { $0.hasPrefix("Home address") })

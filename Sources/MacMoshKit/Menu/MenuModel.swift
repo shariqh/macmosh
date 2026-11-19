@@ -170,9 +170,10 @@ public enum MenuModel {
     private static func readyItems(_ r: CheckResult) -> [MenuItem] {
         let id = r.workhorse.id
         var items: [MenuItem] = []
+        let kept = Set((r.status?.definitions ?? []).filter(\.keep).map(\.name.value))
         for desk in r.status?.desks ?? [] {
             let name = desk.name.value
-            items.append(.line(deskTitle(desk), .tab(["connect", id, name])))
+            items.append(.line(deskTitle(desk, kept: kept.contains(name)), .tab(["connect", id, name])))
             items.append(.line("New window in \(name)", .run(["desk", "window", id, name]), indent: 2))
         }
         items.append(.line("New desk…", .tab(["desk", "new", id])))
@@ -185,11 +186,12 @@ public enum MenuModel {
         return items
     }
 
-    /// `website (2 windows: zsh, vim, open in 1 tab)`
-    private static func deskTitle(_ desk: HostStatus.Desk) -> String {
+    /// `website (2 windows: zsh, vim, kept running, open in 1 tab)`
+    private static func deskTitle(_ desk: HostStatus.Desk, kept: Bool) -> String {
         var inside = desk.windowCount == 1 ? "1 window" : "\(desk.windowCount) windows"
         let names = desk.windows.map(\.name).filter { !$0.isEmpty }
         if !names.isEmpty { inside += ": " + names.joined(separator: ", ") }
+        if kept { inside += ", kept running" }
         if desk.attached > 0 {
             inside += ", open in " + (desk.attached == 1 ? "1 tab" : "\(desk.attached) tabs")
         }

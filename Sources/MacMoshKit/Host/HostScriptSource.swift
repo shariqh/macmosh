@@ -10,7 +10,7 @@ enum HostScriptSource {
 # Plain bash 3.2 (what macOS ships at /bin/bash): no associative arrays, no mapfile, no ${var,,}.
 set -u
 
-MACMOSH_HOST_VERSION=0.1.0
+MACMOSH_HOST_VERSION=0.2.0
 MACMOSH_PROTOCOL=1
 AGENT_LABEL=io.github.shariqh.macmosh.host
 
@@ -143,18 +143,52 @@ mm_def_line() {
 
 mm_session_exists() { mm_tmux has-session -t "=$1" >/dev/null 2>&1; }
 
+# This script's own full path, so a desk can run it again later.
+mm_self_path() {
+    local p="$0"
+    case "$p" in
+        */*) ;;
+        *) p=$(command -v -- "$p" 2>/dev/null || printf '%s' "$p") ;;
+    esac
+    case "$p" in
+        /*) ;;
+        *) p="$PWD/${p#./}" ;;
+    esac
+    printf '%s' "$p"
+}
+
+# Text quoted for a shell: inside single quotes, with each ' written as '\''.
+mm_shell_quote() {
+    local text="$1" quote="'" out=""
+    while :; do
+        case "$text" in
+            *"$quote"*)
+                out="$out${text%%"$quote"*}'\''"
+                text="${text#*"$quote"}"
+                ;;
+            *) break ;;
+        esac
+    done
+    printf "'%s'" "$out$text"
+}
+
 # Creates the session for a desk: in its folder, then types the startup command exactly as written.
+# For a desk that keeps its command running, it types "<this script> keep <desk>" instead, and that
+# runs the command again whenever it ends.
 # The keys wait in the terminal's input queue, so a shell that is slow to start still receives them.
 mm_create_session() {
-    # $1 name, $2 folder, $3 startup command (may be empty)
-    local folder="$2"
+    # $1 name, $2 folder, $3 startup command (may be empty), $4 keep: 1 or 0 (optional)
+    local folder="$2" typed="$3"
     if [ ! -d "$folder" ]; then
         mm_log "create-desk" "$1: folder is gone, using the home folder"
         folder="$HOME"
     fi
+    if [ "${4:-0}" = 1 ] && [ -n "$typed" ]; then
+        typed="$(mm_shell_quote "$(mm_self_path)") keep $1"
+    fi
     mm_tmux new-session -d -s "$1" -c "$folder" >/dev/null 2>&1 || return 1
-    if [ -n "$3" ]; then
-        mm_tmux send-keys -t "=$1:" -l -- "$3" || return 1
+    if [ -n "$typed" ]; then
+        mm_tmux send-keys -t "=$1:" -l -- "$typed" || return 1
         mm_tmux send-keys -t "=$1:" Enter || return 1
     fi
     return 0
@@ -166,14 +200,13 @@ mm_reopen_desks() {
     file=$(mm_desks_file)
     [ -f "$file" ] || return 0
     while IFS= read -r line || [ -n "$line" ]; do
-        # shellcheck disable=SC2034  # keep is read only to get to the folder and the command
         IFS="$TAB" read -r name reopen keep folder command <<EOF
 $line
 EOF
         mm_valid_desk_name "$name" || continue
         [ "$reopen" = 1 ] || continue
         mm_session_exists "$name" && continue
-        mm_create_session "$name" "$folder" "$command" || mm_log start "could not reopen $name"
+        mm_create_session "$name" "$folder" "$command" "$keep" || mm_log start "could not reopen $name"
     done < "$file"
     return 0
 }
@@ -291,6 +324,11 @@ cmd_desk_new() {
         mm_log desk-new "refused: tab or newline"
         return 6
     fi
+    if [ "$keep" = 1 ] && [ -z "$command" ]; then
+        echo "macmosh-host: there is nothing to keep running: --keep needs a --command" >&2
+        mm_log desk-new "refused: keep without a command"
+        return 6
+    fi
     folder=$(mm_expand_tilde "$folder")
     case "$folder" in
         /*) ;;
@@ -319,7 +357,7 @@ cmd_desk_new() {
         mm_log desk-new "refused: $name already exists"
         return 7
     fi
-    if ! mm_create_session "$name" "$folder" "$command"; then
+    if ! mm_create_session "$name" "$folder" "$command" "$keep"; then
         mm_tmux kill-session -t "=$name" >/dev/null 2>&1
         mm_release_lock
         echo "macmosh-host: could not create the desk" >&2
@@ -454,11 +492,11 @@ cmd_attach() {
             mm_log attach "no such desk: $name"
             return 4
         fi
-        # shellcheck disable=SC2034  # reopen and keep are read only to get to the folder and the command
+        # shellcheck disable=SC2034  # reopen is read only to get to the folder and the command
         IFS="$TAB" read -r name reopen keep folder command <<EOF
 $line
 EOF
-        if ! mm_create_session "$name" "$folder" "$command"; then
+        if ! mm_create_session "$name" "$folder" "$command" "$keep"; then
             echo "macmosh-host: could not open the desk $name" >&2
             mm_log attach "failed: $name could not be created"
             return 1
@@ -477,6 +515,74 @@ EOF
         exec tmux -L "$MACMOSH_SOCKET" -CC attach-session -t "=$name"
     fi
     exec tmux -L "$MACMOSH_SOCKET" attach-session -t "=$name"
+}
+
+# Runs the desk's startup command, and again each time it ends. It runs inside the desk's own shell
+# (the desk types "<this script> keep <desk>"), so it reads the definition and starts nothing else:
+# it never needs the desk server and never starts one.
+# The pause starts at MACMOSH_KEEP_PAUSE seconds (default 5) and doubles, up to 60, while the command
+# keeps ending within 10 seconds. A run of a minute or more sets it back to the start. A run in
+# between leaves it as it is.
+cmd_keep() {
+    local name line reopen keep folder command start pause next began took code stopped=0
+    [ $# -eq 1 ] || mm_usage_error keep "usage: keep <desk>"
+    name="$1"
+    line=""
+    if mm_valid_desk_name "$name"; then
+        line=$(mm_def_line "$name")
+    fi
+    if [ -z "$line" ]; then
+        echo "macmosh-host: no such desk: $name" >&2
+        mm_log keep "no such desk: $name"
+        return 4
+    fi
+    # shellcheck disable=SC2034  # reopen and keep are read only to get to the folder and the command
+    IFS="$TAB" read -r name reopen keep folder command <<EOF
+$line
+EOF
+    if [ -z "$command" ]; then
+        echo "There is nothing to keep running in the desk $name: it has no startup command."
+        mm_log keep "$name: no command"
+        return 0
+    fi
+    start="${MACMOSH_KEEP_PAUSE:-5}"
+    case "$start" in
+        '' | *[!0-9]*) start=5 ;;
+    esac
+    [ "$start" -ge 1 ] || start=5
+    if [ -d "$folder" ]; then cd "$folder" || true; fi
+    mm_log keep "$name: started"
+
+    pause="$start"
+    while :; do
+        began=$(date +%s)
+        # Ctrl-C goes to the command. This script only has to live through it.
+        trap ':' INT
+        "${SHELL:-/bin/zsh}" -lc "$command"
+        code=$?
+        trap - INT
+        took=$(($(date +%s) - began))
+
+        printf '%s ended (exit %s). Starting it again in %s seconds. Press Ctrl-C to stop.\n' "$command" "$code" "$pause"
+        stopped=0
+        trap 'stopped=1' INT
+        sleep "$pause"
+        trap - INT
+        if [ "$stopped" = 1 ]; then
+            echo
+            mm_log keep "$name: stopped"
+            return 0
+        fi
+
+        if [ "$took" -lt 10 ]; then
+            next=$((pause * 2))
+            [ "$next" -le 60 ] || next=60
+            [ "$next" -ge "$pause" ] || next="$pause"
+            pause="$next"
+        elif [ "$took" -ge 60 ]; then
+            pause="$start"
+        fi
+    done
 }
 
 cmd_folders() {
@@ -971,6 +1077,7 @@ usage: macmosh-host <subcommand>
   attach [--cc] [--dry-run] <desk>
   desk-new <name> <folder> [--reopen] [--keep] [--command <text>]
   desk-remove <name> [--kill]
+  keep <desk>   run the desk's startup command again each time it ends
   window-new <desk>
   folders <folder>
   install-agent
@@ -1007,6 +1114,10 @@ main() {
         window-new)
             shift
             cmd_window_new "$@"
+            ;;
+        keep)
+            shift
+            cmd_keep "$@"
             ;;
         folders)
             shift

@@ -19,7 +19,7 @@ final class HostHarness {
     /// The folder holding the stand-in tools; it comes first on `PATH`.
     var stubFolder: URL { home.appendingPathComponent("stubs") }
 
-    private let baseEnvironment: [String: String]
+    private var baseEnvironment: [String: String]
 
     init() throws {
         let hex = (0..<4).map { _ in String(format: "%02x", UInt8.random(in: 0...255)) }.joined()
@@ -53,6 +53,12 @@ final class HostHarness {
             fi
             exec /usr/bin/stat "$@"
             """)
+    }
+
+    /// Sets one variable for every later call. Set it before `start`: the desk server hands its
+    /// environment to the shells inside the desks.
+    func setEnvironment(_ name: String, _ value: String) {
+        baseEnvironment[name] = value
     }
 
     var scriptURL: URL { Self.repoRoot().appendingPathComponent("host/macmosh-host") }
