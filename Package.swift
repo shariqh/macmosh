@@ -20,7 +20,7 @@ let package = Package(
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ]
         ),
-        .testTarget(name: "MacMoshKitTests", dependencies: ["MacMoshKit"]),
+        .testTarget(name: "MacMoshKitTests", dependencies: ["MacMoshKit"], exclude: ["Fixtures"]),
         .testTarget(name: "MacMoshHostTests", dependencies: ["MacMoshKit"]),
     ]
 )

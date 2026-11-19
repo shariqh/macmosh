@@ -61,8 +61,12 @@ extension Workhorse {
     }
 }
 
+/// This file's own path. A `#filePath` default argument would be the calling test's file
+/// (`Tests/MacMoshKitTests/X.swift`), one folder higher than this one, so the walk up would overshoot.
+let samplesFilePath: String = #filePath
+
 /// The repository's root folder, worked out from this file's own path.
-func repoRoot(file: String = #filePath) -> URL {
+func repoRoot(file: String = samplesFilePath) -> URL {
     URL(fileURLWithPath: file)
         .deletingLastPathComponent()   // Support
         .deletingLastPathComponent()   // MacMoshKitTests
@@ -71,7 +75,7 @@ func repoRoot(file: String = #filePath) -> URL {
 }
 
 /// Reads `Tests/MacMoshKitTests/Fixtures/<name>` from the source tree.
-func fixture(_ name: String, file: String = #filePath) throws -> String {
+func fixture(_ name: String, file: String = samplesFilePath) throws -> String {
     let url = repoRoot(file: file).appendingPathComponent("Tests/MacMoshKitTests/Fixtures/\(name)")
     return try String(contentsOf: url, encoding: .utf8)
 }
