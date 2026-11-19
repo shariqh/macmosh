@@ -79,3 +79,23 @@ func fixture(_ name: String, file: String = samplesFilePath) throws -> String {
     let url = repoRoot(file: file).appendingPathComponent("Tests/MacMoshKitTests/Fixtures/\(name)")
     return try String(contentsOf: url, encoding: .utf8)
 }
+
+extension HostStatus {
+    /// A report from a workhorse that is Ready: somebody logged in, the desk server up, sign-ins working.
+    static var sampleReady: HostStatus {
+        var s = HostStatus()
+        s.scriptVersion = "0.1.0"
+        s.osVersion = "27.3"
+        s.arch = "arm64"
+        s.consoleUser = "alex"
+        s.serverUp = true
+        s.signIns = .yes
+        s.agentInstalled = true
+        return s
+    }
+}
+
+extension Hints {
+    /// A daily Mac with Tailscale on, the workhorse online on it, a network, no other VPN, at home.
+    static let allFine = Hints(tailscaleRunning: true, peerOnline: true, hasNetwork: true, otherVPN: false, atHome: true)
+}
