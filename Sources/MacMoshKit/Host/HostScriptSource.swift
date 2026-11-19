@@ -10,7 +10,7 @@ enum HostScriptSource {
 # Plain bash 3.2 (what macOS ships at /bin/bash): no associative arrays, no mapfile, no ${var,,}.
 set -u
 
-MACMOSH_HOST_VERSION=0.2.0
+MACMOSH_HOST_VERSION=0.3.0
 MACMOSH_PROTOCOL=1
 AGENT_LABEL=io.github.shariqh.macmosh.host
 
@@ -357,13 +357,8 @@ cmd_desk_new() {
         mm_log desk-new "refused: $name already exists"
         return 7
     fi
-    if ! mm_create_session "$name" "$folder" "$command" "$keep"; then
-        mm_tmux kill-session -t "=$name" >/dev/null 2>&1
-        mm_release_lock
-        echo "macmosh-host: could not create the desk" >&2
-        mm_log desk-new "failed: $name could not be created"
-        return 1
-    fi
+    # Save the definition first. The desk's shell may run "keep <desk>" the moment the session exists,
+    # and keep reads this line. If the session can't be made, the line is taken back out.
     file=$(mm_desks_file)
     tmp="$MACMOSH_HOME/$DESKS_FILE_NAME.$$.tmp"
     if ! {
@@ -371,10 +366,18 @@ cmd_desk_new() {
         printf '%s\t%s\t%s\t%s\t%s\n' "$name" "$reopen" "$keep" "$folder" "$command"
     } > "$tmp" || ! mv "$tmp" "$file"; then
         rm -f "$tmp"
-        mm_tmux kill-session -t "=$name" >/dev/null 2>&1
         mm_release_lock
         echo "macmosh-host: could not write the desk list" >&2
         mm_log desk-new "failed: $name could not be saved"
+        return 1
+    fi
+    if ! mm_create_session "$name" "$folder" "$command" "$keep"; then
+        mm_tmux kill-session -t "=$name" >/dev/null 2>&1
+        if awk -F '\t' -v n="$name" '$1 != n' "$file" > "$tmp"; then mv "$tmp" "$file"; fi
+        rm -f "$tmp"
+        mm_release_lock
+        echo "macmosh-host: could not create the desk" >&2
+        mm_log desk-new "failed: $name could not be created"
         return 1
     fi
     mm_release_lock

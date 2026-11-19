@@ -80,6 +80,43 @@ extension HostScriptTests {
         endDesk(h, "kept")
     }
 
+    /// The cause of the failures seen on CI: a fast desk shell (bash on a runner) ran `keep <desk>` before
+    /// `desk-new` had saved the desk's definition, so `keep` said "no such desk" and the desk sat at a prompt.
+    /// This checks the order itself, so it fails every time and not one run in two.
+    @Test func theDefinitionIsSavedBeforeTheDeskIsCreated() throws {
+        let h = try HostHarness(); defer { h.cleanUp() }
+        try h.stub("tmux", script: """
+            if [ "$3" = "new-session" ]; then
+                if grep -q "^kept$(printf '\\t')" "$HOME/.macmosh/desks.tsv" 2>/dev/null; then
+                    echo saved >> "$HOME/order.log"
+                else
+                    echo not-saved >> "$HOME/order.log"
+                fi
+            fi
+            exec /usr/bin/env PATH="${PATH#*:}" tmux "$@"
+            """)
+        _ = h.run(["start"])
+        #expect(h.run(["desk-new", "kept", h.home.path, "--keep", "--command", "exit 1"]).exitCode == 0)
+        let order = (try? String(contentsOf: h.home.appendingPathComponent("order.log"), encoding: .utf8)) ?? ""
+        #expect(order == "saved\n", "the desk was created before its definition was saved: \(order)")
+        endDesk(h, "kept")
+    }
+
+    @Test func aDeskThatCantBeCreatedLeavesNoDefinition() throws {
+        let h = try HostHarness(); defer { h.cleanUp() }
+        _ = h.run(["start"])
+        try h.stub("tmux", script: """
+            if [ "$3" = "new-session" ]; then exit 1; fi
+            exec /usr/bin/env PATH="${PATH#*:}" tmux "$@"
+            """)
+        #expect(h.run(["desk-new", "kept", h.home.path, "--keep", "--command", "exit 1"]).exitCode == 1)
+        let saved = (try? String(contentsOf: h.home.appendingPathComponent(".macmosh/desks.tsv"), encoding: .utf8)) ?? ""
+        #expect(saved.isEmpty, "a definition was left behind: \(saved)")
+        // The name is free again.
+        try FileManager.default.removeItem(at: h.stubFolder.appendingPathComponent("tmux"))
+        #expect(h.run(["desk-new", "kept", h.home.path]).exitCode == 0)
+    }
+
     @Test func aDeskWithoutKeepRunsItsCommandOnce() throws {
         let h = try HostHarness(); defer { h.cleanUp() }
         h.setEnvironment("MACMOSH_KEEP_PAUSE", "1")
