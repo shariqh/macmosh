@@ -8,7 +8,7 @@ This is raw material for a blog post and a YouTube video about building MacMosh.
 - what was done, with the command where there was one;
 - what happened, including the surprises.
 
-Design: `superpowers/specs/2026-11-18-macmosh-v1-design.md`. Plan: `superpowers/plans/` (written after the design is approved).
+Design: `superpowers/specs/2026-11-18-macmosh-v1-design.md`. Plan: `superpowers/plans/2026-11-19-macmosh-v1.md`.
 
 ## The setup
 
@@ -75,9 +75,24 @@ Design: `superpowers/specs/2026-11-18-macmosh-v1-design.md`. Plan: `superpowers/
 | 08:39 | Agent Inbox | Shariq | Answered the third: MacMosh on the MacBook Pro | "Install, but no restart yet." The install beside the hand-built setup and the first test sitting can go ahead. The restart and the lid-closed test wait until he says. |
 | 08:40 | MBP | agent | Reworked the build order around that answer | Restart recovery still gets built, from Apple's documentation and the real restart of the hand-built setup, and is marked "not yet proven" until MacMosh's own restart test. The lid-closed switch is not built until its test has run, because reports disagree on whether the setting works at all. Only the design approval is open now. |
 | 08:48 | Agent Inbox | Shariq | Approved the design | All four decisions are in, the morning after the design went up and 15 minutes after his first answer. Next: merge PR #1, make the repo public, write the build plan, file the issues. |
+| 08:49 | GitHub | agent | Merged PR #1 and fast-forwarded local `main` | The approved design is on `main`. |
+| 08:50 | GitHub | agent | One last privacy scan of `main`, then `gh repo edit shariqh/macmosh --visibility public` | **MacMosh is public.** A release, a Homebrew tap and any post are each still asked first. |
+| 08:51 to 09:05 | MBP | agent | Before writing the plan: read-only checks of how the tools really behave, so the plan can give the builder exact commands | What they showed: |
+| | | | ssh's refusal line | `Permission denied (publickey,password,keyboard-interactive).` The list in brackets is the sign-in methods the Mac offers. Before its disk is unlocked a Mac can't offer keys, so that list is how MacMosh will tell "locked" from "your key is missing". |
+| | | | One pinned key, any address | `HostKeyAlias` makes ssh check the same pinned key whichever address is used. MacMosh's key file lives under `Application Support`, a path with a space, and that only works with double quotes inside the option. Without them: `Host key verification failed.` |
+| | | | mosh | The `mosh` command is a Perl script. It splits its `--ssh` option with `shellwords`, so the quoting survives. |
+| | | | tmux, on a throwaway socket | An empty server stays up with `exit-empty off`, and `run-shell` runs a command inside the server and hands back the result. So the keychain check can run "inside the desk server" without opening a window. The live tmux server was never touched. |
+| | | | SwiftBar | Its README documents no submenus, so the prototype menu is a flat list. |
+| 09:05 to 09:23 | MBP | agent | Wrote the plan: `docs/superpowers/plans/2026-11-19-macmosh-v1.md` | 36 tasks, one pull request each. Tasks 1 to 22 have full steps: the workhorse script, the first sitting, the engine and the prototype. Tasks 23 to 36 are outlines, because the design says the app and release phases are planned again after Shariq has used the prototype. |
+| 09:20 | MBP | agent | First-pass read of the plan by the local model | One real catch in thirteen points: a port check with `nc` would have broken the design's own rule that the app makes no network call except ssh. The "home address reachable" light now uses ssh. |
+| 09:24 to 09:33 | MBP | agent | A fresh reviewer read the plan against the design | 25 findings, 13 of them to fix before filing issues. All are folded in. |
+| | | | The best catch | `tmux new-session` quietly starts a server when none is running. So "New desk" over ssh, with the desk server down, would have started the wrong kind of server: one that can't read the keychain. That is the biggest gotcha of the hand-built setup, nearly rebuilt by accident. Now only the login agent's `start` can start the server, and a test proves it. |
+| | | | The safety catch | After the first sitting, MacMosh's real login agent will exist on this MacBook Pro. A test that reached the real `launchctl` would have started the real desk server. The test harness now always puts a stand-in `launchctl` first. |
+| | | | Also caught | Without Tailscale, a locked Mac would have shown as "Not paired". `ssh-copy-id` refuses two `-i` options. `fdesetup authrestart` only works with FileVault on. A dropped Tabs-mode connection would have retried forever against a changed host key. |
 
 ## Shot list (video)
 
 - The two-day cheat sheet of commands on one side, one menu-bar icon on the other.
 - "I almost called it MacInMosh": the trademark rule and Apple's "Jackintosh" example.
 - The lid-closed test on the MacBook Pro (to come).
+- "The plan nearly rebuilt the bug": `tmux new-session` starting the wrong kind of server, caught by a reviewer before any code existed.
