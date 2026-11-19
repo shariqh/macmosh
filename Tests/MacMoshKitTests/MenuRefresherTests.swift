@@ -55,13 +55,13 @@ private final class Saved: @unchecked Sendable {
     @Test func aRefreshWhileOneIsRunningDoesNothing() async {
         let r = MenuRefresher(load: { [.sample()] },
                               gather: { list in
-                                  try? await Task.sleep(for: .milliseconds(200))
+                                  try? await Task.sleep(for: .milliseconds(600))
                                   return list.map { .checked(.sampleReady(id: $0.id, name: $0.name)) }
                               },
                               save: { _ in })
         async let first: Void = r.refresh()
-        await Task.yield()
-        await r.refresh()   // returns at once: the first is still gathering
+        try? await Task.sleep(for: .milliseconds(100))   // the first is now gathering
+        await r.refresh()   // returns at once
         #expect(r.menu.symbol == "ellipsis.circle")
         await first
         #expect(r.menu.symbol == "checkmark.circle")

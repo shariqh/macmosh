@@ -40,7 +40,7 @@ jobs:
           MACMOSH_SUPPORT_DIR="$support" dist/MacMosh.app/Contents/MacOS/MacMosh &
           app_pid=$!
           sleep 5
-          if ! pgrep -x MacMosh; then
+          if ! kill -0 "$app_pid" || ! pgrep -x MacMosh; then
             echo "MacMosh is not running 5 seconds after it started" >&2
             wait "$app_pid" || echo "it exited with status $?" >&2
             exit 1

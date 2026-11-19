@@ -52,8 +52,8 @@ private func readPlist(_ relativePath: String) throws -> [String: Any]? {
 
         let names = String(decoding: listing, as: UTF8.self).split(separator: "\0").map(String.init)
         #expect(names.contains("Package.swift"))   // the listing worked
-        // A real identity reads `Developer ID Application: <name> (<team>)`, so the phrase is followed
-        // by a space. The plan names the bare prefix, with a backtick after it, which is not an identity.
+        // A real certificate name has the phrase, a colon, then a space and the owner's name. The plan
+        // names the bare prefix, with a backtick after the colon, which is not a certificate name.
         // The phrase is built in pieces so that this file doesn't contain it itself.
         let phrase = "Developer ID " + "Application:" + " "
         var offenders: [String] = []
