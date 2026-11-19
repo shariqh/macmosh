@@ -68,6 +68,7 @@ Design: `superpowers/specs/2026-11-18-macmosh-v1-design.md`. Plan: `superpowers/
 | | | | The best catch | The first draft told "locked after a restart" by "the Mac refuses my ssh key". But a key with a passphrase that isn't loaded is refused too, so the app would have shown Locked, and offered an unlock, for a disk that wasn't locked. Now MacMosh has an ssh key of its own with no passphrase, and Locked is decided by what sign-in methods the Mac offers. |
 | | | | The second catch | "Sign-ins off → Fix" would have restarted the desk server, which closes every open desk. It now lists the desks and asks first. |
 | | | | Also settled | MacMosh runs beside the hand-built setup on the MacBook Pro and takes nothing over. Tests run against a throwaway tmux socket, never the live one. |
+| 18:16 | MBP | agent | Opened PR #1 with the design, and put four decisions on the Agent Inbox board for Shariq | Waiting on him: approve the design; allow MacMosh on the MacBook Pro and two test sittings; choose the signing certificate; choose when the repo goes public. The plan and the issues come after his approval. |
 
 ## Shot list (video)
 
