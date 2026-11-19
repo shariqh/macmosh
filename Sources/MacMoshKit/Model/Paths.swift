@@ -10,11 +10,21 @@ public struct Paths: Sendable {
         self.sshDir = sshDir
     }
 
+    /// The real folders. `MACMOSH_SUPPORT_DIR`, when set and not empty, names the support folder
+    /// instead (for trying the command without touching real settings); `~/.ssh` never moves.
     public static func standard() -> Paths {
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        return Paths(
-            supportDir: home.appendingPathComponent("Library/Application Support/MacMosh", isDirectory: true),
-            sshDir: home.appendingPathComponent(".ssh", isDirectory: true))
+        forHome(FileManager.default.homeDirectoryForCurrentUser, environment: ProcessInfo.processInfo.environment)
+    }
+
+    /// `standard()` for a given home folder and environment, so a test can check it without the real ones.
+    static func forHome(_ home: URL, environment: [String: String]) -> Paths {
+        let support: URL
+        if let named = environment["MACMOSH_SUPPORT_DIR"], !named.isEmpty {
+            support = URL(fileURLWithPath: named, isDirectory: true)
+        } else {
+            support = home.appendingPathComponent("Library/Application Support/MacMosh", isDirectory: true)
+        }
+        return Paths(supportDir: support, sshDir: home.appendingPathComponent(".ssh", isDirectory: true))
     }
 
     public var workhorsesFile: URL { supportDir.appendingPathComponent("workhorses.json") }

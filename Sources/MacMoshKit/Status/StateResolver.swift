@@ -53,6 +53,11 @@ public enum StateResolver {
             return .notSetUp(.unreadableReport)
         }
 
+        // Rule 4b: ssh got through, but there is no report to read. Never guess a state.
+        if status == nil, all.contains(where: isOK) {
+            return .notSetUp(.unreadableReport)
+        }
+
         if case .success(let report) = status {
             // Rule 5: a report, and nobody logged in at the screen.
             if report.consoleUser == nil { return .waitingForLogin }
@@ -96,6 +101,11 @@ public enum StateResolver {
         if hints.otherVPN { return .otherVPN }
         if hints.peerOnline == false && hints.atHome == false { return .awayAndOffline }
         return .nothingAnswers
+    }
+
+    private static func isOK(_ outcome: ProbeOutcome) -> Bool {
+        if case .ok = outcome { return true }
+        return false
     }
 
     private static func isIdentityUnusable(_ outcome: ProbeOutcome) -> Bool {

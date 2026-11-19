@@ -66,4 +66,16 @@ import Testing
         #expect(p.knownHostsFile.path == "/x/Support/known_hosts")
         #expect(p.defaultIdentity.path == "/x/ssh/macmosh_ed25519")
     }
+
+    @Test func theSupportFolderCanBeNamedByTheEnvironment() {
+        let home = URL(fileURLWithPath: "/Users/alex")
+        let normal = Paths.forHome(home, environment: [:])
+        #expect(normal.supportDir.path == "/Users/alex/Library/Application Support/MacMosh")
+        #expect(normal.sshDir.path == "/Users/alex/.ssh")
+        let named = Paths.forHome(home, environment: ["MACMOSH_SUPPORT_DIR": "/tmp/macmosh-try"])
+        #expect(named.supportDir.path == "/tmp/macmosh-try")
+        #expect(named.sshDir.path == "/Users/alex/.ssh")       // only the support folder moves
+        let empty = Paths.forHome(home, environment: ["MACMOSH_SUPPORT_DIR": ""])
+        #expect(empty.supportDir.path == normal.supportDir.path)
+    }
 }
