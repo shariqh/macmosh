@@ -2,6 +2,8 @@
 
 Status: approved by Shariq on 2026-11-19. Written: 2026-11-18. Repo: `shariqh/macmosh`.
 
+Changed by Shariq later on 2026-11-19: no SwiftBar prototype. The first menu is a native menu-bar item, with no third-party tool to install (section 13).
+
 ## 1. The short version
 
 MacMosh is a menu-bar app for the Mac you sit at. It sets up a spare Mac as a **workhorse** (a Mac that stays on and runs your work), shows whether the workhorse is ready, and gives you buttons for the things that took commands before: open a terminal that survives a dropped connection, share the screen, restart, and get back in after a restart.
@@ -12,8 +14,8 @@ What gets built, in order:
 
 1. **Checks on the real Macs** for the facts no document settles (section 9).
 2. **The engine and a command** (`macmosh`), written in Swift, plus one small script that lives on the workhorse.
-3. **A prototype menu** using SwiftBar, a free menu-bar tool, so Shariq can try the buttons for a few days.
-4. **The native app**, built on the same engine.
+3. **A first native menu-bar item**, with the status and the buttons, so Shariq can try them for a few days.
+4. **The rest of the native app**: Add a Mac, Settings and notifications.
 5. **A signed download and a Homebrew install.**
 
 Nothing in MacMosh ever types, stores or sees a password. Where a password is needed, MacMosh opens a terminal tab or Apple's Screen Sharing window and you type it there.
@@ -61,7 +63,7 @@ Nothing found prepares the workhorse and gets you back in after a restart. That 
 4. **Buttons.** Open a desk, make a new desk, share the screen, restart.
 5. **Restart recovery at home, out of the box.** Unlock the disk and log in from the daily Mac. Doing this from away is an optional add-on.
 6. **A "keep running with the lid closed" setting**, marked experimental until tested.
-7. **A prototype first**, as a SwiftBar menu, then the native app.
+7. **Something to try early:** the native menu-bar item with the status and the buttons comes first, then the rest of the app.
 8. **An install people can trust:** signed and notarized by Apple, with a Homebrew command.
 9. **A build log** good enough to write the blog post and the video from.
 
@@ -192,16 +194,16 @@ The switch warns that the Mac must stay plugged in (the setting also blocks slee
 
 ## 6. Approaches considered
 
-1. **One engine, two faces (chosen).** A Swift library holds all the logic. A `macmosh` command sits on top of it. The SwiftBar prototype and then the native app are thin faces over the same library. The workhorse gets one small shell script and a login agent, installed over ssh. No app runs on the workhorse.
-   - For: nothing is written twice, the logic has tests from day one, and the prototype exercises the real engine.
-   - Against: the first clickable prototype takes a little longer than a shell script would.
+1. **One engine, two faces (chosen).** A Swift library holds all the logic. A `macmosh` command sits on top of it, and the native menu-bar app is a thin face over the same library. The workhorse gets one small shell script and a login agent, installed over ssh. No app runs on the workhorse.
+   - For: nothing is written twice, the logic has tests from day one, and the first menu exercises the real engine.
+   - Against: the first clickable menu takes a little longer than a shell script would.
 2. **A throwaway shell prototype, then a separate native app.** The quickest first demo.
    - Against: every behaviour gets written and debugged twice, and what the prototype proves about quoting and parsing doesn't carry over to Swift.
 3. **An app on both Macs.** A second copy runs on the workhorse, reports status and makes changes there with Apple's own password prompts.
    - For: nicer pairing, and a native prompt for power settings.
    - Against: twice the interface, a new service listening on the workhorse or a channel to poll, and more for a user to trust on the machine that holds their work. It can come later: the engine already runs each check either locally or over ssh.
 
-Ruled out earlier, in the brainstorm: a cross-platform app (heavier, less native in the menu bar), and a SwiftBar plugin as the final product (every user would have to install SwiftBar first).
+Ruled out earlier, in the brainstorm: a cross-platform app (heavier, less native in the menu bar), and a SwiftBar plugin as the final product (every user would have to install SwiftBar first). The first plan still used SwiftBar, a free third-party menu-bar tool, for a throwaway prototype. On 2026-11-19 Shariq ruled that out too: "i don't want third party dependency can we not make a native menu bar item instead". So the menu is native from the start.
 
 ## 7. How it's built
 
@@ -210,7 +212,7 @@ Ruled out earlier, in the brainstorm: a cross-platform app (heavier, less native
 ```mermaid
 flowchart LR
   subgraph Daily["Daily Mac"]
-    UI["MacMosh.app (menu bar)<br/>or the SwiftBar prototype"]
+    UI["MacMosh.app (menu bar)"]
     CLI["macmosh command"]
     KIT["MacMoshKit engine"]
     TERM["iTerm2 or Terminal tab"]
@@ -236,7 +238,6 @@ flowchart LR
 |---|---|---|
 | **MacMoshKit** | A Swift package with no interface: the list of workhorses, the status checks, the setup checklist, the command lines, the terminal launchers | Daily Mac |
 | **`macmosh`** | A command built on MacMoshKit. The menu calls it, tests drive it, and every terminal tab MacMosh opens runs one of its subcommands | Daily Mac |
-| **SwiftBar plugin** | The prototype menu: a few lines of shell that print what `macmosh swiftbar` outputs [9] | Daily Mac |
 | **MacMosh.app** | The native menu-bar app (SwiftUI `MenuBarExtra`, no Dock icon [21]) | Daily Mac |
 | **`macmosh-host`** | One readable shell script. It starts the desk server, reports status, and attaches to desks | Workhorse |
 | **Login agent** | Runs `macmosh-host start` each time someone logs in | Workhorse |
@@ -253,9 +254,9 @@ When the menu opens a terminal tab, the tab runs a `macmosh` subcommand, never a
 | `macmosh restart <workhorse>` | Lists the desks that will close, then runs `sudo fdesetup authrestart` over ssh |
 | `macmosh power <workhorse> …` | Shows the exact `pmset` command, then runs it with `sudo` over ssh |
 
-This keeps the quoting, the paths and the error messages in tested Swift code, and it gives the prototype and the app the same behaviour. If a command fails, the tab stays open with the reason and waits for a key.
+This keeps the quoting, the paths and the error messages in tested Swift code, and it gives the command and the app the same behaviour. If a command fails, the tab stays open with the reason and waits for a key.
 
-Other subcommands are not interactive: `status`, `desks`, `add`, `prepare`, `swiftbar`, each with `--json` where a program reads the output.
+Other subcommands are not interactive: `status`, `desks`, `add`, `prepare`, each with `--json` where a program reads the output.
 
 ### 7.3 Desks and the desk server
 
@@ -412,7 +413,6 @@ Each fact is marked: **Vendor** (the vendor's own current documentation), **Seen
 - **Vendor.** tmux 3.8 (September 2026) is current. `new-session -A` attaches if the session exists, `-L` runs an independent server on a named socket, a server exits when its last session ends unless `exit-empty` is off, and a `=` prefix matches a session name exactly [3].
 - **Vendor.** iTerm2's tmux integration is started with `tmux -CC` and documented for ssh [4]. It does not work over mosh; issue 5924 was closed as unsupported and mosh issue 1078 is still open [5].
 - **Vendor.** iTerm2's current stable release is 3.7.8 (released 2026-11-18). Its AppleScript commands still ship but are frozen [6].
-- **Vendor.** SwiftBar 2.1.1 (August 2026) is maintained and reads plugins from a folder; a plugin is a script whose output becomes the menu [9]. xbar, the older tool, has had no release since 2021.
 - **Seen.** mosh into tmux on the workhorse survived the Air sleeping for five minutes and Wi-Fi being switched off and on (2026-11-16/17) [30].
 - **Seen.** A command run straight over ssh on a Mac gets a bare `PATH` without Homebrew, so mosh must be told where its server is (`--server`) [30].
 
@@ -463,7 +463,7 @@ Each fact is marked: **Vendor** (the vendor's own current documentation), **Seen
 
 These are the things no document settles. Each needs Shariq's go-ahead, and several need him to type a password or flip a switch. They are grouped so he is needed for two short sittings. On 2026-11-19 he agreed to the install on the MacBook Pro and to sitting 1. Sitting 2 waits until he says.
 
-**Sitting 1, from the Air (about 45 minutes, no restart):**
+**Sitting 1, from the Air (about 35 minutes, no restart):**
 
 | # | Question | Pass looks like |
 |---|---|---|
@@ -471,7 +471,12 @@ These are the things no document settles. Each needs Shariq's go-ahead, and seve
 | 2 | Which way of opening a tab works best in iTerm2 3.7 and in Terminal, and what do the permission prompts look like? | A tab opens, runs `macmosh connect`, and is named after the desk |
 | 3 | Does mosh accept the pinned-key options through `--ssh`, and the one-week timeout through `--server`? | A desk opens with both in place |
 | 4 | Does Tabs mode reconnect by itself with a retry loop? | Wi-Fi off and on, and the iTerm2 tabs come back |
-| 5 | What does macOS ask when the menu first reaches the home address? | One Local Network prompt, and status works after Allow |
+
+**The first time Shariq runs the menu-bar app** (it needs the app itself, so it is not part of sitting 1):
+
+| # | Question | Pass looks like |
+|---|---|---|
+| 5 | What does macOS ask when the menu first reaches the home address? | One Local Network prompt naming MacMosh, and status works after Allow |
 
 **Sitting 2, a restart and the lid (about 45 minutes; not agreed yet, so nobody restarts the MacBook Pro or changes its sleep settings until Shariq says):**
 
@@ -504,7 +509,7 @@ Results go in the build log. A failed test changes the design before code depend
 - **Licence:** MIT.
 - **Signing:** a Developer ID certificate, the hardened runtime, notarization and stapling, which is what Apple requires for an app that opens without a warning [24]. Without it, macOS 15 and later make the user go to System Settings > Privacy & Security > Open Anyway [24]. MacMosh is signed with the Developer ID certificate already in the keychain on the MacBook Pro, which belongs to Shariq's company account (his decision, section 13). That avoids a second Apple Developer membership at $99 a year; Apple waives the fee only for nonprofits, schools and governments [24].
 - **Releases** are built, signed and notarized on Shariq's Mac by a script, so the certificate never leaves it. CI only builds and runs tests.
-- **The app is signed with that certificate from its first development build.** macOS ties the Automation and Local Network permissions to the signature, so a build signed differently each time would keep asking again. The engine, the command and the SwiftBar prototype don't need the certificate, so phases 0 to 2 don't need it.
+- **The app is signed with that certificate from its first development build.** macOS ties the Automation and Local Network permissions to the signature, so a build signed differently each time would keep asking again. The engine and the command don't need the certificate, so phases 0 and 1 don't need it. The menu-bar app does, from its first build in phase 2.
 - **Phase 4 needs the repo public.** A release download and a Homebrew tap only work from public repositories. Shariq chose to make the repo public once this design is approved (section 13). Creating the tap and publishing a release are each asked of him first.
 - **Downloads:** a GitHub release.
 - **Homebrew:** a cask in Shariq's own tap (`brew install --cask shariqh/tap/macmosh`). A personal tap has no popularity threshold; the main cask repository asks for 90 forks, 90 watchers or 225 stars when the author submits their own app [23]. Since Homebrew 6.0, a third-party tap has to be trusted before Homebrew will load it (`brew trust`), so the README gives the exact commands, checked at release time [23]. The cask depends on the mosh formula [23].
@@ -524,8 +529,8 @@ Each phase ends with something Shariq tries on his own Macs. The implementation 
 |---|---|---|
 | 0 | The tests in section 9: sitting 1 now, sitting 2 when Shariq says | Results in the build log; the design updated if a test failed |
 | 1 | MacMoshKit, the `macmosh` command and `macmosh-host`, with tests | `macmosh status` and `macmosh connect` working from the Air |
-| 2 | The SwiftBar prototype: status and every button | Shariq uses it in place of `rmosh` and the cheat sheet for a few days, then says what to change |
-| 3 | The native app: menu, Add a Mac, Settings, notifications | The prototype is retired |
+| 2 | The first native menu-bar item: a signed app with the status and every button | Shariq uses it in place of `rmosh` and the cheat sheet for a few days, then says what to change |
+| 3 | The rest of the native app: Add a Mac, Settings, notifications, the icon and the wording | Shariq runs his day from the app |
 | 4 | Signing, notarization, the release script, the Homebrew tap, the README and guides | A fresh install from the README works on the Air |
 | 5 | Launch material from the build log | An outline for the post and the video |
 
@@ -537,7 +542,7 @@ How the plan handles the tests in phase 0:
 - Sitting 2 has no date yet, so the two things it tests are handled differently:
   - **Restart recovery** (the Locked and Waiting for login states, Unlock disk, Log in) is built from Apple's documentation [10][11] and what the hand-built setup saw on a real restart [30], and tested against recorded output. Its guide says it is not yet proven by MacMosh's own restart test. The task that proves it on the MacBook Pro stays open until Shariq agrees to a restart.
   - **The lid-closed switch** is not built before test 7, because reports disagree on whether `disablesleep` works at all (section 8.5). Its task waits for sitting 2. The lid-closed guide, with Apple's own options, doesn't wait.
-- Phases 3 to 5 are filed as issues now and checked again after Shariq's review of the prototype, because that review is meant to change them.
+- Phases 3 to 5 are filed as issues now and checked again after Shariq's review of the first menu-bar item, because that review is meant to change them.
 
 v1 is done when Shariq runs his day from the native app, has recovered from a real restart using only its buttons, and a fresh setup following only the README works.
 
@@ -551,7 +556,7 @@ v1 is done when Shariq runs his day from the native app, has recovered from a re
 | v1 is for one person with one or two spare Macs | 2026-11-17 |
 | A menu-bar icon is a must | 2026-11-17 |
 | Restart recovery works at home out of the box; from away is optional | 2026-11-17 |
-| A native Mac app, with a SwiftBar-style prototype first | 2026-11-17 |
+| A native Mac app, with something to try first. (The first plan made that a SwiftBar-style prototype; see 2026-11-19 below) | 2026-11-17 |
 | A lid-closed setting, tested with `pmset` first; a dummy plug offered, with an affiliate link | 2026-11-17 |
 | The name MacMosh, MIT licence, repo `shariqh/macmosh` | 2026-11-18 |
 | mosh is the default connection | 2026-11-18 |
@@ -559,6 +564,7 @@ v1 is done when Shariq runs his day from the native app, has recovered from a re
 | The app is signed with the company Developer ID certificate already on the MacBook Pro, not a new personal one | 2026-11-19 |
 | MacMosh may be installed on the MacBook Pro beside the current setup, and sitting 1 can go ahead. No restart and no lid-closed test until he says | 2026-11-19 |
 | This design is approved as written, including the calls below | 2026-11-19 |
+| No SwiftBar and no other third-party tool for the menu: a native menu-bar item from the start | 2026-11-19 |
 
 ### Calls the agent made, for Shariq to check
 
@@ -566,7 +572,7 @@ Shariq approved these with the design on 2026-11-19.
 
 1. **MacMosh has its own ssh key with no passphrase**, so background checks always work and the key can be revoked on its own. This is the one security trade-off in the list (section 7.6).
 2. **The app runs only on the daily Mac.** The workhorse gets a script and a login agent, not an app (section 6).
-3. **The prototype uses the real engine**, written in Swift, not a throwaway script (section 6).
+3. **The first menu uses the real engine**, written in Swift, not a throwaway script (section 6).
 4. **Desks get their own tmux server** on a separate socket, so nothing can start it the wrong way and your own tmux is untouched (section 7.3).
 5. **Every terminal tab runs a `macmosh` subcommand** (section 7.2).
 6. **Both iTerm2 and Apple's Terminal are supported**, so a new user needs nothing beyond mosh.
@@ -616,7 +622,7 @@ Checked 2026-11-18. "Local" means read on the MacBook Pro (macOS 27.3).
 6. iTerm2 scripting: https://iterm2.com/documentation-scripting.html ; iTerm2's scripting dictionary (local, 3.6.11); releases: https://iterm2.com/downloads.html
 7. iTerm2 URL scheme and Python API: https://iterm2.com/documentation-one-page.html ; https://iterm2.com/python-api-auth.html
 8. Terminal: its scripting dictionary (local, macOS 27.3)
-9. SwiftBar: https://github.com/swiftbar/SwiftBar (README and releases); xbar: https://github.com/matryer/xbar
+9. No longer used. It was SwiftBar's README and releases, for the prototype that was dropped on 2026-11-19.
 10. Apple, Intro to FileVault: https://support.apple.com/guide/deployment/intro-to-filevault-dep82064ec40/web
 11. Local `man fdesetup` (macOS 27.3), sections "REMOTE UNLOCKING VIA SSH" and `authrestart`
 12. Apple, login window and automatic login: https://support.apple.com/guide/mac-help/a-login-window-start-mac-mchlp1158/mac

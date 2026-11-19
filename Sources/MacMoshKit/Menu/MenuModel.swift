@@ -45,7 +45,7 @@ public enum Gathered: Sendable, Equatable {
 }
 
 /// Words that are safe as arguments of a menu action: letters, digits and `@%+=:,./_-`. A later
-/// task's `macmosh open` refuses anything else, and a plugin line can't quote them.
+/// task's `macmosh open` refuses anything else, and the menu passes them on without quoting.
 public enum PlainWords {
     private static let allowed = Set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@%+=:,./_-")
 
@@ -54,8 +54,8 @@ public enum PlainWords {
     }
 }
 
-/// The menu as a list of lines, from what the checks found. Shared by the SwiftBar prototype and
-/// the native app. Wording that exists already comes from `StatusFormat`.
+/// The menu as a list of lines, from what the checks found. Built for the native
+/// menu-bar app. Wording that exists already comes from `StatusFormat`.
 public enum MenuModel {
     /// The icon for one state. A different shape for each (design 5.1), so it reads in a monochrome menu bar.
     public static func symbol(for state: WorkhorseState) -> String {
@@ -170,9 +170,10 @@ public enum MenuModel {
     private static func readyItems(_ r: CheckResult) -> [MenuItem] {
         let id = r.workhorse.id
         var items: [MenuItem] = []
+        let kept = Set((r.status?.definitions ?? []).filter(\.keep).map(\.name.value))
         for desk in r.status?.desks ?? [] {
             let name = desk.name.value
-            items.append(.line(deskTitle(desk), .tab(["connect", id, name])))
+            items.append(.line(deskTitle(desk, kept: kept.contains(name)), .tab(["connect", id, name])))
             items.append(.line("New window in \(name)", .run(["desk", "window", id, name]), indent: 2))
         }
         items.append(.line("New desk…", .tab(["desk", "new", id])))
@@ -185,11 +186,12 @@ public enum MenuModel {
         return items
     }
 
-    /// `website (2 windows: zsh, vim, open in 1 tab)`
-    private static func deskTitle(_ desk: HostStatus.Desk) -> String {
+    /// `website (2 windows: zsh, vim, kept running, open in 1 tab)`
+    private static func deskTitle(_ desk: HostStatus.Desk, kept: Bool) -> String {
         var inside = desk.windowCount == 1 ? "1 window" : "\(desk.windowCount) windows"
         let names = desk.windows.map(\.name).filter { !$0.isEmpty }
         if !names.isEmpty { inside += ": " + names.joined(separator: ", ") }
+        if kept { inside += ", kept running" }
         if desk.attached > 0 {
             inside += ", open in " + (desk.attached == 1 ? "1 tab" : "\(desk.attached) tabs")
         }
