@@ -6,6 +6,10 @@ struct Macmosh: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "macmosh",
         abstract: "Drive a spare Mac that works as your workhorse.",
-        version: MacMoshInfo.version
+        version: MacMoshInfo.version,
+        subcommands: [
+            AddCommand.self,
+            PairCommand.self,
+        ]
     )
 }
