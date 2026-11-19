@@ -35,6 +35,10 @@ public enum SSHProbe {
         if stderr.contains("host key is known for") {
             return .hostKeyUnknown
         }
+        // At a quieter log level ssh prints only this line for a changed key. Read it the cautious way.
+        if stderr.contains("Host key verification failed") {
+            return .hostKeyChanged
+        }
         if result.timedOut || stderr.contains("Operation timed out") || stderr.contains("Connection timed out") {
             return .timedOut
         }
@@ -44,7 +48,7 @@ public enum SSHProbe {
         if stderr.contains("Could not resolve hostname") {
             return .unresolved
         }
-        if let line = lines(of: stderr).last(where: { line in identitySigns.contains { line.contains($0) } }) {
+        if let line = lines(of: stderr).last(where: isIdentitySign) {
             return .identityUnusable(detail: line)
         }
         if let methods = deniedMethods(in: stderr) {
@@ -58,6 +62,14 @@ public enum SSHProbe {
     }
 
     private static let identitySigns = ["no such identity", "UNPROTECTED PRIVATE KEY FILE", "bad permissions", "incorrect passphrase"]
+
+    /// One of `identitySigns`, or ssh's warning for a missing `-i` file
+    /// (`Warning: Identity file <path> not accessible: …`), after which ssh falls back to the
+    /// user's default keys.
+    private static func isIdentitySign(_ line: String) -> Bool {
+        identitySigns.contains { line.contains($0) }
+            || (line.contains("Identity file") && line.contains("not accessible"))
+    }
     private static let deniedSign = "Permission denied ("
 
     /// The non-empty lines of `text`, trimmed, whether they end in `\n` or `\r\n`.

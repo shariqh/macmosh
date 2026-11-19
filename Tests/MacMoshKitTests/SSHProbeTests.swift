@@ -14,7 +14,7 @@ private let pqWarning = """
 /// Every fixture under `Fixtures/ssh/`: ssh's answers when a connection fails.
 private let failureFixtures = [
     "ssh/changed-key.txt", "ssh/unknown-key.txt", "ssh/timed-out.txt", "ssh/refused.txt", "ssh/unresolved.txt",
-    "ssh/identity-bad-permissions.assumed.txt", "ssh/identity-missing.assumed.txt",
+    "ssh/identity-bad-permissions.assumed.txt", "ssh/identity-missing.txt",
     "ssh/identity-wrong-passphrase.assumed.txt", "ssh/auth-denied.txt", "ssh/auth-denied-password-only.assumed.txt",
 ]
 
@@ -56,6 +56,16 @@ private func crlf(_ s: String) -> String { s.replacingOccurrences(of: "\n", with
         #expect(SSHProbe.classify(try failed(fixture: "ssh/unknown-key.txt")) == .hostKeyUnknown)
     }
 
+    /// At a quieter log level ssh prints only this line for a changed key. The cautious reading is
+    /// "can't verify it".
+    @Test func aBareVerificationFailureIsHostKeyChanged() {
+        #expect(SSHProbe.classify(FakeRunner.failed(255, stderr: "Host key verification failed.\n")) == .hostKeyChanged)
+        #expect(SSHProbe.classify(FakeRunner.failed(255, stderr: "Host key verification failed.\r\nalex@workhorse: Permission denied (publickey).\n"))
+                == .hostKeyChanged)
+        #expect(SSHProbe.classify(FakeRunner.failed(255, stderr: "ssh: connect to host workhorse port 22: Connection refused\nHost key verification failed.\n"))
+                == .hostKeyChanged)
+    }
+
     @Test func row3TimedOutConnectionIsTimedOut() throws {
         #expect(SSHProbe.classify(try failed(fixture: "ssh/timed-out.txt")) == .timedOut)
         #expect(SSHProbe.classify(FakeRunner.failed(255, stderr: "Connection timed out during banner exchange\n")) == .timedOut)
@@ -74,13 +84,29 @@ private func crlf(_ s: String) -> String { s.replacingOccurrences(of: "\n", with
     @Test func row6UnusableKeyIsIdentityUnusable() throws {
         #expect(SSHProbe.classify(try failed(fixture: "ssh/identity-bad-permissions.assumed.txt"))
                 == .identityUnusable(detail: "Load key \"/Users/alex/.ssh/macmosh_ed25519\": bad permissions"))
-        #expect(SSHProbe.classify(try failed(fixture: "ssh/identity-missing.assumed.txt"))
+        #expect(SSHProbe.classify(FakeRunner.failed(255, stderr:
+            "no such identity: /Users/alex/.ssh/macmosh_ed25519: No such file or directory\nalex@workhorse: Permission denied (publickey).\n"))
                 == .identityUnusable(detail: "no such identity: /Users/alex/.ssh/macmosh_ed25519: No such file or directory"))
         #expect(SSHProbe.classify(try failed(fixture: "ssh/identity-wrong-passphrase.assumed.txt"))
                 == .identityUnusable(detail: "Load key \"/Users/alex/.ssh/other_ed25519\": incorrect passphrase supplied to decrypt private key"))
         // The banner alone, without the "Load key" line, still counts.
         #expect(SSHProbe.classify(FakeRunner.failed(255, stderr: "@         WARNING: UNPROTECTED PRIVATE KEY FILE!          @\n"))
                 == .identityUnusable(detail: "@         WARNING: UNPROTECTED PRIVATE KEY FILE!          @"))
+    }
+
+    /// ssh's warning when the `-i` file is missing. It then falls back to the user's default keys,
+    /// so the call may be refused or may even sign in: neither counts.
+    @Test func aMissingKeyFileIsIdentityUnusable() throws {
+        let missing = "Warning: Identity file /Users/alex/.ssh/macmosh_ed25519 not accessible: No such file or directory."
+        #expect(SSHProbe.classify(try failed(fixture: "ssh/identity-missing.txt")) == .identityUnusable(detail: missing))
+        let text = try fixture("ssh/identity-missing.txt")
+        #expect(SSHProbe.classify(FakeRunner.failed(255, stderr: text + "alex@workhorse: Permission denied (publickey).\n"))
+                == .identityUnusable(detail: missing))
+        #expect(SSHProbe.classify(CommandResult(exitCode: 0, stdout: "ok\n", stderr: text, timedOut: false))
+                == .identityUnusable(detail: missing))
+        // Both parts are needed: either alone is not this warning.
+        #expect(SSHProbe.classify(FakeRunner.failed(255, stderr: "Identity file is fine\n")) == .unreachable(detail: "Identity file is fine"))
+        #expect(SSHProbe.classify(FakeRunner.failed(255, stderr: "/tmp/x not accessible\n")) == .unreachable(detail: "/tmp/x not accessible"))
     }
 
     @Test func row7RefusedSignInIsAuthDenied() throws {

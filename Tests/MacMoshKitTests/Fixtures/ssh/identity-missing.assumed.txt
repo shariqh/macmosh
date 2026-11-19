@@ -1,2 +1,0 @@
-no such identity: /Users/alex/.ssh/macmosh_ed25519: No such file or directory
-alex@workhorse: Permission denied (publickey).
