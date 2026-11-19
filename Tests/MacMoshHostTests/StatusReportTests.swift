@@ -1,7 +1,8 @@
 import Foundation
 import Testing
 
-@Suite(.serialized) struct StatusReportTests {
+extension HostScriptTests {
+@Suite struct StatusReportTests {
     @Test func reportStartsWithTheHeaderAndEndsWithEnd() throws {
         let h = try HostHarness(); defer { h.cleanUp() }
         let lines = h.run(["status"]).stdout.split(separator: "\n").map(String.init)
@@ -343,6 +344,15 @@ import Testing
         }
         #expect(offenders.isEmpty, "tmux run outside the allowed forms: \(offenders)")
         #expect(text.contains("mm_tmux() { command tmux -L \"$MACMOSH_SOCKET\" \"$@\"; }"))
+        // The two lines that hand the terminal over are the only `exec tmux` in the script.
+        #expect(text.components(separatedBy: #"exec tmux -L "$MACMOSH_SOCKET""#).count - 1 == 2)
+        // Only `start` starts the desk server, so tmux's start-server appears once, inside `cmd_start`.
+        // (The subcommand `restart-server` ends in the same letters, so it is not counted.)
+        let startServer = try Regex(#"(^|[^A-Za-z0-9_-])start-server"#)
+        #expect(text.matches(of: startServer).count == 1)
+        let startBody = try #require(text.components(separatedBy: "cmd_start() {\n").last?
+            .components(separatedBy: "\n}\n").first)
+        #expect(startBody.contains(startServer))
     }
 
     @Test func startWritesALogLine() throws {
@@ -359,4 +369,5 @@ import Testing
         #expect(h.socket != "macmosh")
         #expect(h.shell("echo \"${TMUX-unset}${TMUX_PANE-unset}\"").stdout == "unsetunset\n")
     }
+}
 }

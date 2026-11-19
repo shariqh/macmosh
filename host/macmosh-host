@@ -1,6 +1,6 @@
 #!/bin/bash
 # macmosh-host: the script MacMosh keeps on a workhorse (a Mac you reach from another Mac).
-# It starts the desk server, prints the status report and, in later versions, manages desks.
+# It starts the desk server, prints the status report, manages desks and installs the login agent.
 # Plain bash 3.2 (what macOS ships at /bin/bash): no associative arrays, no mapfile, no ${var,,}.
 set -u
 
@@ -94,12 +94,585 @@ cmd_start() {
     fi
     mm_tmux -f "$MACMOSH_HOME/tmux.conf" start-server >/dev/null 2>&1
     if mm_server_up; then
+        mm_reopen_desks
         mm_log start "started"
         return 0
     fi
     mm_log start "failed: server did not start"
     echo "macmosh-host: the desk server did not start" >&2
     return 5
+}
+
+# ---------------------------------------------------------------- desks
+
+DESKS_FILE_NAME=desks.tsv
+
+mm_desks_file() { printf '%s' "$MACMOSH_HOME/$DESKS_FILE_NAME"; }
+
+# A leading ~ (alone or before a slash) means the home folder. Anything else is left as it is.
+mm_expand_tilde() {
+    local tilde='~'
+    case "$1" in
+        "$tilde") printf '%s' "$HOME" ;;
+        "$tilde"/*) printf '%s' "$HOME/${1#"$tilde"/}" ;;
+        *) printf '%s' "$1" ;;
+    esac
+}
+
+# True when the text has a tab or a newline in it, which would break a line of desks.tsv.
+mm_has_tab_or_newline() {
+    case "$1" in
+        *"$TAB"* | *$'\n'*) return 0 ;;
+    esac
+    return 1
+}
+
+# The line of desks.tsv for one desk, or nothing.
+mm_def_line() {
+    local file
+    file=$(mm_desks_file)
+    [ -f "$file" ] || return 0
+    awk -F '\t' -v n="$1" '$1 == n { print; exit }' "$file"
+}
+
+mm_session_exists() { mm_tmux has-session -t "=$1" >/dev/null 2>&1; }
+
+# Creates the session for a desk: in its folder, then types the startup command exactly as written.
+# The keys wait in the terminal's input queue, so a shell that is slow to start still receives them.
+mm_create_session() {
+    # $1 name, $2 folder, $3 startup command (may be empty)
+    local folder="$2"
+    if [ ! -d "$folder" ]; then
+        mm_log "create-desk" "$1: folder is gone, using the home folder"
+        folder="$HOME"
+    fi
+    mm_tmux new-session -d -s "$1" -c "$folder" >/dev/null 2>&1 || return 1
+    if [ -n "$3" ]; then
+        mm_tmux send-keys -t "=$1:" -l -- "$3" || return 1
+        mm_tmux send-keys -t "=$1:" Enter || return 1
+    fi
+    return 0
+}
+
+# Recreates the desks marked reopen. Called by start, only when it has just started the server.
+mm_reopen_desks() {
+    local file name reopen keep folder command line
+    file=$(mm_desks_file)
+    [ -f "$file" ] || return 0
+    while IFS= read -r line || [ -n "$line" ]; do
+        # shellcheck disable=SC2034  # keep is read only to get to the folder and the command
+        IFS="$TAB" read -r name reopen keep folder command <<EOF
+$line
+EOF
+        mm_valid_desk_name "$name" || continue
+        [ "$reopen" = 1 ] || continue
+        mm_session_exists "$name" && continue
+        mm_create_session "$name" "$folder" "$command" || mm_log start "could not reopen $name"
+    done < "$file"
+    return 0
+}
+
+# --- The lock around desks.tsv: a folder made with mkdir. One writer at a time. A lock folder older
+# than 30 seconds belongs to a writer that died, so it is removed.
+
+MM_LOCK_HELD=0
+
+mm_unlock() {
+    if [ "$MM_LOCK_HELD" = 1 ]; then
+        MM_LOCK_HELD=0
+        rmdir "$MACMOSH_HOME/lock" 2>/dev/null
+    fi
+    return 0
+}
+
+# Takes the lock, waiting up to 5 seconds. Releases it on every way out (the trap), including
+# an error part-way and a signal.
+mm_lock() {
+    local lock="$MACMOSH_HOME/lock" tries=0 mtime now
+    mkdir -p "$MACMOSH_HOME" || return 1
+    while ! mkdir "$lock" 2>/dev/null; do
+        mtime=$(/usr/bin/stat -f %m "$lock" 2>/dev/null)
+        case "$mtime" in
+            '' | *[!0-9]*) mtime="" ;;
+        esac
+        now=$(date +%s)
+        if [ -n "$mtime" ] && [ $((now - mtime)) -gt 30 ] && rmdir "$lock" 2>/dev/null; then
+            continue
+        fi
+        tries=$((tries + 1))
+        [ "$tries" -lt 50 ] || return 1
+        sleep 0.1
+    done
+    MM_LOCK_HELD=1
+    trap mm_unlock EXIT
+    trap 'exit 130' INT HUP
+    trap 'exit 143' TERM
+    return 0
+}
+
+mm_release_lock() {
+    mm_unlock
+    trap - EXIT INT HUP TERM
+}
+
+# If the desk server is down: with nobody logged in at the screen, exit 3. Otherwise ask macOS to
+# run the login agent, wait up to 5 seconds, and exit 5 if the server is still down.
+# This is the only way these subcommands get a server. They never start one themselves, because a
+# tmux server started from an ssh login can't read the keychain.
+mm_require_server() {
+    # $1 the subcommand, for the log
+    local who n=0
+    if mm_server_up; then return 0; fi
+    who=$(mm_console_user)
+    if [ -z "$who" ]; then
+        echo "Nobody is logged in at this Mac's screen, so desks can't start. Log in first." >&2
+        mm_log "$1" "nobody logged in"
+        exit 3
+    fi
+    launchctl kickstart "gui/$(id -u)/$AGENT_LABEL" >/dev/null 2>&1
+    while [ "$n" -lt 10 ]; do
+        if mm_server_up; then return 0; fi
+        sleep 0.5
+        n=$((n + 1))
+    done
+    if mm_server_up; then return 0; fi
+    echo "The desk server didn't start." >&2
+    mm_log "$1" "server did not start"
+    exit 5
+}
+
+# A usage error: a message, a log line and exit 2.
+mm_usage_error() {
+    # $1 subcommand, $2 message
+    echo "macmosh-host: $2" >&2
+    mm_log "$1" "usage error"
+    exit 2
+}
+
+cmd_desk_new() {
+    local name="" folder="" reopen=0 keep=0 command="" npos=0 file tmp
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --reopen) reopen=1 ;;
+            --keep) keep=1 ;;
+            --command)
+                [ $# -ge 2 ] || mm_usage_error desk-new "--command needs a value"
+                command="$2"
+                shift
+                ;;
+            --*) mm_usage_error desk-new "unknown option $1" ;;
+            *)
+                npos=$((npos + 1))
+                case "$npos" in
+                    1) name="$1" ;;
+                    2) folder="$1" ;;
+                    *) mm_usage_error desk-new "too many arguments" ;;
+                esac
+                ;;
+        esac
+        shift
+    done
+    [ "$npos" -eq 2 ] || mm_usage_error desk-new "usage: desk-new <name> <folder> [--reopen] [--keep] [--command <text>]"
+
+    if ! mm_valid_desk_name "$name"; then
+        echo "macmosh-host: a desk name uses letters, digits, - and _ only, up to 64 characters" >&2
+        mm_log desk-new "refused: bad name"
+        return 6
+    fi
+    # Check before expanding: $(...) drops a new line at the end of the text.
+    if mm_has_tab_or_newline "$folder" || mm_has_tab_or_newline "$command"; then
+        echo "macmosh-host: a folder or command can't contain a tab or a new line" >&2
+        mm_log desk-new "refused: tab or newline"
+        return 6
+    fi
+    folder=$(mm_expand_tilde "$folder")
+    case "$folder" in
+        /*) ;;
+        *)
+            echo "macmosh-host: the folder must be a full path or start with ~" >&2
+            mm_log desk-new "refused: folder is not a full path"
+            return 6
+            ;;
+    esac
+    if [ ! -d "$folder" ]; then
+        echo "macmosh-host: no such folder: $folder" >&2
+        mm_log desk-new "refused: no such folder"
+        return 6
+    fi
+
+    mm_require_server desk-new
+
+    if ! mm_lock; then
+        echo "macmosh-host: could not lock the desk list" >&2
+        mm_log desk-new "failed: lock"
+        return 1
+    fi
+    if [ -n "$(mm_def_line "$name")" ] || mm_session_exists "$name"; then
+        mm_release_lock
+        echo "macmosh-host: the desk $name already exists" >&2
+        mm_log desk-new "refused: $name already exists"
+        return 7
+    fi
+    if ! mm_create_session "$name" "$folder" "$command"; then
+        mm_tmux kill-session -t "=$name" >/dev/null 2>&1
+        mm_release_lock
+        echo "macmosh-host: could not create the desk" >&2
+        mm_log desk-new "failed: $name could not be created"
+        return 1
+    fi
+    file=$(mm_desks_file)
+    tmp="$MACMOSH_HOME/$DESKS_FILE_NAME.$$.tmp"
+    if ! {
+        if [ -f "$file" ]; then cat "$file"; fi
+        printf '%s\t%s\t%s\t%s\t%s\n' "$name" "$reopen" "$keep" "$folder" "$command"
+    } > "$tmp" || ! mv "$tmp" "$file"; then
+        rm -f "$tmp"
+        mm_tmux kill-session -t "=$name" >/dev/null 2>&1
+        mm_release_lock
+        echo "macmosh-host: could not write the desk list" >&2
+        mm_log desk-new "failed: $name could not be saved"
+        return 1
+    fi
+    mm_release_lock
+    mm_log desk-new "created $name"
+    return 0
+}
+
+cmd_desk_remove() {
+    local name="" kill=0 npos=0 had_def=0 had_session=0 file tmp
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --kill) kill=1 ;;
+            --*) mm_usage_error desk-remove "unknown option $1" ;;
+            *)
+                npos=$((npos + 1))
+                [ "$npos" -le 1 ] || mm_usage_error desk-remove "too many arguments"
+                name="$1"
+                ;;
+        esac
+        shift
+    done
+    [ "$npos" -eq 1 ] || mm_usage_error desk-remove "usage: desk-remove <name> [--kill]"
+
+    if ! mm_valid_desk_name "$name"; then
+        echo "macmosh-host: no such desk: $name" >&2
+        mm_log desk-remove "no such desk"
+        return 4
+    fi
+    # No mm_require_server here: removing a desk never needs a server, and must never start one.
+    # has-session and kill-session only talk to a server that is already running.
+    if ! mm_lock; then
+        echo "macmosh-host: could not lock the desk list" >&2
+        mm_log desk-remove "failed: lock"
+        return 1
+    fi
+    if [ -n "$(mm_def_line "$name")" ]; then had_def=1; fi
+    if mm_session_exists "$name"; then had_session=1; fi
+    if [ "$had_def" = 0 ] && { [ "$kill" = 0 ] || [ "$had_session" = 0 ]; }; then
+        mm_release_lock
+        echo "macmosh-host: no such desk: $name" >&2
+        mm_log desk-remove "no such desk: $name"
+        return 4
+    fi
+    if [ "$had_def" = 1 ]; then
+        file=$(mm_desks_file)
+        tmp="$MACMOSH_HOME/$DESKS_FILE_NAME.$$.tmp"
+        if ! awk -F '\t' -v n="$name" '$1 != n' "$file" > "$tmp" || ! mv "$tmp" "$file"; then
+            rm -f "$tmp"
+            mm_release_lock
+            echo "macmosh-host: could not write the desk list" >&2
+            mm_log desk-remove "failed: $name could not be saved"
+            return 1
+        fi
+    fi
+    mm_release_lock
+    if [ "$kill" = 1 ] && [ "$had_session" = 1 ]; then
+        mm_tmux kill-session -t "=$name" >/dev/null 2>&1
+    fi
+    mm_log desk-remove "removed $name"
+    return 0
+}
+
+cmd_window_new() {
+    local name
+    [ $# -eq 1 ] || mm_usage_error window-new "usage: window-new <desk>"
+    name="$1"
+    if ! mm_valid_desk_name "$name"; then
+        echo "macmosh-host: no such desk: $name" >&2
+        mm_log window-new "no such desk"
+        return 4
+    fi
+    mm_require_server window-new
+    if ! mm_session_exists "$name"; then
+        echo "macmosh-host: the desk $name isn't open" >&2
+        mm_log window-new "no such desk: $name"
+        return 4
+    fi
+    if ! mm_tmux new-window -t "=$name:" >/dev/null 2>&1; then
+        echo "macmosh-host: could not add a window" >&2
+        mm_log window-new "failed: $name"
+        return 1
+    fi
+    mm_log window-new "added a window to $name"
+    return 0
+}
+
+cmd_attach() {
+    local name="" cc=0 dry=0 npos=0 line reopen keep folder command
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --cc) cc=1 ;;
+            --dry-run) dry=1 ;;
+            --*) mm_usage_error attach "unknown option $1" ;;
+            *)
+                npos=$((npos + 1))
+                [ "$npos" -le 1 ] || mm_usage_error attach "too many arguments"
+                name="$1"
+                ;;
+        esac
+        shift
+    done
+    [ "$npos" -eq 1 ] || mm_usage_error attach "usage: attach [--cc] [--dry-run] <desk>"
+
+    if ! mm_valid_desk_name "$name"; then
+        echo "macmosh-host: no such desk: $name" >&2
+        mm_log attach "no such desk"
+        return 4
+    fi
+    mm_require_server attach
+
+    if ! mm_session_exists "$name"; then
+        line=$(mm_def_line "$name")
+        if [ -z "$line" ]; then
+            echo "macmosh-host: no such desk: $name" >&2
+            mm_log attach "no such desk: $name"
+            return 4
+        fi
+        # shellcheck disable=SC2034  # reopen and keep are read only to get to the folder and the command
+        IFS="$TAB" read -r name reopen keep folder command <<EOF
+$line
+EOF
+        if ! mm_create_session "$name" "$folder" "$command"; then
+            echo "macmosh-host: could not open the desk $name" >&2
+            mm_log attach "failed: $name could not be created"
+            return 1
+        fi
+    fi
+
+    if [ "$dry" = 1 ]; then
+        echo ok
+        mm_log attach "dry run $name"
+        return 0
+    fi
+    mm_log attach "$name"
+    # The terminal may itself be inside another tmux; the desk server is a separate one.
+    unset TMUX
+    if [ "$cc" = 1 ]; then
+        exec tmux -L "$MACMOSH_SOCKET" -CC attach-session -t "=$name"
+    fi
+    exec tmux -L "$MACMOSH_SOCKET" attach-session -t "=$name"
+}
+
+cmd_folders() {
+    local folder entry name
+    [ $# -eq 1 ] || mm_usage_error folders "usage: folders <folder>"
+    folder=$(mm_expand_tilde "$1")
+    if [ -z "$folder" ] || [ ! -d "$folder" ]; then
+        echo "macmosh-host: no such folder: $1" >&2
+        mm_log folders "refused: no such folder"
+        return 6
+    fi
+    # The glob skips hidden folders. A name with a new line in it would break the one-per-line list.
+    for entry in "${folder%/}"/*/; do
+        [ -d "$entry" ] || continue
+        name="${entry%/}"
+        name="${name##*/}"
+        case "$name" in
+            *$'\n'*) continue ;;
+        esac
+        printf '%s\n' "$name"
+    done | LC_ALL=C sort
+    mm_log folders "ok"
+    return 0
+}
+
+# ---------------------------------------------------------------- login agent, restart, removal
+
+# Text safe to put inside a plist <string>.
+mm_xml_escape() {
+    printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'
+}
+
+cmd_install_agent() {
+    local script agent_dir plist tmp uid status=0
+    script="$MACMOSH_HOME/macmosh-host"
+    # The path goes inside double quotes in a zsh command line: refuse what would break out of them.
+    case "$script" in
+        *'"'* | *'$'* | *'`'* | *\\*)
+            echo "macmosh-host: the script's path has a character the login agent can't carry" >&2
+            mm_log install-agent "refused: odd path"
+            return 1
+            ;;
+    esac
+    uid=$(id -u)
+    agent_dir="$HOME/Library/LaunchAgents"
+    plist="$agent_dir/$AGENT_LABEL.plist"
+    tmp="$plist.$$.tmp"
+    if ! mkdir -p "$agent_dir"; then
+        echo "macmosh-host: cannot create $agent_dir" >&2
+        mm_log install-agent "failed: no folder"
+        return 1
+    fi
+    if ! {
+        cat <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>$AGENT_LABEL</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/zsh</string>
+        <string>-lc</string>
+        <string>exec "$(mm_xml_escape "$script")" start</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>LimitLoadToSessionType</key>
+    <string>Aqua</string>
+</dict>
+</plist>
+EOF
+    } > "$tmp" || ! mv "$tmp" "$plist"; then
+        rm -f "$tmp"
+        echo "macmosh-host: cannot write $plist" >&2
+        mm_log install-agent "failed: cannot write"
+        return 1
+    fi
+    # Unload an older copy first; it is fine if there is none.
+    launchctl bootout "gui/$uid/$AGENT_LABEL" >/dev/null 2>&1
+    launchctl bootstrap "gui/$uid" "$plist" || status=$?
+    mm_log install-agent "exit $status"
+    return "$status"
+}
+
+cmd_restart_server() {
+    local yes=0 arg n=0
+    for arg in "$@"; do
+        case "$arg" in
+            --yes) yes=1 ;;
+            *) mm_usage_error restart-server "usage: restart-server --yes" ;;
+        esac
+    done
+    [ "$yes" = 1 ] || mm_usage_error restart-server "restart-server closes every desk: add --yes to confirm"
+
+    # Check first: with nobody at the screen the server could not come back, so close nothing.
+    if [ -z "$(mm_console_user)" ]; then
+        echo "Nobody is logged in at this Mac's screen, so desks can't start. Log in first." >&2
+        mm_log restart-server "nobody logged in"
+        return 3
+    fi
+    if mm_server_up; then
+        mm_tmux kill-server >/dev/null 2>&1
+        while mm_server_up && [ "$n" -lt 20 ]; do
+            sleep 0.25
+            n=$((n + 1))
+        done
+        if mm_server_up; then
+            echo "The desk server didn't stop." >&2
+            mm_log restart-server "server did not stop"
+            return 5
+        fi
+    fi
+    mm_require_server restart-server
+    mm_log restart-server "ok"
+    return 0
+}
+
+# Removes every line of authorized_keys that has the key as a whole field. The file is rewritten
+# through a temporary file in its own folder and mv, keeps its mode, and is left alone when no
+# line matches or when anything fails.
+mm_remove_authorized_key() {
+    local key="$1" file="$HOME/.ssh/authorized_keys" dir tmp mode removed
+    [ -f "$file" ] || return 0
+    dir=$(dirname "$file")
+    tmp=$(mktemp "$dir/authorized_keys.XXXXXX") || return 1
+    removed=$(LC_ALL=C awk -v key="$key" -v out="$tmp" '
+        { hit = 0; for (i = 1; i <= NF; i++) if ($i == key) hit = 1 }
+        hit { n++; next }
+        { print > out }
+        END { close(out); print n + 0 }
+    ' "$file") || {
+        rm -f "$tmp"
+        return 1
+    }
+    if [ "$removed" = 0 ]; then
+        rm -f "$tmp"
+        return 0
+    fi
+    mode=$(/usr/bin/stat -f %Lp "$file" 2>/dev/null)
+    case "$mode" in
+        '' | *[!0-7]*) mode=600 ;;
+    esac
+    if ! chmod "$mode" "$tmp" || ! mv "$tmp" "$file"; then
+        rm -f "$tmp"
+        return 1
+    fi
+    return 0
+}
+
+cmd_uninstall() {
+    local key="" have_key=0
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --key)
+                [ $# -ge 2 ] || mm_usage_error uninstall "--key needs a value"
+                key="$2"
+                have_key=1
+                shift
+                ;;
+            *) mm_usage_error uninstall "usage: uninstall --key <base64 key>" ;;
+        esac
+        shift
+    done
+    if [ "$have_key" = 0 ] || [ "${#key}" -lt 60 ]; then
+        echo "macmosh-host: uninstall needs --key with MacMosh's whole public key (at least 60 characters)" >&2
+        return 2
+    fi
+    case "$key" in
+        *[!A-Za-z0-9+/=]*)
+            echo "macmosh-host: the key isn't base64" >&2
+            return 2
+            ;;
+    esac
+    # Never delete a folder that could hold more than MacMosh's own files.
+    case "$MACMOSH_HOME" in
+        '' | / | "$HOME" | "$HOME/")
+            echo "macmosh-host: refusing to remove $MACMOSH_HOME" >&2
+            return 1
+            ;;
+    esac
+
+    # The key first: if that fails, nothing else has been touched.
+    if ! mm_remove_authorized_key "$key"; then
+        echo "macmosh-host: could not update ~/.ssh/authorized_keys; nothing was removed" >&2
+        return 1
+    fi
+    launchctl bootout "gui/$(id -u)/$AGENT_LABEL" >/dev/null 2>&1
+    rm -f "$HOME/Library/LaunchAgents/$AGENT_LABEL.plist"
+    # The desk server and open desks keep running. The log lives in the folder being emptied,
+    # so this subcommand logs nothing: a log line would bring the folder back.
+    # Remove only the names MacMosh makes there; a folder named by an environment variable
+    # may hold other things.
+    rm -f "$MACMOSH_HOME/macmosh-host" "$MACMOSH_HOME/macmosh-host.new" \
+        "$MACMOSH_HOME/tmux.conf" "$MACMOSH_HOME/$DESKS_FILE_NAME" "$MACMOSH_HOME/host.log" \
+        "$MACMOSH_HOME/$DESKS_FILE_NAME".*.tmp "$MACMOSH_HOME/host.log".*.tmp
+    rmdir "$MACMOSH_HOME/lock" 2>/dev/null
+    if [ -e "$MACMOSH_HOME" ] && ! rmdir "$MACMOSH_HOME" 2>/dev/null; then
+        echo "macmosh-host: kept $MACMOSH_HOME because it holds files MacMosh didn't put there" >&2
+    fi
+    return 0
 }
 
 # ---------------------------------------------------------------- status
@@ -389,6 +962,14 @@ usage: macmosh-host <subcommand>
   version   print the script version
   start     start the desk server if it is down
   status    print the status report
+  attach [--cc] [--dry-run] <desk>
+  desk-new <name> <folder> [--reopen] [--keep] [--command <text>]
+  desk-remove <name> [--kill]
+  window-new <desk>
+  folders <folder>
+  install-agent
+  restart-server --yes
+  uninstall --key <base64 key>
 EOF
 }
 
@@ -404,6 +985,37 @@ main() {
             ;;
         status)
             cmd_status
+            ;;
+        attach)
+            shift
+            cmd_attach "$@"
+            ;;
+        desk-new)
+            shift
+            cmd_desk_new "$@"
+            ;;
+        desk-remove)
+            shift
+            cmd_desk_remove "$@"
+            ;;
+        window-new)
+            shift
+            cmd_window_new "$@"
+            ;;
+        folders)
+            shift
+            cmd_folders "$@"
+            ;;
+        restart-server)
+            shift
+            cmd_restart_server "$@"
+            ;;
+        uninstall)
+            shift
+            cmd_uninstall "$@"
+            ;;
+        install-agent)
+            cmd_install_agent
             ;;
         *)
             usage
