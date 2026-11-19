@@ -125,11 +125,14 @@ Design: `superpowers/specs/2026-11-18-macmosh-v1-design.md`. Plan: `superpowers/
 | 13:57 | MBP | agent | Found the real cause of the keep failure (PR #62) | The guess was wrong. The suspicion was that the startup text, typed into a new desk, was sometimes lost before the shell was reading. The worker made the tests print the desk's screen when they time out, and the first failing CI run showed the text had arrived and run: `macmosh-host: no such desk: kept`. The script was creating the desk first and saving its definition second, and on CI's fast shell the kept command started before its own entry existed. On this Mac the shell starts slower, so it never showed. The fix is two lines moved; a test with a stand-in `tmux` now proves the order. |
 | | | | For the video | The fix that was nearly built instead: stop typing into desks at all and make the script the desk's first process. It would have hidden the bug, changed the design, and left the wrong order in place. One screen capture from a failing run was cheaper. |
 | 14:06 | MBP | agent | Task 18 (PR #61): `macmosh power`, `set`, `settings` and `remove` | The two power commands are fixed text in the code, shown before anything runs, and run only after a yes. `remove` sends only this Mac's own key to be taken off the workhorse. Nothing was run against a real Mac. |
+| 14:20 | MBP | agent | Task 26 (PR #66): the first native piece. A menu-bar app drawn from the menu model, and a script that wraps the Swift package into a signed `MacMosh.app`, with no Xcode project | The signed build worked first time from the agent's own session, with the certificate Shariq chose. CI now builds the app and checks it starts and stays running, on a machine that isn't his. The app has not been started on either of his Macs yet. |
+| | | | The catch | The plan put the app and the command side by side in one folder, as `MacMosh` and `macmosh`. On a Mac's default disk those are the same name. The build succeeded and signed, and only a look inside the folder showed one file where two were expected: the command had replaced the app. The worker stopped and asked. The command now lives in `Contents/Helpers/`, one of the two places Apple lists for a helper tool, and the build script checks the two are different files. |
 
 ## Shot list (video)
 
 - The two-day cheat sheet of commands on one side, one menu-bar icon on the other.
 - "I almost called it MacInMosh": the trademark rule and Apple's "Jackintosh" example.
 - The lid-closed test on the MacBook Pro (to come).
+- Two bugs that only showed somewhere else: the keep race (CI's shell was faster than this Mac's) and `MacMosh` versus `macmosh` (one name on a case-insensitive disk).
 - "what swiftbar?": an approved plan, an hour of work on a prototype, and one line from Shariq that removed a dependency.
 - "The plan nearly rebuilt the bug": `tmux new-session` starting the wrong kind of server, caught by a reviewer before any code existed.
