@@ -104,6 +104,10 @@ Design: `superpowers/specs/2026-11-18-macmosh-v1-design.md`. Plan: `superpowers/
 | | | | A quiet ssh | MacMosh reads ssh's messages to tell "refused" from "different key". A quieter log level in your own ssh settings would hide them: at `QUIET` ssh prints nothing at all. The status checks now set the level themselves. |
 | | | | The cautious reading | At some log levels a changed key shows only `Host key verification failed.` That line alone now counts as "Can't verify it". |
 | | | | `--` | A destination that began with `-` could have been read as an ssh option. The command line now has `--` before it. |
+| 11:15 | MBP | agent | Task 3 (PR #48): the rest of the workhorse script. Creating, removing and attaching to desks, reopening them after a restart, the login agent, and removing MacMosh from a workhorse | 173 tests pass on both CI images. The rule from the plan review holds in code and in a test: only the login agent's `start` can start the desk server. |
+| | | | A CI surprise | The first push failed on CI, but not in the new tests. The script tests each block a thread while they wait for tmux, CI runners have three test threads, and with all three blocked the engine's time-limit tests ran late and failed. The script tests now run one at a time. |
+| | | | Two small catches | The plan said "`start-server` appears once in the script", but `restart-server` contains the same letters; the check now matches the whole word. And `$(…)` in bash drops a trailing new line, so a folder name ending in one slipped past the check until the check ran on the raw text. |
+| | | | One change asked for in review | `uninstall` deleted MacMosh's folder with `rm -rf`, and the folder's name can come from an environment variable. It now deletes only the files MacMosh itself put there, and keeps the folder if anything else is in it. |
 
 ## Shot list (video)
 
