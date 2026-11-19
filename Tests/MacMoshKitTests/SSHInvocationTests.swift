@@ -42,14 +42,15 @@ private let alexPaths = Paths(supportDir: URL(fileURLWithPath: "/Users/alex/Libr
 
     @Test func batchOptionsComeInThePlannedOrder() {
         let w = Workhorse.sample(id: "mbp")
-        #expect(SSHInvocation.options(for: w, paths: alexPaths, batch: true)
-                == SSHInvocation.hostKeyOptions(for: w, paths: alexPaths) + [
-                    "-o", "IdentitiesOnly=yes",
-                    "-i", "/Users/alex/.ssh/macmosh_ed25519",
-                    "-o", "IdentityAgent=none",
-                    "-o", "BatchMode=yes",
-                    "-o", "ConnectTimeout=5",
-                ])
+        let pin: [String] = SSHInvocation.hostKeyOptions(for: w, paths: alexPaths)
+        let rest: [String] = [
+            "-o", "IdentitiesOnly=yes",
+            "-i", "/Users/alex/.ssh/macmosh_ed25519",
+            "-o", "IdentityAgent=none",
+            "-o", "BatchMode=yes",
+            "-o", "ConnectTimeout=5",
+        ]
+        #expect(SSHInvocation.options(for: w, paths: alexPaths, batch: true) == pin + rest)
     }
 
     @Test func interactiveOptionsHaveNoBatchMode() {
@@ -57,11 +58,9 @@ private let alexPaths = Paths(supportDir: URL(fileURLWithPath: "/Users/alex/Libr
         let o = SSHInvocation.options(for: w, paths: alexPaths, batch: false)
         #expect(!o.contains("BatchMode=yes"))
         #expect(!o.contains("ConnectTimeout=5"))
-        #expect(o == SSHInvocation.hostKeyOptions(for: w, paths: alexPaths) + [
-            "-o", "IdentitiesOnly=yes",
-            "-i", "/Users/alex/.ssh/macmosh_ed25519",
-            "-o", "IdentityAgent=none",
-        ])
+        let pin: [String] = SSHInvocation.hostKeyOptions(for: w, paths: alexPaths)
+        let rest: [String] = ["-o", "IdentitiesOnly=yes", "-i", "/Users/alex/.ssh/macmosh_ed25519", "-o", "IdentityAgent=none"]
+        #expect(o == pin + rest)
     }
 
     @Test func aCustomIdentityKeepsTheAgent() {
@@ -118,8 +117,11 @@ private let alexPaths = Paths(supportDir: URL(fileURLWithPath: "/Users/alex/Libr
         let s = SSHInvocation.sshStringForMosh(for: w, paths: paths)
         let r = await ProcessRunner().run("/usr/bin/perl", ["-MText::ParseWords", "-e", "print join(qq{\\n}, shellwords($ARGV[0]))", s],
                                           environment: [:], stdin: nil, timeout: .seconds(5))   // the splitter mosh itself uses
-        #expect(r.stdout.split(separator: "\n").map(String.init)
-                == ["ssh"] + SSHInvocation.options(for: w, paths: paths, batch: false) + SSHInvocation.noPasswordOptions)
+        // Split into two typed values: the one-expression form is too much for the Swift 6.0
+        // type checker on the macos-15 runner.
+        let split: [String] = r.stdout.split(separator: "\n").map(String.init)
+        let expected: [String] = ["ssh"] + SSHInvocation.options(for: w, paths: paths, batch: false) + SSHInvocation.noPasswordOptions
+        #expect(split == expected)
     }
 
     @Test func theMoshStringSurvivesQuotesAndDollarsInPaths() async {
@@ -127,7 +129,8 @@ private let alexPaths = Paths(supportDir: URL(fileURLWithPath: "/Users/alex/Libr
                           sshDir: URL(fileURLWithPath: "/Users/alex/my keys; é ☕"))
         let w = Workhorse.sample(id: "mbp")
         let split = await moshSplit(SSHInvocation.sshStringForMosh(for: w, paths: paths))
-        #expect(split == ["ssh"] + SSHInvocation.options(for: w, paths: paths, batch: false) + SSHInvocation.noPasswordOptions)
+        let expected: [String] = ["ssh"] + SSHInvocation.options(for: w, paths: paths, batch: false) + SSHInvocation.noPasswordOptions
+        #expect(split == expected)
     }
 
     @Test func theMoshStringRefusesPasswordsAndHasNoBatchMode() {
@@ -144,8 +147,10 @@ private let alexPaths = Paths(supportDir: URL(fileURLWithPath: "/Users/alex/Libr
         let argv = SSHInvocation.argv(for: w, address: "192.168.1.20", paths: alexPaths, batch: true, tty: true,
                                       extraOptions: SSHInvocation.noPasswordOptions,
                                       remote: SSHInvocation.hostCommand(["status"]))
-        #expect(argv == ["ssh"] + SSHInvocation.options(for: w, paths: alexPaths, batch: true)
-                + SSHInvocation.noPasswordOptions + ["-t", "alex@192.168.1.20", "~/.macmosh/macmosh-host status"])
+        let options: [String] = SSHInvocation.options(for: w, paths: alexPaths, batch: true)
+        let expected: [String] = ["ssh"] + options + SSHInvocation.noPasswordOptions
+            + ["-t", "alex@192.168.1.20", "~/.macmosh/macmosh-host status"]
+        #expect(argv == expected)
     }
 
     @Test func emptyRemoteIsAnInteractiveLogin() {
