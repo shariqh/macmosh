@@ -28,7 +28,7 @@ Nothing in MacMosh ever types, stores or sees a password. Where a password is ne
 | **mosh** | A replacement for the ssh terminal connection that survives Wi-Fi drops and a closed lid. |
 | **tmux** | The program on the workhorse that keeps each desk alive while nobody is connected. |
 | **Tailscale** | A private network between your own devices, so the daily Mac can reach the workhorse from anywhere. |
-| **Home address** | The workhorse's address on your home network (for example `192.168.1.84`). With the usual Tailscale app, it is the only address that works before someone logs in. |
+| **Home address** | The workhorse's address on your home network (for example `192.168.1.20`). With the usual Tailscale app, it is the only address that works before someone logs in. |
 | **FileVault** | macOS disk encryption. After a restart the disk stays locked until someone types the Mac's password. |
 | **Remote Login** | The macOS switch that turns on ssh. |
 | **Screen Sharing** | The macOS switch, and the built-in app, for seeing and controlling another Mac's screen. |
