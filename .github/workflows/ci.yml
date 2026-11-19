@@ -22,3 +22,28 @@ jobs:
         run: brew install tmux shellcheck
       - name: Build, test and lint
         run: scripts/check.sh
+      - name: Build the app and check that it starts
+        run: |
+          set -euo pipefail
+          scripts/build-app.sh --adhoc
+
+          # The command inside the bundle prints the version the Info.plist carries.
+          expected=$(plutil -extract CFBundleShortVersionString raw dist/MacMosh.app/Contents/Info.plist)
+          actual=$(dist/MacMosh.app/Contents/Helpers/macmosh --version)
+          if [ "$actual" != "$expected" ]; then
+            echo "the command printed '$actual', expected '$expected'" >&2
+            exit 1
+          fi
+
+          # Start the app on an empty support folder (no workhorses, so no ssh call) and see it stay up.
+          support=$(mktemp -d)
+          MACMOSH_SUPPORT_DIR="$support" dist/MacMosh.app/Contents/MacOS/MacMosh &
+          app_pid=$!
+          sleep 5
+          if ! pgrep -x MacMosh; then
+            echo "MacMosh is not running 5 seconds after it started" >&2
+            wait "$app_pid" || echo "it exited with status $?" >&2
+            exit 1
+          fi
+          kill "$app_pid"
+          wait "$app_pid" || true

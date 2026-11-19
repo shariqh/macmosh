@@ -7,6 +7,7 @@ let package = Package(
     products: [
         .library(name: "MacMoshKit", targets: ["MacMoshKit"]),
         .executable(name: "macmosh", targets: ["macmosh"]),
+        .executable(name: "MacMoshApp", targets: ["MacMoshApp"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.8.2"),
@@ -20,6 +21,7 @@ let package = Package(
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ]
         ),
+        .executableTarget(name: "MacMoshApp", dependencies: ["MacMoshKit"]),
         .testTarget(name: "MacMoshKitTests", dependencies: ["MacMoshKit"], exclude: ["Fixtures"]),
         .testTarget(name: "MacMoshHostTests", dependencies: ["MacMoshKit"]),
     ]
