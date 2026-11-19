@@ -93,6 +93,7 @@ Design: `superpowers/specs/2026-11-18-macmosh-v1-design.md`. Plan: `superpowers/
 | 09:40 | GitHub | agent | Opened and merged PR #2 with the plan | The plan is on `main`. |
 | 09:42 to 09:45 | GitHub | agent | Filed the issues with `gh issue create --parent … --blocked-by …`: one per task, plus a parent | 37 issues. #3 is the parent, and task N is issue N+3. Each says what it delivers, when it is done and what it waits on; GitHub shows the "blocked by" links. The four that need Shariq are labelled `needs Shariq`. |
 | | | | A small lesson | Every issue text went through the local editing pass. For the parent issue the edit changed a fact: it said Shariq would write the steps for the app tasks, when the build agent does. The check that compares the edit with the original flagged it, and the original wording stayed. |
+| 09:54 | MBP | agent | Task 1: built the Swift package (`MacMoshKit` library, `macmosh` command), `scripts/check.sh` and the CI workflow for macOS 15 and macOS 26, test first | `swift test` passes (2 tests) and `swift run macmosh --version` prints `0.1.0`. The local Swift is 6.4.2, newer than the CI images, so CI is the real check that the package builds on `macos-15`. |
 
 ## Shot list (video)
 
