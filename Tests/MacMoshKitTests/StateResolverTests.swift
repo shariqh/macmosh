@@ -119,6 +119,12 @@ private let silence = ProbeSet(main: .timedOut, home: .timedOut, local: nil)
         #expect(resolve(probes) == .notSetUp(.unreadableReport))
     }
 
+    @Test func anAnswerWithoutAReportIsUnreadable() {
+        // ssh got through, and the caller has no report to show for it: never guess a state.
+        let probes = ProbeSet(main: .ok(stdout: "macmosh-host\t1\t0.1.0\n"), home: nil, local: nil)
+        #expect(resolve(probes, status: nil) == .notSetUp(.unreadableReport))
+    }
+
     // MARK: rules 5 to 7: a report
 
     @Test func nobodyAtTheConsoleIsWaitingForLogin() {
