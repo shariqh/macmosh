@@ -142,6 +142,13 @@ private func versionLine(in text: String) -> String {
         #expect(!s.definitions[1].reopen)
     }
 
+    @Test func extraFieldsAfterTheCommandStayInTheCommand() throws {
+        // The script never writes a tab into a command, but a reader must not cut one off if it appears.
+        let s = try HostStatus.parse(report([["def", "a", "0", "0", "/tmp", "echo", "hi"]]))
+        #expect(s.definitions[0].folder == "/tmp")
+        #expect(s.definitions[0].command == "echo\thi")
+    }
+
     @Test func macOS15CannotUnlockOverSSH() {
         #expect(!OSSupport.canUnlockOverSSH(osVersion: "15.6", arch: "arm64"))
         #expect(!OSSupport.canUnlockOverSSH(osVersion: "25.9", arch: "arm64"))
