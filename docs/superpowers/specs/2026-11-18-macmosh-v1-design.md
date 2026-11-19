@@ -125,9 +125,9 @@ The icon shows state by shape as well as colour, so it reads in a monochrome men
 | State | What it means | How MacMosh knows | What you can do |
 |---|---|---|---|
 | **Ready** | Logged in, desks available, sign-ins working | ssh works, someone is logged in at the Mac, the desk server is running and can read the keychain | Open desks, share screen, restart |
-| **Ready, sign-ins off** | Desks work, but tools that keep logins in the keychain look signed out | As above, but the keychain check fails. "Sign-ins working" means only this: desks can use the keychain | "Fix…" restarts the desk server from the login session |
-| **Waiting for login** | The Mac is on and unlocked, but nobody has logged in | ssh works with your key at the home address, and no one is logged in at the screen | Log in with Screen Sharing |
-| **Locked** | Restarted, disk still locked | The home address answers on the ssh port but refuses your key (only passwords work before unlock [11]) | Unlock disk |
+| **Ready, sign-ins off** | Desks work, but tools that keep logins in the keychain look signed out | As above, but the keychain check fails. "Sign-ins working" means only this: desks can use the keychain | "Fix…" explains the likely cause and offers to restart the desk server. It lists the desks that would close and asks first; it never restarts by itself |
+| **Waiting for login** | The Mac is on and unlocked, but nobody has logged in | ssh works with MacMosh's key at the home address, and no one is logged in at the screen | Log in with Screen Sharing |
+| **Locked** | Restarted, disk still locked | The home address answers on the ssh port but offers password sign-in only (keys can't work before the unlock [11]). Section 7.6 has the detail | Unlock disk |
 | **Can't verify it** | Something answers at the workhorse's address with a different key | ssh reports a host-key mismatch | Stop. Don't type a password. Check or unlock at the Mac |
 | **Can't reach it** | Off, asleep, no network, or locked while you are away | Nothing answers | Read the likely reason |
 
@@ -146,7 +146,7 @@ Part B happens on the daily Mac, in the app:
 
 1. **Choose the workhorse.** Pick it from the list of your Tailscale devices, or type an address.
 2. **Check it's the right Mac.** The app shows the workhorse's key fingerprint and the one command to compare it at the workhorse.
-3. **Pair.** A terminal tab opens and asks for the workhorse's password once. This installs your ssh key there. If you have no ssh key, the app creates one first.
+3. **Pair.** A terminal tab opens and asks for the workhorse's password once. This installs MacMosh's own ssh key there. The app creates that key the first time you add a Mac.
 4. **Prepare.** The app runs the checks in section 7.5 and fixes what it can. Anything that needs the Mac's password opens a terminal tab with the command already typed.
 5. **Make the first desk** and open it.
 6. Recommended: **practise a restart** now, so you know recovery works before you need it.
@@ -248,7 +248,7 @@ When the menu opens a terminal tab, the tab runs a `macmosh` subcommand, never a
 | Subcommand | What it does in the tab |
 |---|---|
 | `macmosh connect <workhorse> <desk>` | Names the tab after the desk, then starts mosh (or ssh, or Tabs mode) into the desk |
-| `macmosh pair <user@address>` | Shows the key fingerprint, then installs your ssh key (you type the password once) |
+| `macmosh pair <user@address>` | Shows the workhorse's key fingerprint, then installs MacMosh's ssh key there (you type the password once) |
 | `macmosh unlock <workhorse>` | Connects to the home address so you can type the password that unlocks the disk |
 | `macmosh restart <workhorse>` | Lists the desks that will close, then runs `sudo fdesetup authrestart` over ssh |
 | `macmosh power <workhorse> …` | Shows the exact `pmset` command, then runs it with `sudo` over ssh |
@@ -290,7 +290,7 @@ On the daily Mac:
 |---|---|
 | mosh is installed | Auto: `brew install mosh`. If Homebrew is missing: instructions |
 | A terminal is chosen (iTerm2 if installed, otherwise Terminal) | Info |
-| An ssh key exists | Auto: create an `ed25519` key |
+| MacMosh's own ssh key exists | Auto: create `~/.ssh/macmosh_ed25519` |
 | MacMosh may open terminal tabs | macOS asks once per terminal app (Automation permission [6][21]) |
 | MacMosh may reach the home network | macOS asks once (Local Network permission, macOS 15 and later [20]) |
 | Tailscale is connected | Info, with a link. Optional |
@@ -301,7 +301,7 @@ On the workhorse:
 |---|---|
 | Remote Login is on | At the workhorse |
 | Screen Sharing is on | At the workhorse |
-| Your ssh key is accepted | Password tab: `macmosh pair` |
+| MacMosh's ssh key is accepted | Password tab: `macmosh pair` |
 | macOS version and chip | Info. Decides whether restart recovery over ssh is offered |
 | Homebrew, mosh and tmux are installed | Auto for mosh and tmux. Homebrew's own installer runs in a password tab |
 | `macmosh-host` and the login agent are installed and current | Auto. The files are copied over ssh into the user's home folder; running it again is safe, and the version line in the script decides whether to replace it |
@@ -319,7 +319,9 @@ The checklist can be run again at any time from Settings.
 
 - Each workhorse has a **main address** (what you chose in Add a Mac, normally its Tailscale name) and a **home address** (its home-network IP, read from the status report and kept up to date).
 - MacMosh keeps the workhorse's ssh host key in its own file and checks **both** addresses against that one key, with strict checking on. If the key doesn't match, ssh refuses, and the app tells you to stop and unlock at the Mac. This matters most at the unlock step, where you type the disk password.
-- MacMosh uses the system `ssh` and your normal ssh keys and settings. It adds options on the command line and leaves `~/.ssh/config` and `~/.ssh/known_hosts` alone.
+- **MacMosh has its own ssh key:** `~/.ssh/macmosh_ed25519`, an `ed25519` key with no passphrase, readable only by you, used for nothing else. Status checks run in the background with nobody there to type a passphrase, so a key that needs one would make every check fail. A key of its own can also be revoked without touching your other keys, and "Remove MacMosh" can delete exactly that one line from the workhorse. The key is as safe as your daily Mac's login and disk encryption, and the security section says so. An advanced setting lets you name a different key; if that key isn't usable, the app says "your ssh key is locked", which is a different message from "Locked".
+- **Telling Locked apart.** The first choice of signal is the list of sign-in methods the workhorse offers: before the unlock it can't offer keys at all [11]. Section 9, item 6 records exactly what the locked screen offers. The fallback signal is "this key worked before and is refused now". The app never shows Locked just because a key is missing or unusable on the daily Mac.
+- MacMosh uses the system `ssh` and your ssh settings. It adds options on the command line and leaves `~/.ssh/config` and `~/.ssh/known_hosts` alone.
 - A reserved address on the router makes the home address stable across restarts. The app explains how, and that the Mac's "Private Wi-Fi Address" setting must be Fixed or Off for a reservation to hold [27]. This is advice, not a requirement: in most homes the address survives a restart anyway.
 - The home address can only be refreshed while the workhorse is up. If the router hands out a different address during a restart, the last known one stops answering. MacMosh then tries the workhorse's local network name (`name.local`), which it also records. Whether that name answers before the disk is unlocked is not known (section 9, item 6). If neither answers, the state is "Can't reach it", the hint says the address may have changed, and the fix is to unlock at the Mac and reserve the address.
 - If the key offered at the workhorse's address ever differs from the pinned one, including at the locked screen, the state is "Can't verify it" and no unlock button is offered. One report says the key can differ before the unlock; it did not on the MacBook Pro (section 8.3). Section 9, item 6 settles it. If Apple's locked screen turns out to use a second key, the design changes to pin that key during "practise a restart", at the Mac, never by trusting it over the network.
@@ -368,9 +370,9 @@ Everything is in the user's home folder. Nothing needs root, and nothing listens
 | `~/.macmosh/desks.tsv` | Desk definitions |
 | `~/.macmosh/host.log` | What the script did, with times |
 | `~/Library/LaunchAgents/io.github.shariqh.macmosh.host.plist` | The login agent |
-| One line in `~/.ssh/authorized_keys` | Your key, added by `ssh-copy-id` during pairing |
+| One line in `~/.ssh/authorized_keys` | MacMosh's key, added by `ssh-copy-id` during pairing |
 
-"Remove MacMosh from this workhorse" deletes the first five, offers to remove the key, and lists any power setting it changed so you can put it back. Desks that are open keep running until you close them.
+"Remove MacMosh from this workhorse" deletes the first five, removes MacMosh's line from `authorized_keys`, and lists any power setting it changed so you can put it back. Desks that are open keep running until you close them.
 
 ### 7.12 What the daily Mac needs
 
@@ -382,6 +384,21 @@ Everything is in the user's home folder. Nothing needs root, and nothing listens
 | Tailscale | Optional | Reaching the workhorse from anywhere |
 
 The workhorse needs macOS 15 or later on Apple silicon for the Homebrew tools [23]. Restart recovery over ssh also needs macOS 26 or later [10]. A workhorse on macOS 15 can still be added and used: the app hides the unlock button and says to unlock at the Mac after a restart. Intel Macs may work but are not tested.
+
+### 7.13 Next to the hand-built setup
+
+Shariq's MacBook Pro already has the hand-built version: a login agent, a tmux server on the default socket with live sessions, the `rc-servers` loop, and `rmosh` on the Air. MacMosh runs beside it and takes nothing over.
+
+- MacMosh's desks are in their own tmux server, so the existing sessions are never touched, moved or closed.
+- The old login agent, `rc-servers` and `rmosh` keep working. They belong to dev-setup; MacMosh's build never edits or removes them.
+- Moving over is one desk at a time, when Shariq chooses: finish or pause the work in an old session, then open the same project as a MacMosh desk.
+- Retiring the old pieces is a later, separate decision in dev-setup.
+
+### 7.14 Testing without touching live work
+
+- `macmosh-host` takes its folder and its tmux socket name from two environment variables. Tests run it in a temporary folder with a throwaway socket, on the build machine and in CI. They never touch `~/.macmosh`, the `macmosh` socket or the default tmux socket.
+- The engine's tests use recorded command output, not a live workhorse.
+- Anything on the real Macs (installing the script and login agent, the tests in section 9, a restart) happens only in a sitting Shariq has agreed to. A restart ends every session on the MacBook Pro, including the build agent's own if it runs there, so the plan saves its state first and says how to resume.
 
 ## 8. Facts this rests on
 
@@ -475,10 +492,10 @@ Results go in the build log. A failed test changes the design before code depend
 ## 10. Security and privacy
 
 - **Transport:** the system's OpenSSH, and mosh, over Tailscale or the home network. MacMosh adds no network service on either Mac.
-- **Sign-in:** your ssh key for everything routine. Passwords only where macOS requires one, typed by you into ssh, `sudo` or Screen Sharing.
+- **Sign-in:** MacMosh's own ssh key for everything routine. It has no passphrase, so anyone who can use your daily Mac's account can open a shell on the workhorse; the daily Mac's login and FileVault are what protect it. Passwords only where macOS requires one, typed by you into ssh, `sudo` or Screen Sharing.
 - **Host identity:** one pinned key per workhorse, checked on both addresses, strict checking always on.
 - **Root:** MacMosh never runs as root on either Mac. The only root commands are the `pmset` and `fdesetup authrestart` lines you run yourself in a password tab.
-- **Stored on the daily Mac:** the list of workhorses (names, addresses, user names, settings) and their host keys, in `~/Library/Application Support/MacMosh/`. No secrets.
+- **Stored on the daily Mac:** the list of workhorses (names, addresses, user names, settings) and their host keys, in `~/Library/Application Support/MacMosh/`, and MacMosh's ssh key in `~/.ssh/`. No passwords.
 - **Network calls the app makes:** ssh to your workhorses, and the local `tailscale` command. Nothing else. No update check in v1.
 - **Open source:** the script that runs on the workhorse is plain shell, so anyone can read what it does.
 
@@ -487,6 +504,8 @@ Results go in the build log. A failed test changes the design before code depend
 - **Licence:** MIT.
 - **Signing:** a Developer ID certificate, the hardened runtime, notarization and stapling, which is what Apple requires for an app that opens without a warning [24]. Without it, macOS 15 and later make the user go to System Settings > Privacy & Security > Open Anyway [24]. A Developer ID certificate is already in the keychain on the MacBook Pro (question 1 in section 15). The Apple Developer Program costs $99 a year, and Apple waives the fee only for nonprofits, schools and governments [24].
 - **Releases** are built, signed and notarized on Shariq's Mac by a script, so the certificate never leaves it. CI only builds and runs tests.
+- **The app is signed with the chosen certificate from its first development build.** macOS ties the Automation and Local Network permissions to the signature, so a build signed differently each time would keep asking again. The engine, the command and the SwiftBar prototype don't need the certificate, so phases 0 to 2 don't wait on question 1.
+- **Phase 4 needs the repo public.** A release download and a Homebrew tap only work from public repositories. Making the repo public, creating the tap and publishing a release are each asked of Shariq first.
 - **Downloads:** a GitHub release.
 - **Homebrew:** a cask in Shariq's own tap (`brew install --cask shariqh/tap/macmosh`). A personal tap has no popularity threshold; the main cask repository asks for 90 forks, 90 watchers or 225 stars when the author submits their own app [23]. Since Homebrew 6.0, a third-party tap has to be trusted before Homebrew will load it (`brew trust`), so the README gives the exact commands, checked at release time [23]. The cask depends on the mosh formula [23].
 - **Other people's software:** MacMosh runs mosh (GPL-3) and tmux (ISC) as separate programs that Homebrew installs. It doesn't include them.
@@ -510,6 +529,13 @@ Each phase ends with something Shariq tries on his own Macs. The implementation 
 | 4 | Signing, notarization, the release script, the Homebrew tap, the README and guides | A fresh install from the README works on the Air |
 | 5 | Launch material from the build log | An outline for the post and the video |
 
+How the plan handles the tests in phase 0:
+
+- The whole of v1 is planned now, as one issue per PR-sized task.
+- Phase 1 work that depends on no test (the list of workhorses, reading the status report, the command's skeleton, the script's tests) starts alongside phase 0.
+- Each task that depends on a test names it and says what to do if the test failed: stop and bring the choice to Shariq, not work around it.
+- Phases 3 to 5 are filed as issues now and checked again after Shariq's review of the prototype, because that review is meant to change them.
+
 v1 is done when Shariq runs his day from the native app, has recovered from a real restart using only its buttons, and a fresh setup following only the README works.
 
 ## 13. Decisions
@@ -529,21 +555,24 @@ v1 is done when Shariq runs his day from the native app, has recovered from a re
 
 ### Calls the agent made, for Shariq to check
 
-1. **The app runs only on the daily Mac.** The workhorse gets a script and a login agent, not an app (section 6).
-2. **The prototype uses the real engine**, written in Swift, not a throwaway script (section 6).
-3. **Desks get their own tmux server** on a separate socket, so nothing can start it the wrong way and your own tmux is untouched (section 7.3).
-4. **Every terminal tab runs a `macmosh` subcommand** (section 7.2).
-5. **Both iTerm2 and Apple's Terminal are supported**, so a new user needs nothing beyond mosh.
-6. **Tailscale is recommended, not required.** At home, MacMosh works with a home-network address alone.
-7. **The word "desk"** for a persistent terminal session, carried over from the hand-built setup's notes.
-8. **Startup desks and keep-running commands** are in v1, as the generic form of "services that restart themselves". Keep-running is the first thing to cut.
-9. **A "practise a restart" step** in setup.
-10. **Notifications** when the workhorse's state changes or it goes on battery.
-11. **No automatic updates and no telemetry** in v1.
-12. **The app never links to a shop.** The affiliate link lives on Shariq's own site (section 7.10).
-13. **Releases are signed on Shariq's Mac**, not in CI.
-14. **macOS 15 is the minimum** on both Macs.
-15. **The relay for unlocking from away is a guide and a status light**, not something the app sets up.
+1. **MacMosh has its own ssh key with no passphrase**, so background checks always work and the key can be revoked on its own. This is the one security trade-off in the list (section 7.6).
+2. **The app runs only on the daily Mac.** The workhorse gets a script and a login agent, not an app (section 6).
+3. **The prototype uses the real engine**, written in Swift, not a throwaway script (section 6).
+4. **Desks get their own tmux server** on a separate socket, so nothing can start it the wrong way and your own tmux is untouched (section 7.3).
+5. **Every terminal tab runs a `macmosh` subcommand** (section 7.2).
+6. **Both iTerm2 and Apple's Terminal are supported**, so a new user needs nothing beyond mosh.
+7. **Tailscale is recommended, not required.** At home, MacMosh works with a home-network address alone.
+8. **The word "desk"** for a persistent terminal session, carried over from the hand-built setup's notes.
+9. **Startup desks and keep-running commands** are in v1, as the generic form of "services that restart themselves". Keep-running is the first thing to cut.
+10. **A "practise a restart" step** in setup.
+11. **Notifications** when the workhorse's state changes or it goes on battery.
+12. **No automatic updates and no telemetry** in v1.
+13. **The app never links to a shop.** The affiliate link lives on Shariq's own site (section 7.10).
+14. **Releases are signed on Shariq's Mac**, not in CI.
+15. **macOS 15 is the minimum** on both Macs.
+16. **The relay for unlocking from away is a guide and a status light**, not something the app sets up.
+17. **MacMosh runs beside the hand-built setup** and never takes it over (section 7.13).
+18. **The Locked state never comes from a missing key**, and "Fix…" never closes desks without asking (sections 5.2 and 7.6).
 
 ## 14. Left to the builder
 
@@ -558,10 +587,12 @@ v1 is done when Shariq runs his day from the native app, has recovered from a re
 
 ## 15. Questions for Shariq
 
-1. **Signing.** The only Developer ID certificate on the MacBook Pro belongs to a company account, not to you personally. Sign MacMosh with it, or with a personal Developer ID (a separate $99 a year [24])?
-2. **Two test sittings on your Macs** (section 9): about 45 minutes each, the second with a restart of the MacBook Pro and the lid-closed test. OK to plan them as the first tasks?
-3. **The affiliate link.** Amazon's rules keep it out of the app. Are you happy for it to live on your blog or video page instead, and do you have (or want) an Amazon Associates account?
-4. **The v1 list** in section 4 and the calls in section 13: anything to cut or add?
+1. **Signing.** The only Developer ID certificate on the MacBook Pro belongs to a company account, not to you personally. Sign MacMosh with it, or with a personal Developer ID (a separate $99 a year [24])? This is needed before phase 3, not before.
+2. **Your Macs.** Two things need your go-ahead:
+   - installing MacMosh's script and login agent on the MacBook Pro, beside what is there now (section 7.13);
+   - two test sittings of about 45 minutes each (section 9), the second with a restart of the MacBook Pro and the lid-closed test.
+3. **The affiliate link.** Amazon's rules keep it out of the app. Are you happy for it to live on your blog or video page instead, and do you have (or want) an Amazon Associates account? This doesn't hold up the build.
+4. **The v1 list** in section 4 and the calls in section 13: anything to cut, add or change? The first call, the ssh key with no passphrase, is the one to look at hardest.
 
 ## 16. Sources
 

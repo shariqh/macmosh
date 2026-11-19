@@ -64,7 +64,10 @@ Design: `superpowers/specs/2026-11-18-macmosh-v1-design.md`. Plan: `superpowers/
 | | | | macOS privacy | From macOS 15 an app needs the Local Network permission to reach an address on the home network, and an `ssh` it starts counts as the app. Tools run from Terminal are exempt. |
 | ≈18:09 | MBP | agent | Wrote the design: `docs/superpowers/specs/2026-11-18-macmosh-v1-design.md` | The main calls: the app runs only on the daily Mac; the workhorse gets one readable shell script and a login agent; desks live in their own tmux server so nothing can start it the wrong way; every terminal tab runs a `macmosh` subcommand; the prototype uses the real engine. Nine things are listed to test on the real Macs before code depends on them. |
 | ≈18:10 | MBP | agent | First-pass read of the design by the local model on the homelab box (`ask.sh`) | Twelve points, five worth fixing. The best one: if the router hands the workhorse a different address during a restart, the app can't find it while it is locked. The design now also remembers the Mac's `.local` name, and says to reserve the address. |
-| 18:11 | MBP | agent | Builder check: a fresh reader, with no context, reads the design as someone who has to plan the build | Waiting for it. |
+| 18:11 | MBP | agent | Builder check: a fresh reader, with no context, reads the design as someone who has to plan the build | Five questions came back. Two were the agent's to settle, three are Shariq's. |
+| | | | The best catch | The first draft told "locked after a restart" by "the Mac refuses my ssh key". But a key with a passphrase that isn't loaded is refused too, so the app would have shown Locked, and offered an unlock, for a disk that wasn't locked. Now MacMosh has an ssh key of its own with no passphrase, and Locked is decided by what sign-in methods the Mac offers. |
+| | | | The second catch | "Sign-ins off → Fix" would have restarted the desk server, which closes every open desk. It now lists the desks and asks first. |
+| | | | Also settled | MacMosh runs beside the hand-built setup on the MacBook Pro and takes nothing over. Tests run against a throwaway tmux socket, never the live one. |
 
 ## Shot list (video)
 
