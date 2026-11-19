@@ -1,0 +1,2 @@
+Load key "/Users/alex/.ssh/other_ed25519": incorrect passphrase supplied to decrypt private key
+alex@workhorse: Permission denied (publickey).
