@@ -49,6 +49,7 @@ private let alexPaths = Paths(supportDir: URL(fileURLWithPath: "/Users/alex/Libr
             "-o", "IdentityAgent=none",
             "-o", "BatchMode=yes",
             "-o", "ConnectTimeout=5",
+            "-o", "LogLevel=INFO",
         ]
         #expect(SSHInvocation.options(for: w, paths: alexPaths, batch: true) == pin + rest)
     }
@@ -58,9 +59,19 @@ private let alexPaths = Paths(supportDir: URL(fileURLWithPath: "/Users/alex/Libr
         let o = SSHInvocation.options(for: w, paths: alexPaths, batch: false)
         #expect(!o.contains("BatchMode=yes"))
         #expect(!o.contains("ConnectTimeout=5"))
+        #expect(!o.contains { $0.hasPrefix("LogLevel") })
         let pin: [String] = SSHInvocation.hostKeyOptions(for: w, paths: alexPaths)
         let rest: [String] = ["-o", "IdentitiesOnly=yes", "-i", "/Users/alex/.ssh/macmosh_ed25519", "-o", "IdentityAgent=none"]
         #expect(o == pin + rest)
+    }
+
+    /// classify reads ssh's messages, and a quieter LogLevel in the user's ssh settings would hide them.
+    @Test func batchChecksForceTheDefaultLogLevel() {
+        for identityFile in [nil, "/Users/alex/.ssh/work_ed25519"] {
+            let o = SSHInvocation.options(for: .sample(id: "mbp", identityFile: identityFile), paths: alexPaths, batch: true)
+            #expect(Array(o.suffix(6)) == ["-o", "BatchMode=yes", "-o", "ConnectTimeout=5", "-o", "LogLevel=INFO"])
+        }
+        #expect(!SSHInvocation.sshStringForMosh(for: .sample(id: "mbp"), paths: alexPaths).contains("LogLevel"))
     }
 
     @Test func aCustomIdentityKeepsTheAgent() {
@@ -106,6 +117,7 @@ private let alexPaths = Paths(supportDir: URL(fileURLWithPath: "/Users/alex/Libr
         #expect(lines.contains("globalknownhostsfile /dev/null"))
         #expect(lines.contains("hostkeyalias macmosh-mbp"))
         #expect(lines.contains("stricthostkeychecking true"))
+        #expect(lines.contains("loglevel INFO"))
         #expect(lines.contains("identityfile " + paths.defaultIdentity.path))
     }
 
@@ -149,15 +161,29 @@ private let alexPaths = Paths(supportDir: URL(fileURLWithPath: "/Users/alex/Libr
                                       remote: SSHInvocation.hostCommand(["status"]))
         let options: [String] = SSHInvocation.options(for: w, paths: alexPaths, batch: true)
         let expected: [String] = ["ssh"] + options + SSHInvocation.noPasswordOptions
-            + ["-t", "alex@192.168.1.20", "~/.macmosh/macmosh-host status"]
+            + ["-t", "--", "alex@192.168.1.20", "~/.macmosh/macmosh-host status"]
         #expect(argv == expected)
     }
 
     @Test func emptyRemoteIsAnInteractiveLogin() {
         let w = Workhorse.sample(id: "mbp", user: "alex")
         let argv = SSHInvocation.argv(for: w, address: "workhorse", paths: alexPaths, batch: false, tty: false, remote: [])
-        #expect(argv.last == "alex@workhorse")
+        #expect(Array(argv.suffix(2)) == ["--", "alex@workhorse"])
         #expect(!argv.contains("-t"))
+    }
+
+    /// `--` ends ssh's options, so a user name that starts with `-` is never read as one.
+    @Test func theDestinationCanNeverBeReadAsAnOption() async throws {
+        let paths = try temporaryPaths()
+        let w = Workhorse.sample(id: "mbp", user: "-oProxyCommand=touch /tmp/macmosh-test-never")
+        let argv = SSHInvocation.argv(for: w, address: "192.168.1.20", paths: paths, batch: true, tty: false, remote: [])
+        let dashes = try #require(argv.firstIndex(of: "--"))
+        #expect(argv[dashes + 1] == "-oProxyCommand=touch /tmp/macmosh-test-never@192.168.1.20")
+        #expect(argv.count == dashes + 2)
+        // ssh -G prints the settings it would use and opens no connection.
+        let r = await ProcessRunner().run("/usr/bin/ssh", ["-F", "/dev/null", "-G"] + Array(argv.dropFirst()),
+                                          environment: [:], stdin: nil, timeout: .seconds(10))
+        #expect(!r.stdout.split(separator: "\n").contains { $0.hasPrefix("proxycommand ") && $0.contains("touch") })
     }
 
     @Test func hostCommandQuotesEachArgumentOnce() {
