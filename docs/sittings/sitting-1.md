@@ -7,7 +7,6 @@ Nothing here restarts the MacBook Pro, logs it out, or changes a power, sleep, o
 ## What you need
 
 - The MacBook Air (the "Air").
-- The MacBook Pro's login password. ssh asks for it, not the helper. The helper never sees it.
 - About 45 minutes.
 - iTerm2 on the Air, for item 4.
 
@@ -24,12 +23,12 @@ Open SwiftBar once from Applications. If it asks for a plugin folder, make a fol
 
 ## Start the helper
 
-Open iTerm2 on the Air. Then run these. Put your login name and the MacBook Pro's name or address where the angle brackets are:
+Open iTerm2 on the Air. Then run these. Where the angle brackets are, put the name you ssh to the MacBook Pro with. It is the same name you give `rmosh`.
 
 ```
 cd macmosh
-scripts/sitting-1.sh --dry-run <you>@<workhorse>
-scripts/sitting-1.sh <you>@<workhorse>
+scripts/sitting-1.sh --dry-run <the name you ssh to the MacBook Pro with>
+scripts/sitting-1.sh <the name you ssh to the MacBook Pro with>
 ```
 
 The first run is a dry run. It only prints what the helper would do, so you can read it. It runs nothing and makes no files. The second run is the real one.
@@ -40,7 +39,9 @@ At each step the helper shows a command and waits. Press Enter to run it, or typ
 
 If a step fails, the helper carries on. A failure is a result. Write down what you saw and go on.
 
-The helper keeps one ssh connection open, so ssh asks for the password once at the start. mosh and the item 4 loop make their own connections, so they ask again.
+If ssh asks for a password, type the MacBook Pro's login password. With your own ssh key set up, as it is today, it won't ask. The helper never sees a password.
+
+The helper's first step runs `ssh -G` on that name. It prints the real host name, port and user from your ssh config and opens no connection. Two later steps need the real host name. The helper keeps one ssh connection open for most steps. mosh and the item 4 loop make their own.
 
 If ssh asks "Are you sure you want to continue connecting?", type `yes` only if you expect this Mac. If ssh warns that a host key has changed, stop and tell the build agent.
 
@@ -60,9 +61,9 @@ If ssh asks "Are you sure you want to continue connecting?", type `yes` only if 
 
 **What it tests.** MacMosh will open terminal tabs for you. macOS asks permission when one app controls another. Which way of opening a tab works best in iTerm2 and in Terminal, and what do the prompts say?
 
-**What to run.** The helper's item 2 steps. Each one opens a tab that prints `hello from macmosh` and waits for Enter. The first three use AppleScript (macOS's built-in way for one app to drive another). The last two open a small `.command` file, which is the fallback when permission is refused. Press Enter in each new tab, and close it.
+**What to run.** The helper's item 2 steps. First it writes a small stand-in script, `~/macmosh-sitting-1/fake-macmosh`. It stands in for the `macmosh` command and prints `hello from macmosh:` and its arguments, sets the tab's title to its third argument, and waits for Enter. Each later step opens a tab that runs the line `<path to fake-macmosh> connect mbp website`. That is the shape MacMosh will really use, so it tests more than `echo` would. The first three use AppleScript (macOS's built-in way for one app to drive another). The last two open a small `.command` file, which is the fallback when permission is refused. Press Enter in each new tab, and close it.
 
-**What you should see.** A tab opens and shows the text. macOS may ask something like "iTerm2 wants to control Terminal". **Copy the exact words** of each prompt, including the button names, into your answer. Note which form opened a tab in an existing window and which opened a new window.
+**What you should see.** After each step the helper asks three things. Did a tab or a new window open? Did it show `hello from macmosh: connect mbp website`? Is the tab's title `website`? macOS may ask something like "iTerm2 wants to control Terminal". **Copy the exact words** of each prompt, including the button names, into your answer. Note which form opened a tab in an existing window and which opened a new window.
 
 **If it fails.** If you click Don't Allow, write down what happened and go on. Macs remember that answer, so the next steps may fail without asking again. That is useful to know, so write it down.
 
@@ -72,7 +73,7 @@ If ssh asks "Are you sure you want to continue connecting?", type `yes` only if 
 
 **What to run.** The helper's item 3 steps:
 
-1. It saves the workhorse's host key under the name `macmosh-sitting`, in `~/Library/Application Support/MacMosh/sitting/`. The folder name has a space in it, on purpose.
+1. It saves the workhorse's host key under the name `macmosh-sitting`, in `~/Library/Application Support/MacMosh/sitting/`. It uses the real host name and port from `ssh -G`, because `ssh-keyscan` does not read your ssh config. The folder name has a space in it, on purpose.
 2. It opens the `probe` desk with mosh. Inside, type the `ps` line the helper prints, then press Ctrl-b, let go, and press `d`. That line looks for the one-week setting in mosh's environment on the workhorse.
 3. It reads that line back.
 4. It makes a throwaway test key and runs `ssh-copy-id -n`, a dry run that prints the key it would install and installs nothing.
@@ -85,9 +86,9 @@ If ssh asks "Are you sure you want to continue connecting?", type `yes` only if 
 
 **What it tests.** iTerm2 can show each desk as its own tab ("Tabs mode"). When Wi-Fi drops, will a retry loop bring the tabs back without help?
 
-**What to run.** The helper's item 4 step. Run it from iTerm2. Type the password when asked. When the tabs appear, turn Wi-Fi off for 20 seconds, then on again. Watch the tab where the helper is running.
+**What to run.** The helper's item 4 step. Run it from iTerm2. When the tabs appear, turn Wi-Fi off for 20 seconds, then on again. Watch the tab where the helper is running.
 
-**What you should see.** The loop prints "Connection lost. Trying again in 3 seconds..." and tries again. ssh asks for the password again, because no key is installed yet. Type it. The tabs come back.
+**What you should see.** The loop prints "Connection lost. Trying again in 3 seconds..." and tries again. The tabs come back by themselves, without you typing anything. If ssh does ask for a password, type the MacBook Pro's login password, and write down that it asked.
 
 To finish, press Esc in the first tab, or choose Shell > tmux > Detach. Ctrl-C ends the loop.
 
@@ -121,7 +122,7 @@ Keep `~/macmosh-sitting-1` until the build agent confirms it has the file. After
 You don't need to. If you want the script and login agent gone, run this on the Air. No key was installed this sitting, so there is no key to remove.
 
 ```
-ssh <you>@<workhorse> 'launchctl bootout gui/$(id -u)/io.github.shariqh.macmosh.host; rm ~/Library/LaunchAgents/io.github.shariqh.macmosh.host.plist; rm -r ~/.macmosh'
+ssh <the name you ssh to the MacBook Pro with> 'launchctl bootout gui/$(id -u)/io.github.shariqh.macmosh.host; rm ~/Library/LaunchAgents/io.github.shariqh.macmosh.host.plist; rm -r ~/.macmosh'
 ```
 
 That unloads the login agent, deletes its file, and deletes the `~/.macmosh` folder. The tmux server and any open desk keep running until you close them or the Mac restarts.

@@ -1,8 +1,8 @@
 #!/bin/bash
 # sitting-1.sh: walks through the five short tests of "sitting 1" and records what happened.
 # Run it on the daily Mac (the Air), from a checkout of the macmosh repository:
-#   scripts/sitting-1.sh <user@workhorse>
-#   scripts/sitting-1.sh --dry-run <user@workhorse>     (prints every command, runs none)
+#   scripts/sitting-1.sh <destination>          (the name you ssh to the workhorse with, or user@host)
+#   scripts/sitting-1.sh --dry-run <destination>     (prints every command, runs none)
 # Plain bash 3.2 (what macOS ships at /bin/bash). It never asks for, reads or stores a password:
 # ssh and sudo ask for it themselves. Design: docs/superpowers/specs/2026-11-18-macmosh-v1-design.md, section 9.
 set -u
@@ -11,7 +11,9 @@ WORK_NAME=macmosh-sitting-1
 
 usage() {
     cat <<'EOF'
-usage: scripts/sitting-1.sh [--dry-run] <user@workhorse>
+usage: scripts/sitting-1.sh [--dry-run] <destination>
+
+<destination> is anything ssh accepts: the short name from your ssh config, or user@host.
 
 Walks you through the five tests of sitting 1. For each one it says what is about to happen,
 shows the command, waits for Enter, runs it and asks what you saw. Everything goes into
@@ -49,19 +51,27 @@ while [ $# -gt 0 ]; do
     shift
 done
 
-host_re='^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+$'
-if ! [[ $HOST =~ $host_re ]]; then
-    echo "sitting-1.sh: give the workhorse as user@host (letters, digits, dots and dashes only)." >&2
+# The destination goes into commands that a shell runs, so it must be plain: no empty name, no
+# leading dash (ssh would read it as an option), no space and no shell characters.
+dest_re='^[A-Za-z0-9._@+-]+$'
+if [ -z "$HOST" ] || [[ $HOST == -* ]] || ! [[ $HOST =~ $dest_re ]]; then
+    echo "sitting-1.sh: give the name you ssh to the workhorse with, or user@host." >&2
+    echo "It can't be empty, start with a dash, or contain a space or other special character." >&2
     usage >&2
     exit 2
 fi
-HOST_ONLY=${HOST#*@}
-USER_ONLY=${HOST%@*}
+
+# The real host name, port and user come from "ssh -G <destination>" (it opens no connection).
+# ssh-keyscan and the item 5 plugin do not read ssh's config, so they need these. The dry run
+# shows the placeholders, because it runs nothing.
+REAL_HOST="<hostname from ssh -G>"
+REAL_PORT="<port from ssh -G>"
+REAL_USER="<user from ssh -G>"
 
 # The pinned-key file goes in a folder with a space in its name, on purpose (item 3).
 case "$HOME" in
-    *[\'\"\$\`\\\&]*)
-        echo "sitting-1.sh: your home folder's path has a quote, \$, backtick, backslash or & in it. Stopping." >&2
+    *[\'\"\$\`\\\&\ ]*)
+        echo "sitting-1.sh: your home folder's path has a space, quote, \$, backtick, backslash or & in it. Stopping." >&2
         exit 2
         ;;
 esac
@@ -70,10 +80,12 @@ PIN="$PIN_DIR/known_hosts"
 WORK="$HOME/$WORK_NAME"
 RESULTS="$WORK/results.txt"
 TMP="$WORK/.step-output"
+# The stand-in for the macmosh command in item 2: an absolute path, so nothing in the line needs quoting.
+FAKE="$WORK/fake-macmosh"
 # shellcheck disable=SC2088  # the tilde is for the workhorse's shell, not this one
 REMOTE_SCRIPT='~/.macmosh/macmosh-host'
 
-# One shared ssh connection, so the password is typed once. Steps that test host-key options
+# One shared ssh connection. Steps that test host-key options
 # switch it off (ControlPath=none), because a shared connection skips the host-key check.
 # shellcheck disable=SC2016  # $HOME is meant to stay literal here; the shell that runs the step expands it
 MUX='-o ControlMaster=auto -o ControlPersist=60m -o ControlPath="$HOME/macmosh-sitting-1/cm-%C"'
@@ -95,9 +107,11 @@ ADDR=""
 PLUGDIR=""
 fill() {
     local s=$1 target
-    target="$USER_ONLY@${ADDR:-192.168.1.20}"
+    target="$REAL_USER@${ADDR:-192.168.1.20}"
     s=${s//@W@/$HOST}
-    s=${s//@H@/$HOST_ONLY}
+    s=${s//@H@/$REAL_HOST}
+    s=${s//@P@/$REAL_PORT}
+    s=${s//@FAKE@/$FAKE}
     s=${s//@M@/$MUX}
     s=${s//@R@/$REMOTE_SCRIPT}
     s=${s//@PINDIR@/$PIN_DIR}
@@ -129,6 +143,18 @@ ask() {
     if ! read -r REPLY; then
         stop_here
     fi
+}
+
+# ask_hints <questions, one per line>: asks each one and puts "question -> answer" lines in SEEN.
+ask_hints() {
+    local q
+    SEEN=""
+    while IFS= read -r q <&3; do
+        ask "  $q
+  > "
+        SEEN="${SEEN}  $q -> $REPLY"$'\n'
+    done 3<<< "$1"
+    SEEN=${SEEN%$'\n'}
 }
 
 show_cmd() {
@@ -174,8 +200,7 @@ run_step() {
         say "  That step ended with exit status $rc. It may be the result you are testing for: write down what you saw."
         say "  Carrying on."
     fi
-    ask "  $hint
-  > "
+    ask_hints "$hint"
     rec ""
     rec "-- $WHERE, step $STEP: $label"
     rec "\$ $cmd"
@@ -186,7 +211,8 @@ run_step() {
     else
         rec "(interactive step: its output was not recorded)"
     fi
-    rec "what you saw: $REPLY"
+    rec "what you saw:"
+    rec "$SEEN"
     return 0
 }
 
@@ -200,11 +226,11 @@ run_note() {
         say "    (dry run: nothing to run)"
         return 0
     fi
-    ask "  $hint
-  > "
+    ask_hints "$hint"
     rec ""
     rec "-- $WHERE, step $STEP: $label (no command)"
-    rec "what you saw: $REPLY"
+    rec "what you saw:"
+    rec "$SEEN"
 }
 
 # begin_item <number> <title> <blurb>: returns 1 when he skips the item.
@@ -259,8 +285,8 @@ MacMosh's server is separate: your own tmux sessions are never touched.
 Do not log out of the workhorse to fix a failure: that ends every running session there." || return 0
 
     run_step "Sign in once" \
-        "ssh asks for the workhorse's login password here, once. The other steps share this connection." \
-        tty "Did ssh ask for the password and then return to the prompt?" \
+        "Opens one ssh connection that the other steps share." \
+        tty "Did it return to the prompt without asking for anything? (If ssh asked for a password, say so.)" \
         'ssh @M@ @W@ true'
 
     def CMD <<'EOF'
@@ -314,13 +340,31 @@ EOF
 
 item_2() {
     begin_item 2 "Opening a tab from a script, in iTerm2 and in Terminal" \
-"Tries the ways of opening a new terminal tab that runs a command. macOS may ask for permission each time.
+"Tries the ways of opening a new terminal tab that runs a command, with the command line MacMosh will really use:
+a stand-in script, then the words connect mbp website. macOS may ask for permission each time.
 For each step, copy down the exact wording of any prompt macOS shows. Close the tabs yourself afterwards." || return 0
 
-    local hint="Write down the exact words of any macOS permission prompt (what wants to control what, and the button names). Did a tab open and show the text? New tab or new window?"
+    local hint="Did a tab or a new window open? Which?
+Did it show: hello from macmosh: connect mbp website
+Is the tab's title: website
+Write down the exact words of any macOS permission prompt, including the button names."
 
     def CMD <<'EOF'
-osascript - 'echo hello from macmosh; read' <<'APPLESCRIPT'
+cat > "@FAKE@" <<'FAKE'
+#!/bin/sh
+echo "hello from macmosh: $*"
+printf '\033]1;%s\007' "$3"
+echo "Press Enter to close this tab."
+read dummy
+FAKE
+chmod 755 "@FAKE@"
+EOF
+    run_step "Write the stand-in script" \
+        "Writes fake-macmosh. It prints hello from macmosh: and its arguments, sets the tab's title to its third argument, and waits for Enter." \
+        cap "Did it finish without an error message?" "$CMD"
+
+    def CMD <<'EOF'
+osascript - '@FAKE@ connect mbp website' <<'APPLESCRIPT'
 on run argv
     tell application "iTerm2"
         activate
@@ -336,11 +380,11 @@ end run
 APPLESCRIPT
 EOF
     run_step "iTerm2: create tab with default profile command" \
-        "Opens a tab in iTerm2's front window that runs the command, which is passed as an argument." \
+        "Opens a tab in iTerm2's front window that runs the line, which is passed as an argument. iTerm2 may start it without a shell." \
         cap "$hint" "$CMD"
 
     def CMD <<'EOF'
-osascript - 'echo hello from macmosh; read' <<'APPLESCRIPT'
+osascript - '@FAKE@ connect mbp website' <<'APPLESCRIPT'
 on run argv
     tell application "Terminal"
         activate
@@ -350,11 +394,11 @@ end run
 APPLESCRIPT
 EOF
     run_step "Terminal: do script" \
-        "Runs the command in Terminal. Note whether it opens a new window or a tab in an old one." \
+        "Runs the line in Terminal. Note whether it opens a new window or a tab in an old one." \
         cap "$hint" "$CMD"
 
     def CMD <<'EOF'
-osascript - 'echo hello from macmosh; read' <<'APPLESCRIPT'
+osascript - '@FAKE@ connect mbp website' <<'APPLESCRIPT'
 on run argv
     tell application "Terminal"
         activate
@@ -364,14 +408,14 @@ end run
 APPLESCRIPT
 EOF
     run_step "Terminal: do script in new tab" \
-        "Runs the command in a new tab of Terminal's front window. Have a Terminal window open first." \
+        "Runs the line in a new tab of Terminal's front window. Have a Terminal window open first." \
         cap "$hint" "$CMD"
 
     def CMD <<'EOF'
-printf '#!/bin/sh\necho hello from macmosh\nread dummy\n' > "$HOME/macmosh-sitting-1/hello.command" && chmod +x "$HOME/macmosh-sitting-1/hello.command" && open -a iTerm "$HOME/macmosh-sitting-1/hello.command"
+printf '#!/bin/sh\n@FAKE@ connect mbp website\n' > "$HOME/macmosh-sitting-1/hello.command" && chmod +x "$HOME/macmosh-sitting-1/hello.command" && open -a iTerm "$HOME/macmosh-sitting-1/hello.command"
 EOF
     run_step "A .command file opened with iTerm2" \
-        "Writes a small .command file and opens it with iTerm2. This is the fallback if the permission is refused." \
+        "Writes a small .command file with the same line and opens it with iTerm2. This is the fallback if the permission is refused." \
         cap "$hint" "$CMD"
 
     def CMD <<'EOF'
@@ -381,17 +425,17 @@ EOF
         "Opens the same file with Terminal." \
         cap "$hint" "$CMD"
 
-    end_item "a tab opens and shows the text, the wording of each permission prompt is written down, and you know which form opens a tab in an existing window."
+    end_item "a tab opens and shows hello from macmosh: connect mbp website, its title is website, the wording of each permission prompt is written down, and you know which form opens a tab in an existing window."
 }
 
 item_3() {
     begin_item 3 "mosh with a pinned host key and a one-week timeout" \
 "Builds a file with the workhorse's host key, then connects with mosh using that file and a timeout of one week,
-and checks the setting arrived. This step asks for the workhorse's password through mosh's own ssh.
+and checks the setting arrived.
 If the Air has no mosh, run: brew install mosh" || return 0
 
     def CMD <<'EOF'
-mkdir -p "@PINDIR@" && ssh-keyscan -t ed25519 @H@ 2>/dev/null | awk 'NF >= 3 && $1 !~ /^#/ { $1 = "macmosh-sitting"; print }' > "@PIN@" && test -s "@PIN@" && cat "@PIN@" && ssh-keygen -lf "@PIN@"
+mkdir -p "@PINDIR@" && ssh-keyscan -t ed25519 -p @P@ @H@ 2>/dev/null | awk 'NF >= 3 && $1 !~ /^#/ { $1 = "macmosh-sitting"; print }' > "@PIN@" && test -s "@PIN@" && cat "@PIN@" && ssh-keygen -lf "@PIN@"
 EOF
     run_step "Pin the workhorse's host key" \
         "Asks the workhorse for its ed25519 host key and saves it under the name macmosh-sitting, in a folder with a space in its name." \
@@ -401,7 +445,7 @@ EOF
 mosh --ssh="ssh -o HostKeyAlias=macmosh-sitting -o 'UserKnownHostsFile=\"@PIN@\"' -o StrictHostKeyChecking=yes -o ControlPath=none" --server='MOSH_SERVER_NETWORK_TMOUT=604800 PATH="$PATH:/opt/homebrew/bin:/usr/local/bin" mosh-server' @W@ -- /bin/sh -c 'exec "$HOME/.macmosh/macmosh-host" attach "$1"' macmosh-host probe
 EOF
     run_step "Open the probe desk with mosh" \
-        "mosh asks for the password, then opens the desk. Inside the desk, type this, then press Ctrl-b, let go, and press d to leave:
+        "mosh opens the desk. Inside the desk, type this, then press Ctrl-b, let go, and press d to leave:
       ps eww -o command= -p \"\$(pgrep -n mosh-server)\" | tr ' ' '\\n' | grep -a MOSH_SERVER_NETWORK_TMOUT | tee ~/.macmosh/sitting-3-ps.txt" \
         tty "Did the desk open? Was there a host-key error? Did the ps line show MOSH_SERVER_NETWORK_TMOUT=604800?" "$CMD"
 
@@ -424,7 +468,7 @@ item_4() {
     begin_item 4 "Tabs mode that reconnects by itself" \
 "Runs ssh in a retry loop, with iTerm2's tmux tabs, then you turn Wi-Fi off for 20 seconds and on again.
 Run this item from iTerm2. The loop uses the probe desk from item 1.
-No key is installed, so ssh asks for the password again each time it reconnects." || return 0
+With your own ssh key set up, nothing should need typing." || return 0
 
     if [ "$DRY" != 1 ] && [ "${TERM_PROGRAM:-}" != "iTerm.app" ]; then
         say "  This does not look like iTerm2 (TERM_PROGRAM is ${TERM_PROGRAM:-empty}). If so, skip this item and run the helper again from iTerm2."
@@ -441,10 +485,10 @@ done
 exit "$rc"
 EOF
     run_step "Attach in Tabs mode, then drop Wi-Fi" \
-        "Type the password when asked. When the iTerm2 tabs appear, turn Wi-Fi off for 20 seconds, then on. Watch the loop and the tabs. To finish: press Esc in the first tab, or choose Shell > tmux > Detach. Ctrl-C ends the loop." \
-        tty "Did the loop print Connection lost? Did it ask for the password again? Did the tabs come back?" "$CMD"
+        "When the iTerm2 tabs appear, turn Wi-Fi off for 20 seconds, then on. Watch the loop and the tabs. They should come back without you typing anything. (If ssh does ask for a password, type it, and write that down.) To finish: press Esc in the first tab, or choose Shell > tmux > Detach. Ctrl-C ends the loop." \
+        tty "Did the loop print Connection lost? Did the tabs come back by themselves? Did ssh ask for a password?" "$CMD"
 
-    end_item "the iTerm2 tabs come back after Wi-Fi returns, with nothing from you except the password."
+    end_item "the iTerm2 tabs come back after Wi-Fi returns, without you typing anything."
 }
 
 item_5() {
@@ -456,7 +500,7 @@ Open SwiftBar yourself first, and pick a plugin folder if it asks." || return 0
     if [ ! -s "$PIN" ] && [ "$DRY" != 1 ]; then
         say "  The pinned key from item 3 is missing. Building it now."
         def CMD <<'EOF'
-mkdir -p "@PINDIR@" && ssh-keyscan -t ed25519 @H@ 2>/dev/null | awk 'NF >= 3 && $1 !~ /^#/ { $1 = "macmosh-sitting"; print }' > "@PIN@" && test -s "@PIN@" && cat "@PIN@"
+mkdir -p "@PINDIR@" && ssh-keyscan -t ed25519 -p @P@ @H@ 2>/dev/null | awk 'NF >= 3 && $1 !~ /^#/ { $1 = "macmosh-sitting"; print }' > "@PIN@" && test -s "@PIN@" && cat "@PIN@"
 EOF
         run_step "Pin the workhorse's host key" \
             "Same as item 3, step 1." cap "Did it print a key?" "$CMD"
@@ -511,7 +555,7 @@ EOF
     def CMD <<'EOF'
 cat > "@PLUGDIR@/macmosh-sitting-5.10s.sh" <<'PLUGIN'
 #!/bin/bash
-out=$(/usr/bin/ssh -o BatchMode=yes -o ConnectTimeout=5 -o ControlPath=none -o HostKeyAlias=macmosh-sitting -o 'UserKnownHostsFile="@PIN@"' -o StrictHostKeyChecking=yes @T@ true 2>&1)
+out=$(/usr/bin/ssh -o BatchMode=yes -o ConnectTimeout=5 -o ControlPath=none -o HostKeyAlias=macmosh-sitting -o 'UserKnownHostsFile="@PIN@"' -o StrictHostKeyChecking=yes -p @P@ @T@ true 2>&1)
 rc=$?
 echo "ssh exit $rc"
 echo '---'
@@ -578,6 +622,40 @@ EOF
     fi
 }
 
+# The first step: what ssh knows about the destination. ssh -G reads ~/.ssh/config and opens no connection.
+setup() {
+    WHERE="Setup"
+    ITEM=0
+    STEP=0
+    rule
+    say "SETUP: what ssh knows about this destination"
+    def CMD <<'EOF'
+ssh -G @W@ | grep -E '^(hostname|port|user) '
+EOF
+    run_step "Read the real host name, port and user" \
+        "Shows the host name, port and user ssh would use for this name, from your ssh config. It opens no connection. ssh-keyscan (item 3) and the home-address test (item 5) don't read ssh's config, so they need these." \
+        cap "Do the host name, port and user look right?" "$CMD"
+    [ "$DRY" = 1 ] && return 0
+    local key value line
+    REAL_HOST=""
+    REAL_PORT=""
+    REAL_USER=""
+    while IFS=' ' read -r key value line; do
+        case "$key" in
+            hostname) REAL_HOST=$value ;;
+            port) REAL_PORT=$value ;;
+            user) REAL_USER=$value ;;
+        esac
+    done < "$TMP"
+    if ! [[ $REAL_HOST =~ ^[A-Za-z0-9._:-]+$ ]] || ! [[ $REAL_PORT =~ ^[0-9]+$ ]] || ! [[ $REAL_USER =~ ^[A-Za-z0-9._-]+$ ]]; then
+        echo "sitting-1.sh: could not read a plain host name, port and user from ssh -G $HOST. Stopping." >&2
+        exit 1
+    fi
+    say "  Using $REAL_USER at $REAL_HOST, port $REAL_PORT."
+    rec ""
+    rec "Resolved by ssh -G: user $REAL_USER, host $REAL_HOST, port $REAL_PORT"
+}
+
 # ---------------------------------------------------------------- main
 
 main() {
@@ -607,10 +685,11 @@ main() {
         rule
         say "MacMosh sitting 1. Five short tests. About 45 minutes."
         say "At each step: Enter runs it, s skips it. The helper never asks for a password."
-        say "ssh asks for the workhorse's login password itself, once at the start."
+        say "If ssh asks for a password, type the MacBook Pro's login password. With your own ssh key set up, as it is today, it won't ask."
         say "Results go to $RESULTS"
         ask "Press Enter to begin: "
     fi
+    setup
     item_1
     item_2
     item_3
