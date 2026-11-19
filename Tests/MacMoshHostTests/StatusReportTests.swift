@@ -1,7 +1,8 @@
 import Foundation
 import Testing
 
-@Suite(.serialized) struct StatusReportTests {
+extension HostScriptTests {
+@Suite struct StatusReportTests {
     @Test func reportStartsWithTheHeaderAndEndsWithEnd() throws {
         let h = try HostHarness(); defer { h.cleanUp() }
         let lines = h.run(["status"]).stdout.split(separator: "\n").map(String.init)
@@ -368,4 +369,5 @@ import Testing
         #expect(h.socket != "macmosh")
         #expect(h.shell("echo \"${TMUX-unset}${TMUX_PANE-unset}\"").stdout == "unsetunset\n")
     }
+}
 }

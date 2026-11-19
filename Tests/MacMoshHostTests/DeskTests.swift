@@ -1,7 +1,8 @@
 import Foundation
 import Testing
 
-@Suite(.serialized) struct DeskTests {
+extension HostScriptTests {
+@Suite struct DeskTests {
     private func makeFolder(_ h: HostHarness, _ name: String) throws -> URL {
         let url = h.home.appendingPathComponent(name)
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
@@ -369,4 +370,5 @@ import Testing
         #expect(h.run(["restart-server", "--yes"]).exitCode == 3)
         #expect(h.tmux(["has-session", "-t", "=d"]).exitCode == 0)
     }
+}
 }

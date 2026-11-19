@@ -1,7 +1,8 @@
 import Foundation
 import Testing
 
-@Suite(.serialized) struct AgentTests {
+extension HostScriptTests {
+@Suite struct AgentTests {
     private let agentLabel = "io.github.shariqh.macmosh.host"
 
     private func plistURL(_ h: HostHarness) -> URL {
@@ -158,4 +159,5 @@ import Testing
         #expect(FileManager.default.fileExists(atPath: h.home.appendingPathComponent(".macmosh").path))
         #expect(launchctlLog(h).isEmpty)
     }
+}
 }
