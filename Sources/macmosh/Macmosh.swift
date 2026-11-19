@@ -17,7 +17,6 @@ struct Macmosh: AsyncParsableCommand {
             RestartCommand.self,
             ScreenCommand.self,
             StatusCommand.self,
-            SwiftBarCommand.self,
             UnlockCommand.self,
         ]
     )
