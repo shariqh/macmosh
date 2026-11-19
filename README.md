@@ -19,6 +19,16 @@ It is for one person with one or two spare Macs, and it is not tied to any AI to
 - [`docs/superpowers/specs/2026-11-18-macmosh-v1-design.md`](docs/superpowers/specs/2026-11-18-macmosh-v1-design.md): the design for version 1.
 - [`docs/superpowers/plans/2026-11-19-macmosh-v1.md`](docs/superpowers/plans/2026-11-19-macmosh-v1.md): the build plan, one task per GitHub issue.
 
+## Building from source
+
+You need a Mac with Xcode installed (Swift 6 or later). To build the command and run all the checks:
+
+1. Clone the repository and open a terminal in it.
+2. Run `swift build`.
+3. Run `scripts/check.sh`. It builds, runs the tests, and checks the workhorse script with shellcheck once that script exists. It ends with `check.sh: all checks passed`.
+
+If `scripts/check.sh` complains that `shellcheck` is missing, install it with `brew install shellcheck`.
+
 ## Licence
 
 MIT. See [`LICENSE`](LICENSE).
