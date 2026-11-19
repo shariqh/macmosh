@@ -48,6 +48,9 @@ Design: `superpowers/specs/2026-11-18-macmosh-v1-design.md`. Plan: `superpowers/
 | 17:52 | MBP | agent | `launchctl managername`, run inside the tmux session this agent lives in | **Surprise:** it prints `Background`, yet this tmux can read the keychain (`gh` is signed in from it). So that command can't tell a tmux that keeps logins from one that doesn't. The app needs a different check. |
 | 17:55 | MBP | agent | Started three read-only research agents: the terminal stack (mosh, tmux, iTerm2, SwiftBar); macOS behaviour (`pmset`, FileVault, Screen Sharing, launchd); Tailscale, Homebrew, notarization, trademark and affiliate rules | Project rule: every outside fact in the design is checked against current vendor docs and cited, never taken from memory. |
 | 17:58 | MBP | agent | README stub, edited by the local unslop pass | No warnings. |
+| 17:58 | MBP | agent | `git init -b main`, first commit, then `gh repo create shariqh/macmosh --private --source . --push` | The repo exists and is **private**. It goes public only after Shariq approves the design and says yes. |
+| 18:02 | MBP and Air | agent | Looked for a read-only way to tell whether a terminal session can use the login keychain: `security show-keychain-info ~/Library/Keychains/login.keychain-db`, run inside the workhorse's tmux and again over plain SSH on the Air | **It works as a probe.** Inside the tmux that was started at login it prints `Keychain "…" no-timeout`. Over SSH it prints `User interaction is not allowed.` It reads no secret. This becomes the app's "sign-ins work" light. |
+| 18:02 | Air (over SSH) | agent | Versions on the Air | macOS 27.2.1, iTerm2 3.7.7 (the MacBook Pro has 3.6.11), mosh 1.4.0, tmux 3.8. |
 
 ## Shot list (video)
 
