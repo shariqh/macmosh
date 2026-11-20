@@ -12,6 +12,7 @@ public final class MenuRefresher: ObservableObject {
     private let gather: @Sendable ([Workhorse]) async -> [Gathered]
     private let save: @Sendable (CheckResult) -> Void
     private var refreshing = false
+    private var refreshAgain = false
     /// How many checks in a row found a workhorse that can't be reached; sets the wait in `runInBackground`.
     private var missesInARow = 0
 
@@ -29,12 +30,23 @@ public final class MenuRefresher: ObservableObject {
 
     /// Loads the list, checks every workhorse, saves what the reports changed and builds the menu.
     /// A saved list that can't be read gives a menu with the warning symbol and one line saying so.
-    /// A refresh that starts while another is still running does nothing.
+    /// Never two at once: a refresh asked for while one is running returns at once and is
+    /// remembered, and exactly one more refresh runs right after the current one, however many were
+    /// asked for. That keeps the check that follows an action from being lost to one already in flight.
     public func refresh() async {
-        if refreshing { return }
+        if refreshing {
+            refreshAgain = true
+            return
+        }
         refreshing = true
         defer { refreshing = false }
+        repeat {
+            refreshAgain = false
+            await refreshOnce()
+        } while refreshAgain
+    }
 
+    private func refreshOnce() async {
         let load = self.load
         let list: [Workhorse]
         do {

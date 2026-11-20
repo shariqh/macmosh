@@ -52,19 +52,62 @@ private final class Saved: @unchecked Sendable {
         #expect(r.menu.items.contains { $0.title == "B · Still checking…" })
     }
 
-    @Test func aRefreshWhileOneIsRunningDoesNothing() async {
-        let r = MenuRefresher(load: { [.sample()] },
-                              gather: { list in
-                                  try? await Task.sleep(for: .milliseconds(600))
-                                  return list.map { .checked(.sampleReady(id: $0.id, name: $0.name)) }
-                              },
-                              save: { _ in })
+    /// Counts gathers, how many run at once, and holds the first one open until released.
+    private final class Gate: @unchecked Sendable {
+        private let lock = NSLock()
+        private var calls = 0, running = 0, mostAtOnce = 0, open = false
+        var total: Int { lock.withLock { calls } }
+        var peak: Int { lock.withLock { mostAtOnce } }
+        var started: Bool { lock.withLock { calls > 0 } }
+        func release() { lock.withLock { open = true } }
+        func enter() -> Bool {
+            lock.withLock {
+                calls += 1; running += 1; mostAtOnce = max(mostAtOnce, running)
+                return calls == 1
+            }
+        }
+        func leave() { lock.withLock { running -= 1 } }
+        func isOpen() -> Bool { lock.withLock { open } }
+    }
+
+    private func heldRefresher(_ gate: Gate) -> MenuRefresher {
+        MenuRefresher(load: { [.sample()] },
+                      gather: { list in
+                          let first = gate.enter()
+                          defer { gate.leave() }
+                          while first && !gate.isOpen() { try? await Task.sleep(for: .milliseconds(10)) }
+                          return list.map { .checked(.sampleReady(id: $0.id, name: $0.name)) }
+                      },
+                      save: { _ in })
+    }
+
+    @Test(.timeLimit(.minutes(1))) func aRefreshWhileOneIsRunningRunsOnceMoreAfterIt() async {
+        let gate = Gate()
+        let r = heldRefresher(gate)
         async let first: Void = r.refresh()
-        try? await Task.sleep(for: .milliseconds(100))   // the first is now gathering
-        await r.refresh()   // returns at once
+        while !gate.started { try? await Task.sleep(for: .milliseconds(10)) }   // the first is now gathering
+        await r.refresh()   // returns at once, and is remembered
         #expect(r.menu.symbol == "ellipsis.circle")
+        gate.release()
         await first
+        #expect(gate.total == 2)
+        #expect(gate.peak == 1)
         #expect(r.menu.symbol == "checkmark.circle")
+    }
+
+    @Test(.timeLimit(.minutes(1))) func aRefreshAskedForDuringOneRunsOnceAfterIt() async {
+        let gate = Gate()
+        let r = heldRefresher(gate)
+        async let first: Void = r.refresh()
+        while !gate.started { try? await Task.sleep(for: .milliseconds(10)) }
+        await r.refresh()
+        await r.refresh()   // two asked for during one: still only one more
+        gate.release()
+        await first
+        #expect(gate.total == 2)
+        #expect(gate.peak == 1)
+        await r.refresh()   // nothing is left over: a later one runs once, and only once
+        #expect(gate.total == 3)
     }
 
     // MARK: background checks (Task 27)
