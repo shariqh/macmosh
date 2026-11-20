@@ -21,4 +21,12 @@ Nothing yet.
 
 ## What the agent saw
 
-Nothing yet.
+- **13:06.** Shariq opened the app on the daily Mac. It opened and stayed open. It is signed, and a file copied over ssh carries no quarantine flag, so Gatekeeper's notarization check was not expected to run. Whether macOS showed a dialog first isn't known yet.
+- **14:30.** Not paired: no MacMosh key, no saved workhorse, nothing new in the workhorse's `host.log`. The daily Mac's system log shows no `osascript` run since the app opened, so `Add a Mac…` had not opened a tab. As a control, the same log has 134 lines from `osascript` during sitting 1.
+- **The app wrote nothing of its own.** Whether the menu had left `Checking…`, and whether it had been opened or clicked, could not be read from outside. The app now keeps a log (`MenuLog`), and CI starts the app and waits for the line that means the menu loaded. To read it on the daily Mac:
+
+  ```
+  /usr/bin/log show --last 1h --predicate 'subsystem == "io.github.shariqh.macmosh"'
+  ```
+
+  `log` on its own is a zsh builtin, so the full path matters.
