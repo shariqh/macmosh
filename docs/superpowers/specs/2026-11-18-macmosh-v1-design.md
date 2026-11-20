@@ -330,9 +330,10 @@ The checklist can be run again at any time from Settings.
 ### 7.7 Opening terminal tabs
 
 - **iTerm2:** AppleScript, `create tab with default profile command "…"`. It works today, but iTerm2's docs say AppleScript "is no longer receiving improvements" [6]. iTerm2's URL scheme always shows a confirm dialog and its Python API is off by default [7], so neither is a better fit.
-- **Terminal:** AppleScript, `do script` [8].
+- **Terminal:** AppleScript, `do script` [8]. It opens a new window, not a tab: `do script` can run in a tab or window that already exists, and has nothing that asks for a new tab (sitting 1, and Terminal's scripting dictionary on macOS 27.3).
 - Both sit behind one small interface, so a launcher can be replaced without touching the rest.
-- If you deny the Automation permission, the app falls back to opening a small `.command` file with the terminal, and shows how to grant the permission.
+- If you deny the Automation permission, the app falls back to opening a small `.command` file with the terminal, and shows how to grant the permission. Sitting 1 showed that this way asks for no permission in either terminal.
+- Sitting 1 tested all of this on 2026-11-20. In iTerm2 the tab opens and takes the desk's name. The results are in `docs/sittings/sitting-1-results.md`.
 
 ### 7.8 Restart recovery
 
@@ -420,6 +421,7 @@ Each fact is marked: **Vendor** (the vendor's own current documentation), **Seen
 
 - **Vendor.** macOS gives a GUI login and an ssh login separate sessions with separate security contexts, and a login agent runs in the GUI session by default [18]. The note is an old, archived one; the two **Seen** lines below confirm the behaviour today.
 - **Seen.** Over plain ssh, `gh` and Claude Code look signed out (error -25308, "User interaction is not allowed"). In a tmux server started by a login agent they are signed in, even when the window is opened over ssh [30].
+- **Seen.** MacMosh's own login agent, installed and started over ssh, starts a desk server that passes the keychain check, and `gh` is signed in inside it. Starting the server again from an ssh `attach` gives the same result (sitting 1, 2026-11-20).
 - **Seen.** The login agent in the hand-built setup uses `RunAtLoad` and `LimitLoadToSessionType: Aqua`, and the tmux server it starts keeps running after the agent's script ends [30].
 - **Vendor.** Programs under a tmux server started by a login agent do not get a terminal app's Full Disk Access; macOS decides by the "responsible" program, which is not the terminal [19]. **Seen:** reading `~/Desktop` from such a desk raised a privacy prompt on the workhorse's screen [30].
 
@@ -471,6 +473,8 @@ These are the things no document settles. Each needs Shariq's go-ahead, and seve
 | 2 | Which way of opening a tab works best in iTerm2 3.7 and in Terminal, and what do the permission prompts look like? | A tab opens, runs `macmosh connect`, and is named after the desk |
 | 3 | Does mosh accept the pinned-key options through `--ssh`, and the one-week timeout through `--server`? | A desk opens with both in place |
 | 4 | Does Tabs mode reconnect by itself with a retry loop? | Wi-Fi off and on, and the iTerm2 tabs come back |
+
+**Sitting 1 ran on 2026-11-20 and all four passed.** The results are in `docs/sittings/sitting-1-results.md`. One finding changed this design: Terminal opens a desk in a new window, not a tab (section 7.7).
 
 **The first time Shariq runs the menu-bar app** (it needs the app itself, so it is not part of sitting 1):
 
@@ -589,6 +593,10 @@ Shariq approved these with the design on 2026-11-19.
 17. **MacMosh runs beside the hand-built setup** and never takes it over (section 7.13).
 18. **The Locked state never comes from a missing key**, and "Fix…" never closes desks without asking (sections 5.2 and 7.6).
 19. **While the restart test waits, restart recovery is still built**, from Apple's documentation and the hand-built setup's real restart, and marked as not yet proven. **The lid-closed switch is not built until its test has run** (section 12).
+
+Added after sitting 1, on 2026-11-20, and not yet checked by Shariq:
+
+20. **In Terminal, a desk opens in a new window, not a tab.** iTerm2 gets a tab. Terminal's scripting has no way to ask for a tab, and the way round it (pressing Command-T through System Events) needs the Accessibility permission, which is too much to ask for a tab (section 7.7).
 
 ## 14. Left to the builder
 
