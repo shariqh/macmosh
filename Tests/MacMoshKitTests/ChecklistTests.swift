@@ -171,6 +171,9 @@ private func with(_ change: (inout HostStatus) -> Void) -> HostStatus {
         let argv = interactive.calls[0]
         #expect(argv.contains("-t"))
         #expect(sshRemote(argv) == [Checklist.homebrewInstallCommand])
+        // The password goes only to the pinned workhorse: strict host-key checking, as everywhere else.
+        #expect(argv.contains("StrictHostKeyChecking=yes"))
+        #expect(argv.contains("HostKeyAlias=macmosh-mbp"))
 
         let g = ChecklistFixture(report: report)
         let declined = FakeInteractive()
