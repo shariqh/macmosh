@@ -253,6 +253,7 @@ private func desksListing(_ names: [String]) -> FakeRunner {
         #expect(!request.isInteractive)
         let result = await flow(runner).newDesk(checked(), request: request, ui: ui)
         #expect(result.code == 0)
+        #expect(result.desk == DeskName("web"))      // the name `desk new` goes on to connect to
         #expect(ui.asked.isEmpty)
         #expect(remote(runner) == "~/.macmosh/macmosh-host desk-new web /Users/alex/web --reopen")
         #expect(ui.said.last == "Open it from the menu, or run: macmosh connect mbp web")

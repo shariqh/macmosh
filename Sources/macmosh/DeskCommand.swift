@@ -73,6 +73,11 @@ struct DeskCommand: AsyncParsableCommand {
             // It runs in a terminal tab: on a failure say why and wait for a key, so the tab doesn't vanish.
             outcome.code = ui.finish(outcome.code, reason: outcome.reason)
             if outcome.code != 0 { throw ExitCode(outcome.code) }
+            // The form ends by opening the desk it just made, in this same tab.
+            if let made = outcome.desk {
+                let code = await connectToDesk(workhorse, desk: made, mode: nil, ui: ui)
+                if code != 0 { throw ExitCode(code) }
+            }
         }
     }
 
