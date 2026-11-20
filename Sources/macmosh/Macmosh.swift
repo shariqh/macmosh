@@ -15,6 +15,7 @@ struct Macmosh: AsyncParsableCommand {
             ListCommand.self,
             PairCommand.self,
             PowerCommand.self,
+            PrepareCommand.self,
             RemoveCommand.self,
             RestartCommand.self,
             ScreenCommand.self,
