@@ -5,11 +5,16 @@ import Foundation
 @MainActor
 public final class MenuRefresher: ObservableObject {
     @Published public private(set) var menu: Menu
+    /// The last sentence from an action, shown as the menu's first line until the next action.
+    @Published public private(set) var notice: String?
 
     private let load: @Sendable () throws -> [Workhorse]
     private let gather: @Sendable ([Workhorse]) async -> [Gathered]
     private let save: @Sendable (CheckResult) -> Void
     private var refreshing = false
+    private var refreshAgain = false
+    /// How many checks in a row found a workhorse that can't be reached; sets the wait in `runInBackground`.
+    private var missesInARow = 0
 
     /// `load` reads the saved list, `gather` checks the workhorses, and `save` keeps what a report
     /// taught about one of them. Until the first refresh the menu is one line, `Checking…`.
@@ -25,12 +30,23 @@ public final class MenuRefresher: ObservableObject {
 
     /// Loads the list, checks every workhorse, saves what the reports changed and builds the menu.
     /// A saved list that can't be read gives a menu with the warning symbol and one line saying so.
-    /// A refresh that starts while another is still running does nothing.
+    /// Never two at once: a refresh asked for while one is running returns at once and is
+    /// remembered, and exactly one more refresh runs right after the current one, however many were
+    /// asked for. That keeps the check that follows an action from being lost to one already in flight.
     public func refresh() async {
-        if refreshing { return }
+        if refreshing {
+            refreshAgain = true
+            return
+        }
         refreshing = true
         defer { refreshing = false }
+        repeat {
+            refreshAgain = false
+            await refreshOnce()
+        } while refreshAgain
+    }
 
+    private func refreshOnce() async {
         let load = self.load
         let list: [Workhorse]
         do {
@@ -38,10 +54,12 @@ public final class MenuRefresher: ObservableObject {
         } catch {
             menu = Menu(symbol: "exclamationmark.triangle",
                         items: [.line(StatusFormat.storeMessage(error), indent: 0)])
+            missesInARow = 0
             return
         }
 
         let gathered = await gather(list)
+        missesInARow = PollSchedule.isMiss(gathered) ? missesInARow + 1 : 0
         let save = self.save
         let checked: [CheckResult] = gathered.compactMap {
             if case .checked(let result) = $0 { return result }
@@ -50,6 +68,24 @@ public final class MenuRefresher: ObservableObject {
         // The saved list is written under a file lock, so it is done off the main thread.
         await Task.detached { for result in checked { save(result) } }.value
         menu = MenuModel.build(gathered)
+    }
+
+    /// Refreshes, waits as long as `PollSchedule` says, and does it again, until the task is cancelled.
+    /// `sleep` is how the waiting is done; tests pass a stand-in that doesn't wait.
+    public func runInBackground(sleep: @escaping @Sendable (Duration) async -> Void) async {
+        while !Task.isCancelled {
+            await refresh()
+            if Task.isCancelled { break }
+            await sleep(PollSchedule.delay(missesInARow: missesInARow))
+        }
+    }
+
+    /// Does what a menu item asks, keeps the sentence it gives back as the `notice`, and checks again.
+    /// The notice from the action before is cleared first.
+    public func perform(_ item: MenuItem, using actions: MenuActionRunner) async {
+        notice = nil
+        notice = await actions.perform(item.action, title: item.title)
+        await refresh()
     }
 
     /// The real thing: this Mac's saved list and folders, the real checks with a 20-second budget,
