@@ -13,6 +13,7 @@ struct Macmosh: AsyncParsableCommand {
             DesksCommand.self,
             FoldersCommand.self,
             ListCommand.self,
+            OpenCommand.self,
             PairCommand.self,
             PowerCommand.self,
             RemoveCommand.self,
