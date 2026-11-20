@@ -9,6 +9,7 @@ struct Macmosh: AsyncParsableCommand {
         version: MacMoshInfo.version,
         subcommands: [
             AddCommand.self,
+            ConnectCommand.self,
             DeskCommand.self,
             DesksCommand.self,
             FoldersCommand.self,

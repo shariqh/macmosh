@@ -27,6 +27,8 @@ public struct DeskResult: Error, Sendable, Equatable {
     public var code: Int32
     public var reason: String?
     public var output: [String]
+    /// The desk `newDesk` made, so a command that goes on to open it knows which one.
+    public var desk: DeskName?
 
     public static let success = DeskResult(code: 0, reason: nil, output: [])
     public static func failure(_ reason: String) -> DeskResult { DeskResult(code: 1, reason: reason, output: []) }
@@ -81,7 +83,7 @@ public struct DeskFlow: Sendable {
             return .failure(DeskFormat.message(error, workhorse: w))
         }
         DeskFormat.created(name, on: w).forEach(ui.say)
-        return .success
+        return DeskResult(code: 0, reason: nil, output: [], desk: name)
     }
 
     public func removeDesk(_ check: CheckResult, name: String, kill: Bool, ui: Interaction) async -> DeskResult {
