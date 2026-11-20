@@ -11,7 +11,7 @@ Kept by the build agent during Task 20: what Shariq says gets in the way, and wh
 ## To look at during the first run
 
 - The exact words of the two macOS prompts: controlling the terminal, and the local network.
-- Whether the menu checks again each time it is opened.
+- Whether the menu checks again each time it is opened. The app's log writes `menu opened` once when the app starts (see below). If the line also appears just before the first `menu action` line, it runs on every open; if not, only the 30-second schedule and `Check now` keep the menu fresh (issue #79).
 - Whether indented menu lines keep their leading spaces.
 - Whether Terminal, if he tries it, shows a desk's name anywhere.
 
@@ -30,3 +30,13 @@ Nothing yet.
   ```
 
   `log` on its own is a zsh builtin, so the full path matters.
+- **14:53.** The agent swapped in the build that keeps a log and reopened it. The Mac had been idle for 15 minutes, MacMosh had saved nothing, and no `macmosh` command was running. The old copy is in the Trash. The daily Mac's log then read:
+
+  ```
+  14:53:38.469  MacMosh 0.1.0 started
+  14:53:38.587  menu refreshed: symbol=plus.circle workhorses=0 lines=2
+  14:53:38.590  menu opened
+  ```
+
+  So on the daily Mac the menu goes from `Checking…` to `No workhorses yet` 0.12 seconds after the app starts. It was not stuck: `Add a Mac…` had not been clicked yet.
+- **`menu opened` is written when the app starts,** with nobody at the keyboard. SwiftUI builds the menu's contents at launch and runs `onAppear` then. Whether it runs again on each open is still to be seen (issue #79).
