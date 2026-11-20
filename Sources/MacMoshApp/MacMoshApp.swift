@@ -10,6 +10,10 @@ struct MacMoshApp: App {
         tabs: AppTabs(),
         runner: ProcessRunner())
 
+    init() {
+        MenuLog.write(MenuLog.started(version: MacMoshInfo.version))
+    }
+
     var body: some Scene {
         MenuBarExtra {
             MenuContent(refresher: refresher, actions: actions)

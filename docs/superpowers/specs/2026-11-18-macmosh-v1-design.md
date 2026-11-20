@@ -505,6 +505,7 @@ Results go in the build log. A failed test changes the design before code depend
 - **Host identity:** one pinned key per workhorse, checked on both addresses, strict checking always on.
 - **Root:** MacMosh never runs as root on either Mac. The only root commands are the `pmset` and `fdesetup authrestart` lines you run yourself in a password tab.
 - **Stored on the daily Mac:** the list of workhorses (names, addresses, user names, settings) and their host keys, in `~/Library/Application Support/MacMosh/`, and MacMosh's ssh key in `~/.ssh/`. No passwords.
+- **Written to the daily Mac's system log:** what the app's menu did, under the subsystem `io.github.shariqh.macmosh`: the app starting, the menu opening, a check changing what the menu shows, and each click with what it came to (for example `menu action done: tab connect: tab opened`). Fixed words and numbers only. No workhorse name, address, user name or desk name, and none of the sentences the menu shows. Added on 2026-11-20, after the first run could not be read from outside.
 - **Network calls the app makes:** ssh to your workhorses, and the local `tailscale` command. Nothing else. No update check in v1.
 - **Open source:** the script that runs on the workhorse is plain shell, so anyone can read what it does.
 

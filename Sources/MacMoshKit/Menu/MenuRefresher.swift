@@ -11,6 +11,9 @@ public final class MenuRefresher: ObservableObject {
     private let load: @Sendable () throws -> [Workhorse]
     private let gather: @Sendable ([Workhorse]) async -> [Gathered]
     private let save: @Sendable (CheckResult) -> Void
+    private let log: @Sendable (String) -> Void
+    /// The last "menu refreshed" line written, so that a check that changes nothing writes nothing.
+    private var lastRefreshLine: String?
     private var refreshing = false
     private var refreshAgain = false
     /// How many checks in a row found a workhorse that can't be reached; sets the wait in `runInBackground`.
@@ -18,12 +21,15 @@ public final class MenuRefresher: ObservableObject {
 
     /// `load` reads the saved list, `gather` checks the workhorses, and `save` keeps what a report
     /// taught about one of them. Until the first refresh the menu is one line, `Checking…`.
+    /// `log` takes the lines of `MenuLog`; the real one writes them to the Mac's system log.
     public init(load: @escaping @Sendable () throws -> [Workhorse],
                 gather: @escaping @Sendable ([Workhorse]) async -> [Gathered],
-                save: @escaping @Sendable (CheckResult) -> Void) {
+                save: @escaping @Sendable (CheckResult) -> Void,
+                log: @escaping @Sendable (String) -> Void = { MenuLog.write($0) }) {
         self.load = load
         self.gather = gather
         self.save = save
+        self.log = log
         self.menu = Menu(symbol: MenuModel.stillCheckingSymbol,
                          items: [.line("Checking…", indent: 0)])
     }
@@ -55,6 +61,7 @@ public final class MenuRefresher: ObservableObject {
             menu = Menu(symbol: "exclamationmark.triangle",
                         items: [.line(StatusFormat.storeMessage(error), indent: 0)])
             missesInARow = 0
+            logRefresh(MenuLog.listUnreadable)
             return
         }
 
@@ -68,6 +75,20 @@ public final class MenuRefresher: ObservableObject {
         // The saved list is written under a file lock, so it is done off the main thread.
         await Task.detached { for result in checked { save(result) } }.value
         menu = MenuModel.build(gathered)
+        logRefresh(MenuLog.refreshed(menu, workhorses: list.count))
+    }
+
+    /// The checks repeat every 30 seconds or so; only a change is worth a line.
+    private func logRefresh(_ line: String) {
+        if line == lastRefreshLine { return }
+        lastRefreshLine = line
+        log(line)
+    }
+
+    /// The menu was opened: says so in the log and checks again, so what is shown is fresh.
+    public func menuOpened() async {
+        log(MenuLog.opened)
+        await refresh()
     }
 
     /// Refreshes, waits as long as `PollSchedule` says, and does it again, until the task is cancelled.
@@ -84,7 +105,10 @@ public final class MenuRefresher: ObservableObject {
     /// The notice from the action before is cleared first.
     public func perform(_ item: MenuItem, using actions: MenuActionRunner) async {
         notice = nil
-        notice = await actions.perform(item.action, title: item.title)
+        log(MenuLog.asked(item.action))
+        let outcome = await actions.outcome(of: item.action, title: item.title)
+        log(MenuLog.finished(item.action, summary: outcome.summary))
+        notice = outcome.notice
         await refresh()
     }
 
