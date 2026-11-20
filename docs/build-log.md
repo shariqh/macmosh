@@ -133,6 +133,8 @@ Design: `superpowers/specs/2026-11-18-macmosh-v1-design.md`. Plan: `superpowers/
 | | | | For the video | The agent could reach the Air over ssh the whole time. It could have run and judged nearly every step itself and asked him for three things: look at this tab, read me that prompt, turn Wi-Fi off and on. It wrote a questionnaire instead. |
 | 11:13 | MBP + Air | agent | Ran the two checks that were skipped in the rush | The one-week mosh timeout does reach the workhorse, and `gh` is signed in inside a MacMosh desk. The first two tries at the mosh check failed because mosh needs a real terminal with a size (`Error: vector`). |
 | 11:15 | MBP | agent | Read the results (`docs/sittings/sitting-1-results.md`) | Two things nobody saw at the time. The workhorse's log shows the reconnect loop at work, 43 seconds after the first attach, though he never saw its "Connection lost" line. And the one failure, a syntax error opening a Terminal tab, was the runbook's own script: Terminal has no scripted way to open a tab, so a desk gets a window there. |
+| 11:24 | MBP | agent | Started the two tasks sitting 1 unblocked first: the setup checklist (Task 13) and opening terminal tabs (Task 16) | Two workers, one pull request each. `connect` (Task 15) and the app's buttons (Task 27) follow. |
+| 11:30 | MBP + Air | agent | Tidied up after the sitting, and rewrote the plan for the app's first run (Task 20) | The sitting's test files on the Air went to its Trash. For the first run, the agent now copies the app over, checks it and reads the logs itself, and asks before it copies anything. Shariq opens the app, answers the prompts and uses it. |
 
 ## Shot list (video)
 
