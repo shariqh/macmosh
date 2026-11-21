@@ -28,10 +28,8 @@ struct MenuContent: View {
             Button("Quit MacMosh") { NSApplication.shared.terminate(nil) }
                 .keyboardShortcut("q")
         }
-        // Whether macOS runs this each time the menu opens is checked on the Air (Task 20): the log
-        // line it writes shows it. If it doesn't, `Check now` and the background schedule still
-        // keep the menu fresh.
-        .onAppear { Task { await refresher.menuOpened() } }
+        // No `onAppear` here: macOS runs it once, when the app starts, not each time the menu
+        // opens (seen on the first run, Task 20). The label in `MacMoshApp` hears the menu open.
     }
 
     /// One typeface and size throughout. Indent shows as three spaces a level: a menu has no margins to set.
