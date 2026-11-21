@@ -62,7 +62,7 @@ public enum ConnectPlanner {
         ]
         var environment: [String: String] = [:]
         if let withMosh = pathWithFolderOf(moshPath, in: path) { environment["PATH"] = withMosh }
-        if !namesUTF8Locale(localeEnvironment) { environment["LANG"] = "en_US.UTF-8" }
+        if let name = localeVariableToSet(localeEnvironment) { environment[name] = "en_US.UTF-8" }
         return ConnectPlan(argv: argv, environment: environment, retryOnDrop: false,
                            intro: "Opening \"\(desk.value)\" on \(w.name) over mosh. If the network drops, this tab picks up by itself.")
     }
@@ -88,11 +88,17 @@ public enum ConnectPlanner {
         return current.isEmpty ? folder : folder + ":" + current.joined(separator: ":")
     }
 
-    /// mosh needs a UTF-8 locale on both ends (design 8.1). True when `LC_ALL`, `LC_CTYPE` or `LANG` names one.
-    static func namesUTF8Locale(_ environment: [String: String]) -> Bool {
-        ["LC_ALL", "LC_CTYPE", "LANG"].contains { name in
-            guard let value = environment[name]?.lowercased() else { return false }
-            return value.contains("utf-8") || value.contains("utf8")
-        }
+    /// mosh needs a UTF-8 locale on both ends (design 8.1). The variable to set to a UTF-8 locale so
+    /// that mosh has one here, or nil when it has one already.
+    ///
+    /// One variable decides how characters are read: `LC_ALL` if it is set and not empty, otherwise
+    /// `LC_CTYPE`, otherwise `LANG` (POSIX.1-2024, Base Definitions 8.2). When that one isn't UTF-8 it
+    /// is the one to set, because a variable below it would be ignored: `LANG` can't undo `LC_ALL=C`.
+    /// With none of them set it is `LANG`. mosh also offers these variables to the workhorse as a
+    /// fallback locale, so the one that changes the least is used and not `LC_ALL` every time.
+    static func localeVariableToSet(_ environment: [String: String]) -> String? {
+        let deciding = ["LC_ALL", "LC_CTYPE", "LANG"].first { !(environment[$0] ?? "").isEmpty }
+        guard let deciding, let value = environment[deciding]?.lowercased() else { return "LANG" }
+        return value.contains("utf-8") || value.contains("utf8") ? nil : deciding
     }
 }

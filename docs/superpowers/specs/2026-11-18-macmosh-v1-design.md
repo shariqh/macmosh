@@ -411,6 +411,8 @@ Each fact is marked: **Vendor** (the vendor's own current documentation), **Seen
 - **Vendor.** mosh 1.4.0 (October 2022) is still the latest release; the project has commits from 2026 [1]. It uses UDP ports 60000 to 61000 by default, needs a UTF-8 locale on both ends, and "connections stay up across sleeps and changes in the client's IP address" [1].
 - **Vendor.** mosh syncs only the visible screen, so it has no scrollback of its own; its FAQ points to tmux [1].
 - **Vendor.** A mosh server whose client never returns waits forever unless `MOSH_SERVER_NETWORK_TMOUT` is set; the manual suggests a week [2]. MacMosh sets one week, so abandoned connections clean themselves up. The desk itself is not affected.
+- **Vendor.** One variable decides how a program reads characters: `LC_ALL` if it is set and not empty, otherwise `LC_CTYPE`, otherwise `LANG` [31]. mosh hands these variables to the workhorse, where the mosh server uses them only when its own environment has no UTF-8 locale [2]. So when the variable that decides isn't UTF-8, `macmosh connect` sets that one variable to `en_US.UTF-8` for mosh, and `LANG` when none of the three is set.
+- **Seen.** macOS 27.3 follows that order: with `LC_ALL=C` and `LANG=en_US.UTF-8`, `locale charmap` answers `US-ASCII`; with an empty `LC_ALL` and the same `LANG` it answers `UTF-8` (2026-11-20, on the MacBook Pro).
 - **Vendor.** tmux 3.8 (September 2026) is current. `new-session -A` attaches if the session exists, `-L` runs an independent server on a named socket, a server exits when its last session ends unless `exit-empty` is off, and a `=` prefix matches a session name exactly [3].
 - **Vendor.** iTerm2's tmux integration is started with `tmux -CC` and documented for ssh [4]. It does not work over mosh; issue 5924 was closed as unsupported and mosh issue 1078 is still open [5].
 - **Vendor.** iTerm2's current stable release is 3.7.8 (released 2026-11-18). Its AppleScript commands still ship but are frozen [6].
@@ -653,3 +655,4 @@ Checked 2026-11-18. "Local" means read on the MacBook Pro (macOS 27.3).
 28. Sparkle (not used in v1): https://sparkle-project.org/
 29. Prior art: https://github.com/amantus-ai/vibetunnel ; https://github.com/jtolchard/SwitchBored
 30. The hand-built setup: the design, plan and build log for dev-setup #45 (2026-11-16/17), a private repo; and read-only checks on both Macs on 2026-11-18, recorded in `docs/build-log.md`
+31. The Open Group Base Specifications Issue 8 (IEEE Std 1003.1-2024), Base Definitions, 8.2 Internationalization Variables: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/V1_chap08.html (checked 2026-11-20)

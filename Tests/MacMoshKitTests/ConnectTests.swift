@@ -111,6 +111,27 @@ import Testing
         #expect(plan(mode: .tabs, locale: [:]).environment["LANG"] == nil)
     }
 
+    /// `LC_ALL` beats `LC_CTYPE`, which beats `LANG`; one that is empty counts as not set.
+    @Test(arguments: [
+        // The variable that decides isn't UTF-8, so that one is set, and only that one.
+        (["LC_ALL": "C", "LANG": "en_US.UTF-8"], "LC_ALL"),
+        (["LC_ALL": "de_DE.ISO8859-1", "LC_CTYPE": "en_US.UTF-8", "LANG": "en_US.UTF-8"], "LC_ALL"),
+        (["LC_CTYPE": "C", "LANG": "en_US.UTF-8"], "LC_CTYPE"),
+        (["LC_ALL": "", "LC_CTYPE": "C", "LANG": "en_US.UTF-8"], "LC_CTYPE"),
+        (["LC_ALL": "", "LC_CTYPE": "", "LANG": ""], "LANG"),
+        (["LC_ALL": "", "LANG": "C"], "LANG"),
+        // The variable that decides is UTF-8, so nothing is set, whatever the ones below it say.
+        (["LC_ALL": "en_US.UTF-8", "LC_CTYPE": "C", "LANG": "C"], nil),
+        (["LC_CTYPE": "en_US.UTF-8", "LANG": "C"], nil),
+        (["LC_ALL": "", "LANG": "en_US.UTF-8"], nil),
+    ] as [([String: String], String?)])
+    func theLocaleVariableThatDecidesIsTheOneSet(_ locale: [String: String], _ expected: String?) {
+        let environment = plan(mode: .mosh, locale: locale).environment
+        for name in ["LC_ALL", "LC_CTYPE", "LANG"] {
+            #expect(environment[name] == (name == expected ? "en_US.UTF-8" : nil), "\(name) for \(locale)")
+        }
+    }
+
     @Test(arguments: Prediction.allCases)
     func thePredictionSettingIsUsed(_ prediction: Prediction) {
         #expect(plan(mode: .mosh, prediction: prediction).argv.contains("--predict=\(prediction.rawValue)"))
