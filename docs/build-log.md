@@ -158,6 +158,10 @@ Design: `superpowers/specs/2026-11-18-macmosh-v1-design.md`. Plan: `superpowers/
 | 19:08 | Air | agent | Set the projects folder for the MacBook Pro to `~/Development` | Nothing in the menu sets it yet, so `New desk…` would have had no folders to list. `macmosh folders` now lists them. |
 | 19:10 | MBP | agent | Asked for the one thing left: `New desk…`, then the lid | The board row lists what the logs showed, so Shariq has nothing to describe. Two questions no log answers went with it: why the second click, and whether macOS asked about the local network. |
 | 19:20 | MBP | agent | Made the app hear its menu open (issue #79) | AppKit posts a notification when a menu starts being tracked. Apple's page doesn't say it covers a menu-bar item's menu, so CI now clicks the icon and waits for `menu opened`. On macOS 15 and on macOS 26 the line came right after the click, and not before it. |
+| 19:22 | Air | Shariq | Made the first desk from the menu (`New desk…`) | Read from the logs. The desk `test` opened over mosh at 19:22:53, with the folder picked from a numbered list. |
+| 19:24 | Air | Shariq | Closed the Air's lid for 61 seconds and opened it | The desk's tab picked up by itself: the same mosh client and server were still running afterwards, and the MacBook Pro logged no new attach for it. |
+| 19:28 | Air | Shariq | "closed and opened the lid and it all is connected" | Also: the second click on `Add a Mac…` was him trying things, and macOS never asked about the local network. The first run is done. |
+| 19:30 | MBP | agent | Filed issue #83: after the Air wakes, the menu says `Can't reach it` until the next check | Seen at 19:21: the Air woke, the first check failed because its network wasn't back, and the menu was wrong for 32 seconds. The check on open (issue #79) corrects the menu; the icon waits for the schedule. |
 
 ## Shot list (video)
 

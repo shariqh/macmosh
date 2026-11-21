@@ -10,7 +10,7 @@ Kept by the build agent during Task 20: what Shariq says gets in the way, and wh
 
 ## To look at during the first run
 
-- The exact words of the two macOS prompts: controlling the terminal, and the local network.
+- The exact words of the two macOS prompts: controlling the terminal, and the local network. Neither was recorded: the first was allowed without a screenshot, and the second never came.
 - Whether the menu checks again each time it is opened. Answered at the first click: it didn't (see 18:46 below, and issue #79).
 - Whether indented menu lines keep their leading spaces.
 - Whether Terminal, if he tries it, shows a desk's name anywhere.
@@ -18,7 +18,7 @@ Kept by the build agent during Task 20: what Shariq says gets in the way, and wh
 ## What Shariq said
 
 - **19:05,** on the board row: "done and connected". He had paired the daily Mac with the workhorse. The logs show the rest (below), so he was not asked to describe it.
-- Still open, because no log holds it: why `Add a Mac…` was clicked a second time, and whether macOS ever asked about the local network.
+- **19:28,** on the board row, after two questions no log could answer: "i think i was just messing around and clicked it twice. no local device notifs were sent. closed and opened the lid and it all is connected".
 
 ## What the agent saw
 
@@ -61,3 +61,44 @@ Kept by the build agent during Task 20: what Shariq says gets in the way, and wh
 - **No sign of a local network prompt.** The system log has no local-network line that names MacMosh, though the pairing command looked names up at 18:47:24. A log can't prove a prompt never showed.
 - **Nothing was clicked after the pairing:** no `New desk…`, no checklist. The workhorse has no desk. The board row now asks only for `New desk…` and the lid.
 - **19:08. Nothing in the menu sets the projects folder.** `macmosh folders` answered "No projects folder is set", so `New desk…` would have asked for a path with no list to pick from. The agent set it on the daily Mac (`macmosh set workhorse projects-folder '~/Development'`), and `macmosh folders` then listed the folders. The design has you choose this folder once per workhorse (7.3); until the Settings window exists (Task 29) nothing in the app does. One for the review (Task 21).
+- **19:17 to 19:22. After the daily Mac woke, the menu was wrong for half a minute.** The Mac went to idle sleep at 19:17:26 and was woken at 19:21:28 (`pmset -g log`). The first check after that said the workhorse couldn't be reached, and the next one said Ready:
+
+  ```
+  19:21:43.208  menu refreshed: symbol=wifi.slash workhorses=1 lines=6
+  19:22:15.835  menu refreshed: symbol=checkmark.circle workhorses=1 lines=10
+  ```
+
+  The workhorse was fine; the daily Mac's network was not back yet (issue #83).
+- **19:22. `New desk…` made a desk and opened it.**
+
+  ```
+  19:22:19.642  menu action: tab desk
+  19:22:19.920  menu action done: tab desk: tab opened
+  19:23:20.926  menu refreshed: symbol=checkmark.circle workhorses=1 lines=12
+  ```
+
+  The workhorse's `host.log` has `folders ok` at 19:22:30, `desk-new created test` at 19:22:51 and `attach test` at 19:22:53. The folder list came from the projects folder set at 19:08.
+- **19:23:22 to 19:24:23. The lid was closed for 61 seconds, and the desk's connection lived through it.** `pmset -g log` on the daily Mac has the "Clamshell Sleep" and the wake. Afterwards the same two mosh processes were still running: the client started at 19:22:52 on the daily Mac and the server started at 19:22:53 on the workhorse. The workhorse logged no new `attach` for that tab, and its status report says the desk has one tab attached. Shariq: "it all is connected".
+- **19:24:40. He opened the same desk again from the menu** (`menu action: tab connect`, `tab opened`; `attach test` at 19:24:42 on the workhorse). That second tab was closed again within a minute.
+- **No local network prompt, and the home address answers.** Since the pairing, every check makes one more ssh call to the workhorse's home address. Shariq saw no prompt, the system log has no denial that names MacMosh, and `macmosh status --json` on the daily Mac says `homeReachable: true`. That last check ran over ssh and not from the app, and the app's log doesn't say what the app itself got.
+- **A false alarm from the agent's own check.** A `ps … | grep` for mosh processes matched the shell that ran it, because the command's own text held the words it searched for. For a minute it looked as if a new mosh connection started every 30 seconds. Listing the processes by pid with their parents showed one connection.
+
+## What the first run settled
+
+| Question | Answer |
+|---|---|
+| Does the app open on the daily Mac, signed and not notarized? | Yes. |
+| Does `Add a Mac…` open a tab and pair? | Yes, after one prompt about controlling iTerm2. |
+| Does the menu go straight to Ready after pairing? | Yes, at the second check. For one check it showed the workhorse as not set up. |
+| Does `New desk…` make and open a desk over mosh? | Yes. |
+| Does the desk pick up after a closed lid? | Yes, after 61 seconds closed. |
+| Does macOS ask about the local network? | No. |
+| Does the menu check again when it is opened? | It didn't. Fixed (issue #79). |
+
+## Still open after the first run
+
+- The prompt's wording (controlling the terminal).
+- Leading spaces in indented menu lines, and Terminal as the terminal app: nobody looked.
+- Nothing in the menu sets the projects folder (for Task 21 and Task 29).
+- The menu is wrong for a moment after the daily Mac wakes (issue #83).
+- The script install (`HostInstaller`) has still not run for real: the workhorse had the script from sitting 1.

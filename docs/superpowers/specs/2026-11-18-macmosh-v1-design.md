@@ -487,6 +487,8 @@ These are the things no document settles. Each needs Shariq's go-ahead, and seve
 |---|---|---|
 | 5 | What does macOS ask when the menu first reaches the home address? | One Local Network prompt naming MacMosh, and status works after Allow |
 
+**The first run was on 2026-11-20.** macOS showed no Local Network prompt, though every check after the pairing made an ssh call to the home address, and status worked throughout. The rest of what it showed is in `docs/first-run-notes.md`.
+
 **Sitting 2, a restart and the lid (about 45 minutes; not agreed yet, so nobody restarts the MacBook Pro or changes its sleep settings until Shariq says):**
 
 | # | Question | Pass looks like |
