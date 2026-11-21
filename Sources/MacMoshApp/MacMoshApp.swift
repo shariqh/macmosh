@@ -24,6 +24,13 @@ struct MacMoshApp: App {
                 .task {
                     await refresher.runInBackground(sleep: { try? await Task.sleep(for: $0) })
                 }
+                // AppKit says when a menu starts being tracked, which is when a person opens it.
+                // The app has one menu, this one. (The menu content's `onAppear` runs once, when
+                // the app starts, so it can't tell.) Once the app has windows of its own, a popup
+                // button in one would count too, and this needs to tell them apart.
+                .onReceive(NotificationCenter.default.publisher(for: NSMenu.didBeginTrackingNotification)) { _ in
+                    Task { await refresher.menuOpened() }
+                }
         }
     }
 }

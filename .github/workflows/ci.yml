@@ -60,12 +60,47 @@ jobs:
             fi
             sleep 5
           done
-          kill "$app_pid"
-          wait "$app_pid" || true
           if [ "$seen" -ne 1 ]; then
             echo "the app never logged: $want" >&2
             echo "what it did log:" >&2
             cat "$support/app-log.txt" >&2
             exit 1
           fi
-          grep -F 'MacMosh' "$support/app-log.txt" | tail -n 5
+
+          # Nobody has opened the menu yet, so the log must not say that anyone did.
+          if grep -qF 'menu opened' "$support/app-log.txt"; then
+            echo "the app logged 'menu opened' before anyone opened the menu:" >&2
+            cat "$support/app-log.txt" >&2
+            exit 1
+          fi
+
+          # Open the menu the way a person does, by clicking its icon, and see the app say so.
+          # The click can take until the menu closes to come back, so it runs in the background.
+          osascript scripts/ci-open-menu.applescript > "$support/click.txt" 2>&1 &
+          click_pid=$!
+          opened=0
+          for _ in 1 2 3 4 5 6; do
+            sleep 5
+            /usr/bin/log show --last 5m --style compact \
+              --predicate 'subsystem == "io.github.shariqh.macmosh"' > "$support/app-log.txt" 2>&1 || true
+            if grep -qF 'menu opened' "$support/app-log.txt"; then
+              opened=1
+              break
+            fi
+          done
+          # Escape closes the menu again.
+          osascript -e 'tell application "System Events" to key code 53' || true
+          kill "$click_pid" 2>/dev/null || true
+          wait "$click_pid" 2>/dev/null || true
+          kill "$app_pid"
+          wait "$app_pid" || true
+          if [ "$opened" -ne 1 ]; then
+            echo "the app never logged 'menu opened' after its icon was clicked" >&2
+            echo "what the click said:" >&2
+            cat "$support/click.txt" >&2
+            echo "what the app logged:" >&2
+            cat "$support/app-log.txt" >&2
+            exit 1
+          fi
+          cat "$support/click.txt"
+          grep -F 'MacMosh' "$support/app-log.txt" | tail -n 6
