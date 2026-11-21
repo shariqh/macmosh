@@ -167,6 +167,8 @@ Design: `superpowers/specs/2026-11-18-macmosh-v1-design.md`. Plan: `superpowers/
 | 19:40 | MBP | agent | Asked Shariq about sitting 2, once, as the plan says | Three choices on the board: prepare it and he picks the time, the lid test only, or not yet. Nobody restarts the MacBook Pro or changes its sleep settings before he chooses. Also on the board: his review after a few days of use (Task 21), and a correction: the menu can't remove a desk yet. |
 | 19:41 | Air | Shariq | "ugh but my agents are running... i guess prep it and i'll decide when to retsart. probs tomorrow AM" | His answer about sitting 2. The agent prepares the runbook and a recorder for the Air tonight. The restart and the sleep setting stay his to do, when he chooses. |
 | 19:48 | MBP | agent | Made the menu look twice before it says `Can't reach it` (issue #83) | The first check that can't reach a workhorse is repeated five seconds later, and the menu keeps what it showed until then. A miss that follows a miss is shown at once. 677 tests pass. |
+| 19:56 | MBP | agent | Merged the second look (PR #85) and staged a newer signed build on the Air | Issue #83 is closed. The build on the Air waiting to be swapped in now has all three of today's fixes. The swap still only happens when the Air is idle with no MacMosh tab open. |
+| 19:58 | Air | agent | Wrote sitting 2's runbook and helpers, and tried the helpers without restarting anything | One recorder round on the Air shows all three addresses answering with the pinned key. The recorder starts and stops cleanly in a throwaway folder. The restart helper, given no answer, prints the desks that would close and stops at its question: "Nothing was restarted." |
 
 ## Shot list (video)
 
