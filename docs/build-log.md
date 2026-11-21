@@ -165,6 +165,8 @@ Design: `superpowers/specs/2026-11-18-macmosh-v1-design.md`. Plan: `superpowers/
 | 19:37 | MBP | agent | Merged the menu-open fix and the first-run record (PR #82), and closed Task 20 | CI clicked the icon on macOS 15 and 26 and found `menu opened` after the click and not before. Issues #79 and #23 are closed. |
 | 19:38 | Air | agent | Staged a signed build with both of today's fixes on the Air, and did not swap it in | Shariq was at the Air, and the swap only runs when the Mac has been idle for two minutes and no MacMosh tab is open. A script tries again every 15 minutes for two hours. The old app goes to the Trash when it happens, and what MacMosh has saved is not touched. |
 | 19:40 | MBP | agent | Asked Shariq about sitting 2, once, as the plan says | Three choices on the board: prepare it and he picks the time, the lid test only, or not yet. Nobody restarts the MacBook Pro or changes its sleep settings before he chooses. Also on the board: his review after a few days of use (Task 21), and a correction: the menu can't remove a desk yet. |
+| 19:41 | Air | Shariq | "ugh but my agents are running... i guess prep it and i'll decide when to retsart. probs tomorrow AM" | His answer about sitting 2. The agent prepares the runbook and a recorder for the Air tonight. The restart and the sleep setting stay his to do, when he chooses. |
+| 19:48 | MBP | agent | Made the menu look twice before it says `Can't reach it` (issue #83) | The first check that can't reach a workhorse is repeated five seconds later, and the menu keeps what it showed until then. A miss that follows a miss is shown at once. 677 tests pass. |
 
 ## Shot list (video)
 

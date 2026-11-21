@@ -102,5 +102,5 @@ Kept by the build agent during Task 20: what Shariq says gets in the way, and wh
 - Nothing in the menu sets the projects folder (for Task 21 and Task 29).
 - Nothing in the menu removes a desk. The first run's desk can only be removed with `macmosh desk remove workhorse test` (for Task 21). The agent first told Shariq the menu could do it, and corrected that on the board.
 - The daily Mac still runs the build from 14:53. The build with the menu-open fix and the locale fix is unpacked beside it, and swaps in when the Mac is idle with no MacMosh tab open.
-- The menu is wrong for a moment after the daily Mac wakes (issue #83).
+- The menu is wrong for a moment after the daily Mac wakes (issue #83). The app now looks a second time, five seconds later, before it says "Can't reach it". Whether that is long enough after a wake shows the next time the daily Mac wakes: its log should have no `wifi.slash` line then.
 - The script install (`HostInstaller`) has still not run for real: the workhorse had the script from sitting 1.
