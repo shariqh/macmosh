@@ -162,6 +162,9 @@ Design: `superpowers/specs/2026-11-18-macmosh-v1-design.md`. Plan: `superpowers/
 | 19:24 | Air | Shariq | Closed the Air's lid for 61 seconds and opened it | The desk's tab picked up by itself: the same mosh client and server were still running afterwards, and the MacBook Pro logged no new attach for it. |
 | 19:28 | Air | Shariq | "closed and opened the lid and it all is connected" | Also: the second click on `Add a Mac…` was him trying things, and macOS never asked about the local network. The first run is done. |
 | 19:30 | MBP | agent | Filed issue #83: after the Air wakes, the menu says `Can't reach it` until the next check | Seen at 19:21: the Air woke, the first check failed because its network wasn't back, and the menu was wrong for 32 seconds. The check on open (issue #79) corrects the menu; the icon waits for the schedule. |
+| 19:37 | MBP | agent | Merged the menu-open fix and the first-run record (PR #82), and closed Task 20 | CI clicked the icon on macOS 15 and 26 and found `menu opened` after the click and not before. Issues #79 and #23 are closed. |
+| 19:38 | Air | agent | Staged a signed build with both of today's fixes on the Air, and did not swap it in | Shariq was at the Air, and the swap only runs when the Mac has been idle for two minutes and no MacMosh tab is open. A script tries again every 15 minutes for two hours. The old app goes to the Trash when it happens, and what MacMosh has saved is not touched. |
+| 19:40 | MBP | agent | Asked Shariq about sitting 2, once, as the plan says | Three choices on the board: prepare it and he picks the time, the lid test only, or not yet. Nobody restarts the MacBook Pro or changes its sleep settings before he chooses. Also on the board: his review after a few days of use (Task 21), and a correction: the menu can't remove a desk yet. |
 
 ## Shot list (video)
 
