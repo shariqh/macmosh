@@ -452,6 +452,9 @@ Each fact is marked: **Vendor** (the vendor's own current documentation), **Seen
 ### 8.6 The app's own permissions
 
 - **Vendor.** `MenuBarExtra` needs macOS 13 or later [21].
+- **Seen.** The content of a menu-style `MenuBarExtra` runs its `onAppear` once, when the app starts, and not when the menu is opened (the first run on the daily Mac, macOS 27.2.1, 2026-11-20). Apple's page says nothing about it either way [21].
+- **Vendor.** AppKit posts `NSMenu.didBeginTrackingNotification` "when menu tracking begins". The page names the main menu bar and popup buttons as the notification's object and says nothing about a menu-bar item's menu [32].
+- **Seen.** The notification is posted when a menu-bar item's menu opens: CI clicks MacMosh's icon on macOS 15 and macOS 26 and the app hears it (2026-11-20). MacMosh uses it to check again when its menu opens.
 - **Vendor.** Sending Apple events to another app needs a usage message and, under the hardened runtime, the Apple Events entitlement; macOS asks the user once per target app [21].
 - **Vendor.** From macOS 15, an app needs the Local Network permission to connect to an address on the local network, and a helper it starts (such as `ssh`) counts as the app. Addresses reached through a VPN such as Tailscale don't count as local. A command in a terminal tab is covered by the terminal, not by MacMosh: tools run from Apple's Terminal are allowed automatically [20].
 
@@ -656,3 +659,4 @@ Checked 2026-11-18. "Local" means read on the MacBook Pro (macOS 27.3).
 29. Prior art: https://github.com/amantus-ai/vibetunnel ; https://github.com/jtolchard/SwitchBored
 30. The hand-built setup: the design, plan and build log for dev-setup #45 (2026-11-16/17), a private repo; and read-only checks on both Macs on 2026-11-18, recorded in `docs/build-log.md`
 31. The Open Group Base Specifications Issue 8 (IEEE Std 1003.1-2024), Base Definitions, 8.2 Internationalization Variables: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/V1_chap08.html (checked 2026-11-20)
+32. Apple, `NSMenu.didBeginTrackingNotification`: https://developer.apple.com/documentation/appkit/nsmenu/didbegintrackingnotification (checked 2026-11-20)
