@@ -275,6 +275,7 @@ Other subcommands are not interactive: `status`, `desks`, `add`, `prepare`, each
 
 - One ssh call per check: `macmosh-host status`. It reports the script's version, the macOS version and chip, who is logged in at the screen, whether the desk server is up, the sign-in check, FileVault's status, the power settings that matter, power source and battery, the current home address, and each desk with its windows.
 - The app checks every 30 seconds while the workhorse is reachable, less often while it is not, and at once when you open the menu.
+- A workhorse that has just stopped answering gets a second look five seconds later, and the menu keeps what it showed until then. A Mac that has just woken has no network for a moment, and on the first run that put "Can't reach it" in the menu for half a minute about a workhorse that was fine.
 - The order of a check: the main address first (the Tailscale name), then the home address. The result maps to the states in 5.2.
 - Tailscale itself is asked only for hints: is Tailscale running on this Mac, and does it think the workhorse is online? The Tailscale command needs `TAILSCALE_BE_CLI=1` when an app runs it, and its `Online` field means "connected to Tailscale's servers", not "reachable" [22].
 - **The reason shown under "Can't reach it"** is the first of these that applies: Tailscale is off on the daily Mac; the daily Mac has no network; another VPN is running on the daily Mac; Tailscale says the workhorse is offline, and you are away from home (it may have restarted: the home address is out of reach from here); nothing answers at either address (it is off, asleep or disconnected).
@@ -605,6 +606,10 @@ Shariq approved these with the design on 2026-11-19.
 Added after sitting 1, on 2026-11-20, and not yet checked by Shariq:
 
 20. **In Terminal, a desk opens in a new window, not a tab.** iTerm2 gets a tab. Terminal's scripting has no way to ask for a tab, and the way round it (pressing Command-T through System Events) needs the Accessibility permission, which is too much to ask for a tab (section 7.7).
+
+Added after the first run, on 2026-11-20, and not yet checked by Shariq:
+
+21. **A workhorse that has just stopped answering is checked once more, five seconds later, before the menu says "Can't reach it".** The cost is that a workhorse that really is gone shows as gone a few seconds later. The gain is that a daily Mac that has just woken doesn't raise a false alarm (section 7.4, issue #83).
 
 ## 14. Left to the builder
 

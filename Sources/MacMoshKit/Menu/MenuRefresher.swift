@@ -12,6 +12,7 @@ public final class MenuRefresher: ObservableObject {
     private let gather: @Sendable ([Workhorse]) async -> [Gathered]
     private let save: @Sendable (CheckResult) -> Void
     private let log: @Sendable (String) -> Void
+    private let pause: @Sendable (Duration) async -> Void
     /// The last "menu refreshed" line written, so that a check that changes nothing writes nothing.
     private var lastRefreshLine: String?
     private var refreshing = false
@@ -19,17 +20,23 @@ public final class MenuRefresher: ObservableObject {
     /// How many checks in a row found a workhorse that can't be reached; sets the wait in `runInBackground`.
     private var missesInARow = 0
 
+    /// How long to wait before looking again at a workhorse that has just stopped answering.
+    static let secondLook: Duration = .seconds(5)
+
     /// `load` reads the saved list, `gather` checks the workhorses, and `save` keeps what a report
     /// taught about one of them. Until the first refresh the menu is one line, `Checking…`.
     /// `log` takes the lines of `MenuLog`; the real one writes them to the Mac's system log.
+    /// `pause` is how the wait before a second look is done; tests pass one that doesn't wait.
     public init(load: @escaping @Sendable () throws -> [Workhorse],
                 gather: @escaping @Sendable ([Workhorse]) async -> [Gathered],
                 save: @escaping @Sendable (CheckResult) -> Void,
-                log: @escaping @Sendable (String) -> Void = { MenuLog.write($0) }) {
+                log: @escaping @Sendable (String) -> Void = { MenuLog.write($0) },
+                pause: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }) {
         self.load = load
         self.gather = gather
         self.save = save
         self.log = log
+        self.pause = pause
         self.menu = Menu(symbol: MenuModel.stillCheckingSymbol,
                          items: [.line("Checking…", indent: 0)])
     }
@@ -65,7 +72,15 @@ public final class MenuRefresher: ObservableObject {
             return
         }
 
-        let gathered = await gather(list)
+        var gathered = await gather(list)
+        // One check that can't reach a workhorse is not news yet: a Mac that has just woken has no
+        // network for a moment (issue #83). So the first miss gets a second look a few seconds
+        // later, and the menu keeps what it showed until then. A miss that follows a miss is
+        // shown at once.
+        if missesInARow == 0, PollSchedule.isMiss(gathered) {
+            await pause(Self.secondLook)
+            gathered = await gather(list)
+        }
         missesInARow = PollSchedule.isMiss(gathered) ? missesInARow + 1 : 0
         let save = self.save
         let checked: [CheckResult] = gathered.compactMap {

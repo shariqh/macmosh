@@ -124,6 +124,8 @@ private final class Saved: @unchecked Sendable {
                 return count < pattern.count ? pattern[count] : false
             }
         }
+        /// How many checks have run.
+        var checks: Int { lock.withLock { count } }
     }
 
     /// Collects the waits a stand-in sleep was asked for, and ends the loop after `limit` of them.
@@ -143,8 +145,10 @@ private final class Saved: @unchecked Sendable {
         }
     }
 
-    private func refresher(missing pattern: [Bool]) -> MenuRefresher {
-        let misses = Misses(pattern)
+    /// `pattern` says which checks, in order, find the workhorse out of reach. `pauses` collects the
+    /// waits before a second look; nothing really waits.
+    private func refresher(missing pattern: [Bool], misses: Misses? = nil, pauses: Waits? = nil) -> MenuRefresher {
+        let misses = misses ?? Misses(pattern)
         return MenuRefresher(
             load: { [.sample(id: "mbp", name: "MacBook Pro")] },
             gather: { list in
@@ -154,16 +158,67 @@ private final class Saved: @unchecked Sendable {
                            : .checked(.sampleReady(id: w.id, name: w.name))
                 }
             },
-            save: { _ in })
+            save: { _ in },
+            pause: { pauses?.record($0) })
     }
 
     @Test(.timeLimit(.minutes(1))) func theBackgroundLoopWaitsLongerAfterMisses() async {
         let waits = Waits(limit: 5)
-        let r = refresher(missing: [true, true, true, true, false])
+        // The first miss is looked at twice before it counts, so it takes two entries here.
+        let r = refresher(missing: [true, true, true, true, true, false])
         let task = Task { await r.runInBackground(sleep: { waits.record($0) }) }
         await task.value
-        // Four checks in a row that miss: the wait grows to the cap. One that doesn't: back to 30.
+        // Four refreshes in a row that miss: the wait grows to the cap. One that doesn't: back to 30.
         #expect(waits.all == [.seconds(30), .seconds(60), .seconds(120), .seconds(300), .seconds(30)])
+    }
+
+    // MARK: a second look before "Can't reach it" (issue #83)
+
+    @Test func aFirstMissIsLookedAtAgainBeforeTheMenuSaysSo() async {
+        // A Mac that has just woken has no network for a moment: the first check fails, the next works.
+        let misses = Misses([true, false])
+        let pauses = Waits(limit: .max)
+        let r = refresher(missing: [], misses: misses, pauses: pauses)
+        await r.refresh()
+        #expect(r.menu.symbol == "checkmark.circle")
+        #expect(misses.checks == 2)
+        #expect(pauses.all == [.seconds(5)])
+    }
+
+    @Test func aMissThatIsStillThereAtTheSecondLookIsShown() async {
+        let misses = Misses([true, true, true])
+        let pauses = Waits(limit: .max)
+        let r = refresher(missing: [], misses: misses, pauses: pauses)
+        await r.refresh()
+        #expect(r.menu.symbol == "wifi.slash")
+        #expect(misses.checks == 2)
+        // Once the menu says so, a check that misses again is not doubled.
+        await r.refresh()
+        #expect(r.menu.symbol == "wifi.slash")
+        #expect(misses.checks == 3)
+        #expect(pauses.all == [.seconds(5)])
+    }
+
+    @Test func aCheckThatReachesEveryWorkhorseIsNotRepeated() async {
+        let misses = Misses([false])
+        let pauses = Waits(limit: .max)
+        let r = refresher(missing: [], misses: misses, pauses: pauses)
+        await r.refresh()
+        #expect(r.menu.symbol == "checkmark.circle")
+        #expect(misses.checks == 1)
+        #expect(pauses.all.isEmpty)
+    }
+
+    @Test func afterAGoodCheckTheNextMissGetsItsSecondLookAgain() async {
+        let misses = Misses([true, true, false, true, false])
+        let pauses = Waits(limit: .max)
+        let r = refresher(missing: [], misses: misses, pauses: pauses)
+        await r.refresh()   // misses twice: shown
+        await r.refresh()   // reaches it
+        await r.refresh()   // misses once, then reaches it: never shown
+        #expect(r.menu.symbol == "checkmark.circle")
+        #expect(misses.checks == 5)
+        #expect(pauses.all == [.seconds(5), .seconds(5)])
     }
 
     @Test(.timeLimit(.minutes(1))) func theBackgroundLoopStopsWhenCancelled() async {
