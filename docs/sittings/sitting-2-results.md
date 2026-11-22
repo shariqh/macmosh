@@ -16,27 +16,30 @@ Every user name, host name, address and key in this file is a placeholder: `alex
 | 10:02:38 | Shariq, in the desk `sitting-2` opened from the menu | `sudo pmset -a disablesleep 1` |
 | 10:05:00 | Shariq | closed the workhorse's lid (on power, no display plugged in) |
 | 10:20:04 | | the lid had been closed for 15 minutes |
+| 10:48:16 | Shariq | opened the lid, after 43 minutes closed (he had stepped away) |
 
 **What was seen.**
 
-- **The workhorse did not sleep.** `pmset -g log` has no `Sleep`, `Wake` or `DarkWake` entry between 10:00 and 10:20. A loop on the workhorse that looked at the lid every 10 seconds never saw more than 60 seconds pass between two looks.
-- **The daily Mac reached it the whole time.** Between 10:05 and 10:20 the recorder made 40 rounds. In every one, `macmosh status` exited 0 with the state `ready`, and ssh to the main, the home and the `.local` address each exited 0 with the pinned key.
-- **The workhorse's own log has no gap.** `host.log` has 109 status lines between 10:05 and 10:20 and no two are more than 45 seconds apart.
+- **The workhorse did not sleep.** `pmset -g log` has no `Sleep`, `Wake` or `DarkWake` entry between 10:00 and 10:49. A loop on the workhorse that looked at the lid every 10 seconds, until 10:20, never saw more than 60 seconds pass between two looks. The power log's first entry about the lid is `com.apple.powermanagement.lidopen` at 10:48:16.
+- **The daily Mac reached it the whole time.** Between 10:05 and 10:20 the recorder made 40 rounds, and between 10:20 and 10:49 another 77 complete ones. In every one, `macmosh status` exited 0, and ssh to the main, the home and the `.local` address each exited 0. The key was the pinned one every time.
+- **The workhorse's own log has no gap.** `host.log` has 317 status lines between 10:05 and 10:49 and no two are more than 45 seconds apart.
 - **The agent's own session on the workhorse kept answering** messages sent from the daily Mac at 10:05 and 10:06, with the lid closed.
 - **Where the setting shows.** After the command, `pmset -g` has a new line, `SleepDisabled` followed by two tabs and `1`. Before it, `pmset -g` had no such line. `pmset -g custom` has no line for it, before or after.
 - **MacMosh's report does not see it.** The workhorse's status report still says `disablesleep=-` with the setting on, because it reads `pmset -g custom`.
 - `ioreg` showed `AppleClamshellState = Yes` from 10:05:00. `AppleClamshellCausesSleep` stayed `Yes` before and after the command and with the lid closed, so it says nothing about the setting.
 - What held the workhorse awake at 10:05, from `pmset -g assertions`: only idle-sleep holds (`PreventUserIdleSystemSleep` from `caffeinate` and `powerd`); `PreventSystemSleep` was 0. Apple's `IOPMLib.h` says of that kind of hold: "The system may still sleep for lid close, Apple menu, low battery, or other sleep reasons."
-- **Screen and heat when the lid was opened:** not written down yet.
+- **Screen and heat when the lid was opened,** in Shariq's words: "not much warmer no" and "screen was on ye". `pmset -g therm` at 10:49 said no thermal warning level, performance warning level or CPU power status had been recorded. Whether the screen was lit while the lid was closed is not known.
+- **What Shariq wants next,** in his words: "we can keep a check on the temps as i think that will be my default mode for now".
 
 **Not shown by this run.** Whether the same lid close, with the setting off and a remote session connected, puts the workhorse to sleep. Its power log has two earlier `Clamshell Sleep` entries (16 and 17 November), both on battery. A one-minute control with the setting off is planned for the end of the sitting.
 
-**Verdict so far: pass.** The workhorse stayed awake and reachable for 15 minutes with the lid closed.
+**Verdict so far: pass.** The workhorse stayed awake and reachable for 43 minutes with the lid closed.
 
 **What the build does with it.**
 
 - The lid-closed switch (Task 25) can be built on `disablesleep`.
 - The status report has to read `SleepDisabled` from `pmset -g`, not from `pmset -g custom`.
+- Shariq means to run with the lid closed by default, so a way to see the workhorse's temperature or thermal state goes on the list for his review (Task 21).
 
 ## Found while starting
 
