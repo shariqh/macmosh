@@ -246,6 +246,21 @@ private func versionLine(in text: String) -> String {
         #expect(after.desks.count == 1)
         #expect(after.desks[0].attached == 2)
         #expect(after.desks[0].windows.map(\.name) == ["zsh", "claude"])
+
+        // Script 0.8.0 adds the view's label at the end of its line, empty when it has none. Read
+        // exactly as before.
+        let labelled: [[String]] = [
+            ["windowinfo", "website", "0", "@0", "1", "1"],
+            ["windowinfo", "website", "1", "@1", "0", "2"],
+            ["view", "website", "website+4242", "@1", "1", "0a1b2c3d"],
+            ["view", "website", "website+4243", "@1", "1", ""],
+        ]
+        let newer = try HostStatus.parse(report(desk + labelled + [["def", "website", "1", "0", "0", "/tmp", ""]]))
+        let newerBefore = try HostStatus.parse(report(desk + [["def", "website", "1", "0", "0", "/tmp", ""]]))
+        #expect(newer == newerBefore)
+        #expect(newer.desks.map(\.name.value) == ["website"])
+        #expect(newer.definitions.count == 1)
+        #expect(newer.desks[0].windows.map(\.name) == ["zsh", "claude"])
     }
 
     @Test func aWindowWithoutADeskIsLeftOut() throws {
