@@ -99,8 +99,16 @@ Nothing found prepares the workhorse and gets you back in after a restart. That 
 MacBook Pro · Ready
    Desks
       website           2 windows
+         New window in website
+         Rename website…
+         Remove website…
       notes             1 window, permanent
+         New window in notes
+         Rename notes…
+         Remove notes…
       journal (closed)
+         Rename journal…
+         Remove journal…
       New desk…
    Share screen
    Restart…
@@ -124,6 +132,8 @@ MacBook Pro · Can't reach it
 The icon shows state by shape as well as colour, so it reads in a monochrome menu bar.
 
 A desk's line opens it. An ordinary desk is gone from the menu once its last window is closed. A permanent desk stays: while it is open its line says `permanent`, and once its last window is closed its line says `(closed)`, and one click opens it again in its folder (section 7.3).
+
+Under each desk, open or closed, `Rename <name>…` and `Remove <name>…` each open a terminal tab that asks first. Rename asks for the new name; the desk keeps its windows and what runs in them. Remove names the desk and the windows that will close, and asks once; only `yes` removes it, and then its windows close too, with whatever runs in them. An open desk also has `New window in <name>` above them.
 
 ### 5.2 The states
 
@@ -277,7 +287,9 @@ Other subcommands are not interactive: `status`, `desks`, `add`, `prepare`, each
 - **An exit is told apart from the desk server going away.** A restart, a shutdown, `restart-server` and a server that is killed all close every desk at once, and none of them may remove a definition, or nothing would come back. The desk server runs a hook when a desk closes. A minute later the hook asks the workhorse script to remove the definition, and the script does so only when the same desk server (the same process) still answers, somebody is logged in at the screen, and the desk has not been opened again. The minute is waited inside the desk server, so a restart or a logout that ends the server within it keeps the definition. That matters at a restart or logout from the Apple menu: macOS first quits the apps, which can take many seconds, and only then ends the desk server, so a desk whose program waited on one of those apps can close in between. The cost: after a real exit, the leftover line stays (hidden by the menu) for up to a minute, and a desk exited less than a minute before a restart comes back once. tmux 3.8 runs no such hook at all while its server shuts down (seen with `kill-server`, SIGTERM, SIGINT and SIGKILL on a throwaway socket on 2026-11-22), and an interactive zsh survives the SIGTERM a shutdown sends, so its desk ends only with the server. When anything is unclear the definition stays: a leftover definition is never shown in the menu, and `desk new` with its name replaces it.
 - **A desk server started by an older script gets the hook without a restart**, because the script's `start`, `status` (the check every 30 seconds), `attach`, `desk-new` and `window-new` set it again each time, and turn `destroy-unattached` off again with it. `desk-remove` does not. Restarting the server would close every desk.
 - **A desk can keep a command running**: the script restarts it when it exits, with a pause between tries. This replaces the hand-written `rc-servers` loop from the hand-built setup. It is the last v1 item and the first to cut.
-- **New desk** asks for a name and a folder. The app lists the folders inside a "projects folder" you choose once per workhorse (for example `~/Development`), so most new desks are two clicks.
+- **New desk** asks for a name, a folder and a command to start in it (Enter for none). The app lists the folders inside a "projects folder" you choose once per workhorse (for example `~/Development`), so most new desks are two clicks. The command is stored with the desk and typed into it each time the desk is made, as `macmosh desk new … --command` does; given there, it isn't asked for.
+- **A desk can be renamed** with `macmosh desk rename <workhorse> <desk> [<new name>]` or the menu's `Rename <name>…`, open or closed. The workhorse renames its tmux session and the first field of its definition, under the desk list's lock, so the desk keeps its windows, what runs in them, its folder, its startup command and whether it comes back, is kept running or is permanent. A rename closes no session, so the exit path never runs for it. The new name is refused when an open desk or a permanent one has it; a leftover line with that name is replaced, as `desk new` replaces it. Tabs that are open on the desk keep working; their titles may still say the old name. The daily Mac keeps nothing by a desk's name except an open tab: a Tabs-mode tab tries the old name again after a drop, and then says the desk may have been renamed.
+- **A desk can be removed from the menu**: `Remove <name>…` runs `macmosh desk remove <workhorse> <desk> --ask`, which says what will close and asks once. On `yes` it removes the definition and closes the desk's windows, as `--kill` does. Without `--ask`, `desk remove` forgets the desk and leaves its shell running unless `--kill` is given.
 - Desk names use letters, digits, `-` and `_`.
 
 ### 7.4 Checking status
@@ -595,6 +607,8 @@ v1 is done when Shariq runs his day from the native app, has recovered from a re
 | Every new desk comes back after a restart. `macmosh desk new` gets `--no-reopen` for one that shouldn't; `--reopen` is still accepted. The menu's `New desk…` asks nothing new (#89) | 2026-11-22 |
 | A desk is ephemeral by default: when its last shell exits, the desk is removed and its name is free again. His words: "exiting removes the desk today" (#87) | 2026-11-22 |
 | `macmosh desk new --permanent` makes a desk that stays after its last shell exits, with a line in the menu marked closed that opens it again. His words: "once we have a desktop app the user can decied if the desk is ephemeral or permanant after exits", then "i guess we can do thi today too as a flag". A `Remove` item in the menu (#93) and the choice in the app's New desk window (Task 29) come later | 2026-11-22 |
+| A desk can be renamed, from the menu and the command line. His words: "the ability to rename a desk would be importnat where possible" (#95) | 2026-11-22 |
+| The menu's `New desk…` asks for a command to start in the desk. His answer: "Yes, add the question" (#98) | 2026-11-22 |
 
 ### Calls the agent made, for Shariq to check
 
@@ -649,6 +663,14 @@ Added with desks that come back after a restart (#89 and #87), on 2026-11-22, an
 32. **The menu's words:** an open permanent desk has `permanent` inside its brackets, after `kept running`. A closed one is `<name> (closed)`, after the open desks, with no `New window` line under it. Clicking it runs the same `connect` as an open desk's line.
 33. **A closed permanent desk that is marked reopen is opened again by the next start of the server,** like every other desk marked reopen, so after a restart it shows as open, not closed. Nothing is lost either way.
 34. **`destroy-unattached` is always off on MacMosh's desk server,** whatever your own tmux settings say. With it on, closing the last terminal on a desk would close the desk, and that would count as its last shell exiting and remove its definition.
+
+Added with Remove, Rename and the New desk command question (#93, #95, #98), on 2026-11-22, and not yet checked by Shariq:
+
+35. **Two more lines under every desk in the menu, open or closed:** `Rename <name>…` and then `Remove <name>…`, after `New window in <name>` where there is one. A submenu per desk would be tidier; it belongs with the app's windows (Task 29) (section 5.1).
+36. **The wording of the three questions:** `New name for <old>: ` (Enter changes nothing); for Remove, `This removes the desk <name> and closes its N windows (<window names>), with whatever is running in them.` or `This removes the desk <name>. It has no open windows.`, then `Type yes to remove it: `, where anything but `yes` changes nothing; and `Command to start in it (Enter for none): ` after the name and the folder in `New desk…`.
+37. **`Remove` from the menu always closes the desk's windows**, with whatever runs in them. Only the command line can forget a desk and leave its shell running (`macmosh desk remove` without `--kill`).
+38. **A rename to a name that only a leftover line holds goes ahead**, and the leftover line is replaced, as `desk new` replaces it. The menu never shows such a line, and the exit path may not have cleared it yet when someone reuses the name.
+39. **The tabs that Rename and Remove open stay open until a key is pressed**, after it worked too, so what happened can be read. A Tabs-mode tab that tries a desk's name again after a drop and finds no such desk says it may have been renamed or removed.
 
 ## 14. Left to the builder
 
