@@ -4,7 +4,8 @@ import Foundation
 ///
 /// A new desk comes back after a restart unless asked not to (`reopen`), and is removed for good when
 /// its last shell exits unless it is `permanent`. The form that asks questions asks about neither, so
-/// a desk made from the menu's `New desk…` comes back and is not permanent.
+/// a desk made from the menu's `New desk…` comes back and is not permanent. It does ask for a command
+/// to start, after the name and the folder, unless `command` was given.
 public struct NewDeskRequest: Sendable, Equatable {
     public var name: String?
     public var folder: String?
@@ -103,10 +104,14 @@ public struct DeskFlow: Sendable {
             folder = chosen
         }
 
+        // The form that asks questions asks a third, unless --command was given (#98).
+        var command = request.command
+        if request.isInteractive && command == nil { command = askCommand(ui) }
+
         do {
             try await commands.newDesk(on: w, address: address, name: name, folder: folder,
                                        reopen: request.reopen, keep: request.keep, permanent: request.permanent,
-                                       command: request.command)
+                                       command: command)
         } catch {
             return .failure(DeskFormat.message(error, workhorse: w))
         }
@@ -232,6 +237,15 @@ public struct DeskFlow: Sendable {
             ui.say(DeskFormat.nameRule)
         }
         return nil
+    }
+
+    static let commandQuestion = "Command to start in it (Enter for none): "
+
+    /// The startup command, sent exactly as typed, or nil for Enter alone (or only spaces). A tab in it
+    /// is sent too, and the workhorse refuses it as it refuses one in `--command`.
+    private func askCommand(_ ui: Interaction) -> String? {
+        let answer = ui.ask(Self.commandQuestion)
+        return answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : answer
     }
 
     /// With a projects folder: its folders as a numbered list, "or type a path". Without one, just a path.

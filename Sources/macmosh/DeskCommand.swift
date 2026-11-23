@@ -41,7 +41,7 @@ struct DeskCommand: AsyncParsableCommand {
     struct New: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
             commandName: "new",
-            abstract: "Make a desk. With no desk name or folder it asks for them.",
+            abstract: "Make a desk. With no desk name or folder it asks for them, and for a command to start.",
             discussion: """
                 A new desk opens again by itself after the workhorse restarts, unless you say --no-reopen. \
                 When you close its last window (typing exit, for example), the desk is removed and its name \
@@ -71,7 +71,7 @@ struct DeskCommand: AsyncParsableCommand {
         @Flag(help: "The startup command is kept running (not active yet).")
         var keep = false
 
-        @Option(help: "A command to type into the desk when it starts.")
+        @Option(help: "A command to type into the desk when it starts. Given here, it isn't asked for.")
         var command: String?
 
         func run() async throws {

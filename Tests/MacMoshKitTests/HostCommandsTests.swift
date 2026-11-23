@@ -358,7 +358,7 @@ private func desksListing(_ names: [String]) -> FakeRunner {
         let w = Workhorse.sample(projectsFolder: "~/Development")
         let result = await flow(runner).newDesk(checked(at: "workhorse", w), request: NewDeskRequest(), ui: ui)
         #expect(result.code == 0)
-        #expect(ui.asked.count == 2)
+        #expect(ui.asked.count == 3)
         #expect(ui.said.contains("  1  alpha"))
         #expect(ui.said.contains("  2  beta"))
         #expect(ui.said.contains("  3  gamma"))
@@ -403,7 +403,64 @@ private func desksListing(_ names: [String]) -> FakeRunner {
         #expect(request.isInteractive)
         let result = await flow(runner).newDesk(checked(), request: request, ui: ui)
         #expect(result.code == 0)
-        #expect(ui.asked.count == 1)
+        // The folder, then the command to start (#98).
+        #expect(ui.asked.count == 2)
+        #expect(ui.asked.first?.hasPrefix("Folder on") == true)
+    }
+
+    // MARK: the interactive form's third question (#98)
+
+    static let commandQuestion = "Command to start in it (Enter for none): "
+
+    @Test func theFormAsksForACommandAfterTheNameAndTheFolder() async {
+        let runner = FakeRunner { _ in FakeRunner.ok() }
+        let ui = ScriptedInteraction(answers: ["web", "/Users/alex/web", "npm run dev"])
+        let result = await flow(runner).newDesk(checked(), request: NewDeskRequest(), ui: ui)
+        #expect(result.code == 0)
+        #expect(ui.asked.count == 3)
+        #expect(ui.asked.last == Self.commandQuestion)
+        #expect(remote(runner) == "~/.macmosh/macmosh-host desk-new web /Users/alex/web --reopen --command 'npm run dev'")
+    }
+
+    @Test func enterAtTheThirdQuestionIsNoCommand() async {
+        for answer in ["", "   "] {
+            let runner = FakeRunner { _ in FakeRunner.ok() }
+            let ui = ScriptedInteraction(answers: ["web", "/Users/alex/web", answer])
+            let result = await flow(runner).newDesk(checked(), request: NewDeskRequest(), ui: ui)
+            #expect(result.code == 0)
+            #expect(ui.asked.last == Self.commandQuestion)
+            #expect(remote(runner) == "~/.macmosh/macmosh-host desk-new web /Users/alex/web --reopen")
+        }
+    }
+
+    @Test func aCommandWithSpacesAndQuotesArrivesUnchanged() async {
+        let runner = FakeRunner { _ in FakeRunner.ok() }
+        let typed = #"claude --resume "my chat" it's $HOME"#
+        let ui = ScriptedInteraction(answers: ["web", "/Users/alex/web", typed])
+        let result = await flow(runner).newDesk(checked(), request: NewDeskRequest(), ui: ui)
+        #expect(result.code == 0)
+        #expect(remote(runner) ==
+            #"~/.macmosh/macmosh-host desk-new web /Users/alex/web --reopen --command 'claude --resume "my chat" it'\''s $HOME'"#)
+        #expect(ShellQuote.posix(typed) == #"'claude --resume "my chat" it'\''s $HOME'"#)
+    }
+
+    @Test func aCommandGivenOnTheCommandLineIsNotAskedFor() async {
+        let runner = FakeRunner { _ in FakeRunner.ok() }
+        let ui = ScriptedInteraction(answers: ["web", "/Users/alex/web", "should not be read"])
+        let result = await flow(runner).newDesk(checked(), request: NewDeskRequest(command: "npm run dev"), ui: ui)
+        #expect(result.code == 0)
+        #expect(ui.asked.count == 2)
+        #expect(!ui.asked.contains(Self.commandQuestion))
+        #expect(remote(runner) == "~/.macmosh/macmosh-host desk-new web /Users/alex/web --reopen --command 'npm run dev'")
+    }
+
+    @Test func aTabInTheCommandIsRefusedByTheWorkhorse() async {
+        let runner = FakeRunner { _ in FakeRunner.failed(6, stderr: "macmosh-host: a folder or command can't contain a tab or a new line\n") }
+        let ui = ScriptedInteraction(answers: ["web", "/Users/alex/web", "a\tb"])
+        let result = await flow(runner).newDesk(checked(), request: NewDeskRequest(), ui: ui)
+        #expect(result.code == 1)
+        #expect(result.reason == DeskFormat.message(.badInput, workhorse: .sample()))
+        #expect(remote(runner)?.hasSuffix(" --command 'a\tb'") == true)
     }
 
     @Test func anInvalidNameIsAskedAgain() async {
@@ -411,7 +468,7 @@ private func desksListing(_ names: [String]) -> FakeRunner {
         let ui = ScriptedInteraction(answers: ["my desk", "", "web", "/Users/alex/web"])
         let result = await flow(runner).newDesk(checked(), request: NewDeskRequest(), ui: ui)
         #expect(result.code == 0)
-        #expect(ui.asked.count == 4)
+        #expect(ui.asked.count == 5)
         #expect(ui.said.filter { $0 == DeskFormat.nameRule }.count == 2)
         #expect(remote(runner) == "~/.macmosh/macmosh-host desk-new web /Users/alex/web --reopen")
     }
