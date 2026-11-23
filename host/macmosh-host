@@ -582,7 +582,7 @@ cmd_desk_rename() {
     if mm_session_exists "$old" && ! mm_tmux rename-session -t "=$old" -- "$new" >/dev/null 2>&1; then
         mm_release_lock
         echo "macmosh-host: could not rename the desk $old" >&2
-        mm_log desk-rename "failed: tmux did not rename $old"
+        mm_log desk-rename "failed: the session $old was not renamed"
         return 1
     fi
     # The list: the old name's line gets the new name, and a leftover line for the new name goes.

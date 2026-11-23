@@ -384,7 +384,7 @@ extension HostScriptTests {
         let version = h.run(["version"])
         #expect(version.exitCode == 0)
         #expect(version.stdout == h.scriptVersion + "\n")
-        #expect(version.stdout == "0.5.0\n")
+        #expect(version.stdout == "0.6.0\n")
         #expect(h.run([]).exitCode == 2)
         #expect(h.run(["nonsense"]).exitCode == 2)
     }
