@@ -28,4 +28,7 @@ if "$helper" desks "$id" 2>/dev/null | grep -q "^$desk "; then
     exec "$helper" connect "$id" "$desk"
 fi
 echo "Making the desk $desk on the workhorse, marked to come back after a restart."
-exec "$helper" desk new "$id" "$desk" --folder '~' --reopen
+# Given a name and a folder, `desk new` makes the desk and returns. It opens a desk only when it
+# had to ask for one of them, so the desk is opened here.
+"$helper" desk new "$id" "$desk" --folder '~' --reopen || exit 1
+exec "$helper" connect "$id" "$desk"
