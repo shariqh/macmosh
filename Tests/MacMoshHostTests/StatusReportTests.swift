@@ -270,11 +270,14 @@ extension HostScriptTests {
         #expect(h.run(["start"]).exitCode == 0)
         let conf = try String(contentsOf: h.home.appendingPathComponent(".macmosh/tmux.conf"), encoding: .utf8)
         let expected = """
-            # MacMosh defaults. Your own tmux settings are loaded next, so your settings win.
+            # MacMosh defaults. Your own tmux settings are loaded next, so your settings win,
+            # except the two after them that desks need: the server stays up with no desk open,
+            # and a desk stays open when its last terminal leaves.
             set -g mouse on
             set -g history-limit 50000
             source-file -q "\(h.home.path)/.config/tmux/tmux.conf"
             set -s exit-empty off
+            set -g destroy-unattached off
 
             """
         #expect(conf == expected)

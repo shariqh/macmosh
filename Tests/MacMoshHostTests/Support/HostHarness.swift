@@ -38,6 +38,8 @@ final class HostHarness {
         }
         env["HOME"] = base.path
         env["MACMOSH_SOCKET"] = socket
+        // A desk server's closing hook waits a minute; a second is enough here.
+        env["MACMOSH_HOOK_DELAY"] = "1"
         let inherited = env["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"
         env["PATH"] = base.appendingPathComponent("stubs").path + ":" + inherited
         baseEnvironment = env

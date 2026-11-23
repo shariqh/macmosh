@@ -148,7 +148,15 @@ extension HostScriptTests {
         // Once the server's process is gone it can't run anything any more.
         try wait(h) { !isRunning(pid) }
         #expect(desksFile(h) == before)
-        #expect(!hostLog(h).contains("removed"))
+        // The next start, which any later command brings about, keeps them too.
+        #expect(h.run(["start"]).exitCode == 0)
+        #expect(desksFile(h) == before)
+        #expect(!isOpen(h, "b"))
+        try proveTheHookHasRun(h)
+        #expect(desksFile(h) == before)
+        #expect(!hostLog(h).contains("removed a"))
+        #expect(!hostLog(h).contains("removed b"))
+        #expect(!hostLog(h).contains("removed c"))
     }
 
     @Test(arguments: [SIGTERM, SIGKILL])
@@ -162,16 +170,24 @@ extension HostScriptTests {
         let pid = try signalServer(h, signal)
         try wait(h) { !isRunning(pid) }
         #expect(desksFile(h) == before)
-        #expect(!hostLog(h).contains("removed"))
+        #expect(h.run(["start"]).exitCode == 0)
+        #expect(desksFile(h) == before)
+        try proveTheHookHasRun(h)
+        #expect(desksFile(h) == before)
+        #expect(!hostLog(h).contains("removed a"))
+        #expect(!hostLog(h).contains("removed b"))
+        #expect(!hostLog(h).contains("removed c"))
     }
 
     @Test func restartServerKeepsEveryDefinitionAndReopensTheDesks() throws {
         let h = try HostHarness(); defer { h.cleanUp() }
         _ = h.run(["start"])
         _ = h.run(["desk-new", "back", h.home.path])
+        _ = h.run(["desk-new", "once", h.home.path, "--no-reopen"])
         _ = h.run(["desk-new", "kept", h.home.path, "--permanent", "--no-reopen"])
         _ = h.run(["desk-new", "both", h.home.path, "--permanent"])
         let before = desksFile(h)
+        #expect(before.split(separator: "\n").count == 4)
         let pid = try serverPid(h)
         // The stand-in login agent runs the script's start, as the real one would.
         try h.stub("launchctl", script: """
@@ -185,28 +201,59 @@ extension HostScriptTests {
         #expect(isOpen(h, "back"))
         #expect(isOpen(h, "both"))
         #expect(!isOpen(h, "kept"))
+        #expect(!isOpen(h, "once"))
         try proveTheHookHasRun(h)
         #expect(desksFile(h) == before)
     }
 
+    /// A definition not marked reopen, in the form from before 0.5.0 and in the new one, stays through
+    /// every way the server comes back. Before 0.5.0 every desk made from the menu had such a line.
+    @Test func aLineNotMarkedReopenSurvivesEveryRestartOfTheServer() throws {
+        let h = try HostHarness(); defer { h.cleanUp() }
+        let text = "five\t0\t0\t\(h.home.path)\t\nsix\t0\t0\t0\t\(h.home.path)\t\n"
+        try writeDesksFile(h, text)
+        #expect(h.run(["start"]).exitCode == 0)
+        #expect(desksFile(h) == text)
+
+        let pid = try serverPid(h)
+        _ = h.tmux(["kill-server"])
+        try wait(h) { !isRunning(pid) }
+        #expect(h.run(["start"]).exitCode == 0)
+        #expect(desksFile(h) == text)
+
+        try h.stub("launchctl", script: """
+            echo "$*" >> "$HOME/launchctl.log"
+            if [ "$1" = "kickstart" ]; then "\(h.scriptURL.path)" start; fi
+            exit 0
+            """)
+        #expect(h.run(["restart-server", "--yes"]).exitCode == 0)
+        #expect(desksFile(h) == text)
+        #expect(!isOpen(h, "five"))
+        #expect(!isOpen(h, "six"))
+        // attach makes either desk again from its line.
+        #expect(h.run(["attach", "--dry-run", "five"]).stdout == "ok\n")
+        #expect(isOpen(h, "five"))
+    }
+
     // MARK: - Leftovers
 
-    @Test func startReopensTheDesksAndDropsAStaleLine() throws {
+    @Test func startReopensTheDesksAndKeepsEveryLine() throws {
         let h = try HostHarness(); defer { h.cleanUp() }
         _ = h.run(["start"])
         _ = h.run(["desk-new", "back", h.home.path])
         _ = h.run(["desk-new", "once", h.home.path, "--no-reopen"])
         _ = h.run(["desk-new", "kept", h.home.path, "--permanent", "--no-reopen"])
+        let before = desksFile(h)
+        let pid = try serverPid(h)
         _ = h.tmux(["kill-server"])
+        try wait(h) { !isRunning(pid) }
         #expect(h.run(["start"]).exitCode == 0)
         #expect(isOpen(h, "back"))
         #expect(!isOpen(h, "once"))
         #expect(!isOpen(h, "kept"))
-        // "once" would never come back, so its line goes and its name is free.
-        #expect(!defined(h, "once"))
-        #expect(defined(h, "back"))
-        #expect(defined(h, "kept"))
-        #expect(hostLog(h).contains("dropped once"))
+        // "once" is not opened, but its line stays: the menu hides it and desk-new replaces it.
+        #expect(desksFile(h) == before)
+        #expect(!hostLog(h).contains("dropped"))
     }
 
     @Test func deskNewOverAStaleLineReplacesIt() throws {
@@ -235,18 +282,28 @@ extension HostScriptTests {
         let h = try HostHarness(); defer { h.cleanUp() }
         let folder = h.home.appendingPathComponent("old folder")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        try writeDesksFile(h, "old\t1\t0\t\(folder.path)\techo hi > old.txt\nolder\t0\t0\t\(folder.path)\t\n")
+        try writeDesksFile(h, "old\t1\t0\t\(folder.path)\techo hi > old.txt\n"
+            + "older\t0\t0\t\(folder.path)\t\n"
+            + "bare\t1\t0\t\(folder.path)\t\n")
         #expect(h.run(["start"]).exitCode == 0)
         // Reopened in its own folder, with its own command.
         #expect(isOpen(h, "old"))
         try wait(h) { FileManager.default.fileExists(atPath: folder.appendingPathComponent("old.txt").path) }
-        // Not marked reopen and not permanent: a stale line once the server has started.
-        #expect(!defined(h, "older"))
+        // Not marked reopen: not opened, and its line stays.
+        #expect(!isOpen(h, "older"))
+        #expect(defined(h, "older"))
+        // Marked reopen with no startup command: the empty last field is the command, not a permanent flag.
+        #expect(isOpen(h, "bare"))
         let report = h.run(["status"]).stdout
         #expect(report.contains("\ndef\told\t1\t0\t0\t\(folder.path)\techo hi > old.txt\n"))
-        // Not permanent, so its exit removes it.
+        #expect(report.contains("\ndef\tolder\t0\t0\t0\t\(folder.path)\t\n"))
+        #expect(report.contains("\ndef\tbare\t1\t0\t0\t\(folder.path)\t\n"))
+        // Not permanent, so an exit removes either.
         typeExit(h, "=old:")
         try wait(h) { !defined(h, "old") }
+        typeExit(h, "=bare:")
+        try wait(h) { !defined(h, "bare") }
+        #expect(defined(h, "older"))
     }
 
     // MARK: - A server started by an older script
@@ -268,6 +325,78 @@ extension HostScriptTests {
 
         typeExit(h, "=early:")
         try wait(h) { !defined(h, "early") }
+    }
+
+    @Test func theHookIsSetOnceAndYourOwnHooksStay() throws {
+        let h = try HostHarness(); defer { h.cleanUp() }
+        try "set-hook -g session-closed[0] 'run-shell true'\n"
+            .write(to: h.home.appendingPathComponent(".tmux.conf"), atomically: true, encoding: .utf8)
+        _ = h.run(["start"])
+        for i in 0..<4 {
+            #expect(h.run(["status"]).exitCode == 0)
+            #expect(h.run(["start"]).exitCode == 0)
+            #expect(h.run(["desk-new", "d\(i)", h.home.path]).exitCode == 0)
+            #expect(h.run(["window-new", "d\(i)"]).exitCode == 0)
+            #expect(h.run(["attach", "--dry-run", "d\(i)"]).exitCode == 0)
+        }
+        let hooks = h.tmux(["show-hooks", "-g", "session-closed"]).stdout
+        let ours = hooks.split(separator: "\n").filter { $0.contains("@macmosh-desk-closed") }
+        #expect(ours.count == 1, "\(hooks)")
+        #expect(hooks.contains("run-shell true"), "\(hooks)")
+    }
+
+    // MARK: - Your own tmux settings
+
+    /// destroy-unattached closes a session when its last client leaves. MacMosh turns it off for its
+    /// own server, because a closed tab or mosh window must never close a desk.
+    @Test func detachingNeverClosesADeskWhenYourSettingsTurnOnDestroyUnattached() throws {
+        let h = try HostHarness(); defer { h.cleanUp() }
+        try "set -g destroy-unattached on\n"
+            .write(to: h.home.appendingPathComponent(".tmux.conf"), atomically: true, encoding: .utf8)
+        _ = h.run(["start"])
+        #expect(h.run(["desk-new", "solo", h.home.path]).exitCode == 0)
+        // A client comes and goes, the way a tab or a mosh window does.
+        _ = h.shell("tmux -L '\(h.socket)' -C attach-session -t =solo < /dev/null")
+        try proveTheHookHasRun(h)
+        #expect(isOpen(h, "solo"))
+        #expect(defined(h, "solo"))
+        #expect(h.tmux(["show-options", "-gv", "destroy-unattached"]).stdout == "off\n")
+    }
+
+    @Test func aRunningServerGetsDestroyUnattachedTurnedOff() throws {
+        let h = try HostHarness(); defer { h.cleanUp() }
+        _ = h.tmux(["-f", "/dev/null", "start-server", ";", "set-option", "-s", "exit-empty", "off",
+                    ";", "set-option", "-g", "destroy-unattached", "on"])
+        #expect(h.tmux(["show-options", "-gv", "destroy-unattached"]).stdout == "on\n")
+        #expect(h.run(["status"]).exitCode == 0)
+        #expect(h.tmux(["show-options", "-gv", "destroy-unattached"]).stdout == "off\n")
+    }
+
+    // MARK: - Desk names are text
+
+    /// awk reads "7" and "007", or "1e3" and "1000", as the same number. The script compares names as
+    /// text, so one desk never touches the other's line.
+    @Test(arguments: zip(["7", "007", "1e3", "1000"], ["007", "7", "1000", "1e3"]))
+    func aNameThatLooksLikeANumberTouchesOnlyItsOwnLine(one: String, other: String) throws {
+        let h = try HostHarness(); defer { h.cleanUp() }
+        _ = h.run(["start"])
+        #expect(h.run(["desk-new", other, h.home.path]).exitCode == 0)
+        let otherLine = desksFile(h)
+        #expect(h.run(["desk-new", one, h.home.path]).exitCode == 0)
+        #expect(defined(h, one))
+        #expect(defined(h, other))
+
+        #expect(h.run(["desk-remove", one, "--kill"]).exitCode == 0)
+        #expect(!defined(h, one))
+        #expect(desksFile(h) == otherLine)
+        #expect(isOpen(h, other))
+
+        #expect(h.run(["desk-new", one, h.home.path]).exitCode == 0)
+        typeExit(h, "=\(one):")
+        try wait(h) { !defined(h, one) }
+        try proveTheHookHasRun(h)
+        #expect(desksFile(h) == otherLine)
+        #expect(isOpen(h, other))
     }
 
     // MARK: - desk-closed, the hook's own subcommand
@@ -297,6 +426,20 @@ extension HostScriptTests {
         // The same server, no session, not permanent: removed.
         #expect(h.run(["desk-closed", "a", String(pid)]).exitCode == 0)
         #expect(!defined(h, "a"))
+    }
+
+    /// The hook runs for every session that closes, your own tmux sessions too.
+    @Test func deskClosedIgnoresANameThatIsNotADeskName() throws {
+        let h = try HostHarness(); defer { h.cleanUp() }
+        _ = h.run(["start"])
+        let text = "bad name\t0\t0\t0\t/gone\t\na.b\t0\t0\t0\t/gone\t\n"
+        try writeDesksFile(h, text)
+        let pid = try serverPid(h)
+        for name in ["bad name", "a.b"] {
+            #expect(h.run(["desk-closed", name, String(pid)]).exitCode == 0)
+        }
+        #expect(desksFile(h) == text)
+        #expect(hostLog(h).contains("ignored: not a desk name"))
     }
 
     @Test func deskClosedKeepsTheDefinitionWhenTheServerIsGone() throws {
