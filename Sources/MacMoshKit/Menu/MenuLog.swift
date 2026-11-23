@@ -31,6 +31,13 @@ public enum MenuLog {
         "menu refreshed: symbol=\(menu.symbol) workhorses=\(workhorses) lines=\(menu.items.count)"
     }
 
+    /// `menu tracking: object=other`: which menu AppKit says began tracking. The app opens the
+    /// menu-bar menu on every such notice, and once it has a window a pop-up in it would send one
+    /// too; this line shows which object came, so the two can be told apart (main window design 7.3).
+    public static func tracking(_ object: MenuTrackingObject) -> String {
+        "menu tracking: object=\(object.rawValue)"
+    }
+
     /// `menu action: tab connect`
     static func asked(_ action: MenuAction) -> String {
         "menu action: \(name(action))"
@@ -64,4 +71,12 @@ public enum MenuLog {
         guard text.hasSuffix(")"), let open = text.lastIndex(of: "(") else { return nil }
         return Int(text[text.index(after: open)..<text.index(before: text.endIndex)])
     }
+}
+
+/// The menu a `NSMenu.didBeginTrackingNotification` was sent for, in four fixed words. The app picks
+/// one from the object's class and whether it is `NSApp.mainMenu`, never from a title. Apple says the
+/// object is "the main menu bar (`[NSApp mainMenu]`) or the root menu of a popup button"; how the
+/// menu-bar item's own menu shows up is read on a real Mac later, and until then it is `other`.
+public enum MenuTrackingObject: String, Sendable, CaseIterable {
+    case mainMenu, statusMenu, popUp, other
 }

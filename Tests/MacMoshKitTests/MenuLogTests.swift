@@ -30,6 +30,14 @@ private final class Lines: @unchecked Sendable {
                 == "menu refreshed: symbol=plus.circle workhorses=0 lines=2")
     }
 
+    @Test func theTrackingLineNamesTheMenuInOneOfFourFixedWords() {
+        #expect(MenuLog.tracking(.mainMenu) == "menu tracking: object=mainMenu")
+        #expect(MenuLog.tracking(.statusMenu) == "menu tracking: object=statusMenu")
+        #expect(MenuLog.tracking(.popUp) == "menu tracking: object=popUp")
+        #expect(MenuLog.tracking(.other) == "menu tracking: object=other")
+        #expect(MenuTrackingObject.allCases.map(\.rawValue) == ["mainMenu", "statusMenu", "popUp", "other"])
+    }
+
     @Test func anActionLineNamesOnlyTheSubcommand() {
         #expect(MenuLog.asked(.tab(["connect", "workhorse", "website"])) == "menu action: tab connect")
         #expect(MenuLog.asked(.run(["desk", "window", "workhorse", "website"])) == "menu action: run desk")
