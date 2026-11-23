@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Testing
 @testable import MacMoshKit
@@ -36,6 +37,16 @@ private final class Lines: @unchecked Sendable {
         #expect(MenuLog.tracking(.popUp) == "menu tracking: object=popUp")
         #expect(MenuLog.tracking(.other) == "menu tracking: object=other")
         #expect(MenuTrackingObject.allCases.map(\.rawValue) == ["mainMenu", "statusMenu", "popUp", "other"])
+    }
+
+    @Test func onlyTheMainMenuItselfCountsAsTheMainMenu() {
+        let main = NSMenu(title: "Main")
+        let sameTitle = NSMenu(title: "Main")
+        #expect(MenuTrackingObject.of(main, mainMenu: main) == .mainMenu)
+        #expect(MenuTrackingObject.of(sameTitle, mainMenu: main) == .other)
+        #expect(MenuTrackingObject.of(NSMenu(title: "Other"), mainMenu: nil) == .other)
+        #expect(MenuTrackingObject.of(nil, mainMenu: main) == .other)
+        #expect(MenuTrackingObject.of(nil, mainMenu: nil) == .other)
     }
 
     @Test func anActionLineNamesOnlyTheSubcommand() {

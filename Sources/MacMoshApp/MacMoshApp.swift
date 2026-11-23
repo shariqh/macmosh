@@ -31,8 +31,7 @@ struct MacMoshApp: App {
                 // line logs which object came. Only the main menu bar is recognised yet; the
                 // menu-bar item's own menu is read on a real Mac in a later step.
                 .onReceive(NotificationCenter.default.publisher(for: NSMenu.didBeginTrackingNotification)) { note in
-                    let isMainMenu = (note.object as? NSMenu).map { $0 === NSApp.mainMenu } ?? false
-                    MenuLog.write(MenuLog.tracking(isMainMenu ? .mainMenu : .other))
+                    MenuLog.write(MenuLog.tracking(.of(note.object as AnyObject?, mainMenu: NSApp.mainMenu)))
                     Task { await refresher.menuOpened() }
                 }
         }

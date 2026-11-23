@@ -79,4 +79,11 @@ public enum MenuLog {
 /// menu-bar item's own menu shows up is read on a real Mac later, and until then it is `other`.
 public enum MenuTrackingObject: String, Sendable, CaseIterable {
     case mainMenu, statusMenu, popUp, other
+
+    /// `mainMenu` when the notice's object is the app's main menu bar itself (the same object, not
+    /// one with the same title), and `other` for anything else, a missing object included.
+    public static func of(_ object: AnyObject?, mainMenu: AnyObject?) -> MenuTrackingObject {
+        guard let object, let mainMenu, object === mainMenu else { return .other }
+        return .mainMenu
+    }
 }
