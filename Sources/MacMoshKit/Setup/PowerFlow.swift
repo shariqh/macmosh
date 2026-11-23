@@ -24,7 +24,7 @@ public struct PowerFlow: Sendable {
         self.keys = keys
     }
 
-    public func power(_ w: Workhorse, setting: PowerSetting, ui: Interaction) async -> Int32 {
+    public func power(_ w: Workhorse, setting: PowerSetting, turnOn: Bool = true, ui: Interaction) async -> Int32 {
         // Key first: with a missing `-i` file ssh would quietly try the user's own keys.
         guard keys.identityState(for: w) == .usable else {
             let r = CheckResult(workhorse: w, state: .notSetUp(.identityUnusable), status: nil, probes: ProbeSet(),
@@ -50,7 +50,7 @@ public struct PowerFlow: Sendable {
 
         let plan: PowerPlan
         do {
-            plan = try PowerPlanner.plan(setting, status: status)
+            plan = try PowerPlanner.plan(setting, turnOn: turnOn, status: status)
         } catch PowerError.notApplicable(let why) {
             return ui.finish(1, reason: why)
         } catch {
@@ -73,10 +73,15 @@ public struct PowerFlow: Sendable {
             return ui.finish(code, reason: "ssh ended with exit code \(code), so nothing was recorded. If the setting didn't change, check the password and try again.")
         }
 
-        // Recorded once per command, so "Remove" lists it once however often it ran.
+        // Recorded once per command, so "Remove" lists it once however often it ran. A command that puts
+        // an earlier one back (lid off) takes that note away instead: there is nothing left to put back.
         do {
             try store.update(id: w.id) { saved in
-                if !saved.powerChanges.contains(plan.command) { saved.powerChanges.append(plan.command) }
+                if let undone = plan.undoes {
+                    saved.powerChanges.removeAll { $0 == undone }
+                } else if !saved.powerChanges.contains(plan.command) {
+                    saved.powerChanges.append(plan.command)
+                }
             }
         } catch {
             ui.say("The change ran, but MacMosh couldn't save a note of it: \(StatusFormat.storeMessage(error))")

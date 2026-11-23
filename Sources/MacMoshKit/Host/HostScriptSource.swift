@@ -10,7 +10,7 @@ enum HostScriptSource {
 # Plain bash 3.2 (what macOS ships at /bin/bash): no associative arrays, no mapfile, no ${var,,}.
 set -u
 
-MACMOSH_HOST_VERSION=0.3.0
+MACMOSH_HOST_VERSION=0.4.0
 MACMOSH_PROTOCOL=1
 AGENT_LABEL=io.github.shariqh.macmosh.host
 
@@ -805,6 +805,17 @@ mm_power_value() {
     if [ -n "$v" ]; then printf '%s' "$v"; else printf '%s' "-"; fi
 }
 
+# The lid-closed setting (`pmset -a disablesleep`). `pmset -g custom` never lists it; plain `pmset -g`
+# has a line " SleepDisabled", two tabs and the number once it has been turned on (seen on macOS 27.3).
+# Prints that number, or "-" when the line is absent or has no number.
+mm_lid_value() {
+    # $1 the text of `pmset -g`
+    local v
+    v=$(printf '%s\n' "$1" | awk '
+        $1 == "SleepDisabled" && $2 ~ /^[0-9]+$/ { print $2; exit }')
+    if [ -n "$v" ]; then printf '%s' "$v"; else printf '%s' "-"; fi
+}
+
 # 255.255.255.0 -> 24. Prints nothing for anything that is not a dotted mask.
 mm_mask_to_prefix() {
     local mask="$1" a b c d bits=0 octet
@@ -993,7 +1004,7 @@ mm_def_records() {
 }
 
 cmd_status() {
-    local os_version arch console server signins fv ar custom firewall_text sharing_line sharing agent_file
+    local os_version arch console server signins fv ar custom plain_pmset firewall_text sharing_line sharing agent_file
     os_version=$(sw_vers -productVersion 2>/dev/null)
     arch=$(uname -m 2>/dev/null)
 
@@ -1022,6 +1033,7 @@ cmd_status() {
     esac
 
     custom=$(pmset -g custom 2>/dev/null)
+    plain_pmset=$(pmset -g 2>/dev/null)
 
     firewall_text=$(/usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate 2>/dev/null | head -n 1)
     case "$firewall_text" in
@@ -1050,7 +1062,7 @@ cmd_status() {
         printf 'authrestart\t%s\n' "$ar"
         printf 'power\tsleep=%s\twomp=%s\tautorestart=%s\tdisablesleep=%s\n' \
             "$(mm_power_value sleep "$custom")" "$(mm_power_value womp "$custom")" \
-            "$(mm_power_value autorestart "$custom")" "$(mm_power_value disablesleep "$custom")"
+            "$(mm_power_value autorestart "$custom")" "$(mm_lid_value "$plain_pmset")"
         mm_battery_record
         mm_home_record
         printf 'firewall\t%s\n' "$firewall"

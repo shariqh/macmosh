@@ -224,6 +224,18 @@ private func versionLine(in text: String) -> String {
         #expect(s.definitions.isEmpty)
     }
 
+    @Test func theLidFieldIsTheNumberOrNilForADash() throws {
+        for (field, expected) in [("1", 1), ("0", 0), ("-", nil)] as [(String, Int?)] {
+            let s = try HostStatus.parse(report([
+                ["power", "sleep=0", "womp=1", "autorestart=-", "disablesleep=\(field)"],
+            ]))
+            #expect(s.power.disableSleep == expected, "disablesleep=\(field)")
+            #expect(s.power.sleepOnPower == 0)
+            #expect(s.power.wakeForNetwork == 1)
+            #expect(s.power.autoRestart == nil)
+        }
+    }
+
     @Test func aNonNumericFieldIsNil() throws {
         let s = try HostStatus.parse(report([
             ["power", "sleep=soon", "womp=", "autorestart=1x", "disablesleep=1"],

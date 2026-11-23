@@ -166,7 +166,7 @@ public enum MenuModel {
         return items
     }
 
-    /// Desks, the three buttons, the summary line and the home-address light.
+    /// Desks, the buttons (a laptop's lid-closed switch among them), the summary line and the home-address light.
     private static func readyItems(_ r: CheckResult) -> [MenuItem] {
         let id = r.workhorse.id
         var items: [MenuItem] = []
@@ -179,6 +179,13 @@ public enum MenuModel {
         items.append(.line("New desk…", .tab(["desk", "new", id])))
         items.append(.line("Share screen", .run(["screen", id])))
         items.append(.line("Restart…", .tab(["restart", id])))
+        if let status = r.status, status.isLaptop {
+            if status.power.disableSleep == 1 {
+                items.append(.line("Turn off lid-closed mode…", .tab(["power", id, "lid", "off"])))
+            } else {
+                items.append(.line("Turn on lid-closed mode…", .tab(["power", id, "lid", "on"])))
+            }
+        }
         if let status = r.status { items.append(.line(StatusFormat.summaryLine(status))) }
         if let reachable = r.homeReachable {
             items.append(.line("Home address reachable from here: \(reachable ? "yes" : "no")"))
