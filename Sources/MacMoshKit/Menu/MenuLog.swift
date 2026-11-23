@@ -38,6 +38,17 @@ public enum MenuLog {
         "menu tracking: object=\(object.rawValue)"
     }
 
+    /// The menu was open with a submenu, and a different menu or notice was held back (`HoldStill`).
+    static let held = "menu held a change: open with a submenu"
+
+    /// When a held menu was shown: the menu closed, or it began to open again with no close heard.
+    enum HeldShown: String { case closed, opened }
+
+    /// `menu showed the held change: closed`
+    static func heldShown(_ when: HeldShown) -> String {
+        "menu showed the held change: \(when.rawValue)"
+    }
+
     /// `menu action: tab connect`
     static func asked(_ action: MenuAction) -> String {
         "menu action: \(name(action))"
