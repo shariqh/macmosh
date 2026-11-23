@@ -113,6 +113,41 @@ case "clickafter":
     let before = menuWindows()
     click(target)
     out("clickafter: saw [\(seen)] at \(seenAt), clicked \(target) \(delay) ms later; menu windows just before the click: \(before)")
+case "subclick":
+    // subclick <log> <px> <py> <sx> <sy>: after the next model change, rest on the parent row,
+    // move into the submenu and click (sx, sy), all inside one 2-second tick.
+    let path = args[2]
+    let parent = point(3)
+    let target = point(5)
+    guard let handle = FileHandle(forReadingAtPath: path) else {
+        out("subclick: cannot read the log")
+        exit(1)
+    }
+    handle.seekToEndOfFile()
+    let deadline = Date().addingTimeInterval(8)
+    var seen = false
+    while !seen && Date() < deadline {
+        if let text = String(data: handle.availableData, encoding: .utf8), text.contains("model change") {
+            seen = true
+        } else {
+            usleep(10_000)
+        }
+    }
+    guard seen else {
+        out("subclick: no model change within 8 s")
+        exit(1)
+    }
+    out("subclick: change seen")
+    usleep(200_000)
+    moveTo(parent)
+    usleep(500_000)
+    out("subclick: resting on the parent row, menu windows \(menuWindows())")
+    moveTo(CGPoint(x: target.x, y: parent.y))
+    moveTo(target)
+    usleep(150_000)
+    out("subclick: on the target, menu windows \(menuWindows())")
+    click(target)
+    out("subclick: clicked \(target)")
 case "watch":
     let seconds = Double(args[2]) ?? 5
     let label = args.count > 3 ? args[3] : ""

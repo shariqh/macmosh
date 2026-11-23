@@ -434,46 +434,98 @@ shot C3a-sub-open
 ax dump "Live submenu I" > /dev/null
 close_all
 
+stop_app
+fi
+
+############################################################ S: live submenus, reworked after run 2
+if [[ "$PHASES" == *S* ]]; then
+start_app S-live TRIAL_STYLE=plain TRIAL_LIVE=1
+
+# S1: the pointer sits inside the open submenu (on its second row) while the model changes.
 open_menu
-tool move 300 400
-mark "C3b keyboard opens Live submenu P (pointer parked outside the menu); window samples for 5 s"
-nav_to top "Live submenu P"
-key 124 right
-tool watch 5 C3b
-shot C3b-sub-open
-ax selected "Live submenu P" > /dev/null
+read -r pidx px py <<< "$(find_xy top "Live submenu I")"
+read -r _ _ py2 <<< "$(ax posat top "$((pidx + 1))" | grep '^found' | tail -n 1 | awk '{print $2, $3, $4}')"
+rowh=$((py2 - py))
+tool move "$px" "$py"
+sleep 0.8
+read -r _ sx _ <<< "$(ax posat "Live submenu I" 1 | grep '^found' | tail -n 1 | awk '{print $2, $3, $4}')"
+say "S geometry: parent row centre $px,$py, row height $rowh, submenu centre x $sx"
+mark "S1 pointer rests on the second row of the open Live submenu I; window samples for 5 s"
+tool move "$sx" "$py"
+tool move "$sx" "$((py + rowh))"
+tool watch 5 S1
+shot S1-pointer-in-submenu
 close_all
 
-# C4: click the second row of an open submenu a set time after a change.
-for sub in P I; do
-    for delay in 50 1200; do
-        open_menu
-        read -r idx x y <<< "$(find_xy top "Live submenu $sub")"
-        tool move "$x" "$y"
-        sleep 0.8
-        read -r sidx sx sy <<< "$(ax posat "Live submenu $sub" 2 | grep '^found' | tail -n 1 | awk '{print $2, $3, $4}')"
-        mark "C4 Live submenu $sub: click its row $sidx ($sx,$sy) $delay ms after the next change"
-        tool move "$sx" "$y"
-        tool clickafter "$LOG" "$delay" "$sx" "$sy"
-        sleep 1
-        wins "C4-$sub-$delay-after"
-        close_all
-    done
+# S2: between two changes, rest on the parent row, move into the submenu and click its second row.
+for sub in P I P I; do
+    open_menu
+    read -r pidx px py <<< "$(find_xy top "Live submenu $sub")"
+    mark "S2 Live submenu $sub: after a change, rest on its row, move in, click the submenu's second row"
+    tool subclick "$LOG" "$px" "$py" "$sx" "$((py + rowh))"
+    sleep 1
+    wins "S2-$sub-after"
+    close_all
 done
 
-# C5: keyboard: highlight the second row of the open submenu, then press return just after a change.
-open_menu
+# S3: keyboard. The pointer is parked outside before the menu opens (AXPress), so no row is
+# highlighted by the pointer.
 tool move 300 400
-mark "C5 keyboard: second row of Live submenu P, return 100 ms after a change"
+open_ax
+mark "S3 keyboard opens Live submenu P; window samples for 5 s"
 nav_to top "Live submenu P"
 key 124 right
+tool watch 5 S3
+shot S3-keyboard-submenu
+ax selected "Live submenu P" > /dev/null
+mark "S3 down arrow, then return 100 ms after a change"
 key 125 down
 ax selected "Live submenu P" > /dev/null
 wait_change ""
 sleep 0.1
 key 36 return
 sleep 1
-wins C5-after
+wins S3-after
+close_all
+stop_app
+fi
+
+############################################################ E: pointer on rows that do nothing
+if [[ "$PHASES" == *E* ]]; then
+start_app E-static TRIAL_STYLE=plain
+open_menu
+for name in "Section header" "Plain text line" "Disabled button"; do
+    read -r idx x y <<< "$(find_xy top "$name")"
+    mark "E1 pointer rests on top-level row $idx \"$name\""
+    tool move "$x" "$y"
+    sleep 0.8
+    shot "E1-rest-$idx"
+    ax selected top > /dev/null
+done
+read -r idx x y <<< "$(ax posat top 2 | grep '^found' | tail -n 1 | awk '{print $2, $3, $4}')"
+mark "E2 pointer rests on the divider (row 2)"
+tool move "$x" "$y"
+sleep 0.8
+shot E2-rest-divider
+ax selected top > /dev/null
+read -r idx x y <<< "$(find_xy top "Plain submenu")"
+tool move "$x" "$y"
+sleep 0.8
+for name in "Sub section header" "Sub text line" "Sub disabled"; do
+    read -r idx sx sy <<< "$(find_xy "Plain submenu" "$name")"
+    mark "E3 pointer rests on submenu row $idx \"$name\""
+    tool move "$sx" "$y"
+    tool move "$sx" "$sy"
+    sleep 0.8
+    wins "E3-$idx"
+    shot "E3-rest-sub-$idx"
+    ax selected "Plain submenu" > /dev/null
+done
+mark "E4 pointer clicks the submenu's Sub section header"
+read -r idx sx sy <<< "$(find_xy "Plain submenu" "Sub section header")"
+tool click "$sx" "$sy"
+sleep 1
+wins E4-after
 close_all
 stop_app
 fi
