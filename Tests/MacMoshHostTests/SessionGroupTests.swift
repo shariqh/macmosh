@@ -50,20 +50,20 @@ extension HostScriptTests {
     @Test func aViewSharesTheDesksWindowsAndKeepsItsOwnCurrentWindow() throws {
         let h = try HostHarness(); defer { h.cleanUp() }
         _ = h.run(["start"])
-        // Every new shell writes a line, to count them.
-        let shells = h.home.appendingPathComponent("shells.log")
-        _ = h.tmux(["set-option", "-g", "default-command", "echo started >> '\(shells.path)'; exec /bin/sh"])
         let sid = try makeDesk(h, "website", windows: 3)
         let ids = windowIDs(h, sid)
         #expect(ids.count == 3)
-        let count = { ((try? String(contentsOf: shells, encoding: .utf8)) ?? "").split(separator: "\n").count }
-        try waitFor(seconds: 30) { count() == 3 }
+        let panes = { h.tmux(["list-panes", "-a", "-F", "#{pane_id}|#{pane_pid}"]).stdout.split(separator: "\n").map(String.init).sorted() }
+        let before = Set(panes())
+        #expect(before.count == 3)
 
         let vid = try makeView(h, desk: sid, "website+1")
         #expect(windowIDs(h, vid) == ids)
-        // Joining starts no shell of its own (a report on the 3.6 source said it starts one and drops it).
-        Thread.sleep(forTimeInterval: 2)
-        #expect(count() == 3)
+        // Joining leaves no pane or shell of its own behind: every pane is one of the desk's, with the
+        // same process. (Whether tmux starts a shell for a moment and drops it is not pinned: a shell
+        // that logged each start showed none here, but one extra start once on a CI runner. A report on
+        // the 3.6 source said it starts one and drops it.)
+        #expect(Set(panes()) == before)
         // A new view starts on the group's lowest window, whatever the desk shows.
         _ = h.tmux(["select-window", "-t", sid + ":" + ids[1]])
         let second = try makeView(h, desk: sid, "website+2")
