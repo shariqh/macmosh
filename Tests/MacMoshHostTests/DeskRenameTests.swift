@@ -160,6 +160,111 @@ extension HostScriptTests {
         #expect(!FileManager.default.fileExists(atPath: h.home.appendingPathComponent(".macmosh/lock").path))
     }
 
+    /// With no desk server, a line that is not permanent is a desk waiting to reopen at the next login,
+    /// not a leftover, so its name is taken.
+    @Test func withNoServerADeskWaitingToReopenKeepsItsName() throws {
+        let h = try HostHarness(); defer { h.cleanUp() }
+        let before = "website\t1\t0\t0\t/gone\tnpm start\nnotes\t1\t0\t0\t/gone\t\n"
+        try writeDesksFile(h, before)
+        let r = h.run(["desk-rename", "notes", "website"])
+        #expect(r.exitCode == 7, "\(r.stderr)")
+        #expect(desksFile(h) == before)
+        #expect(h.tmux(["list-sessions"]).exitCode != 0, "desk-rename must never start a server")
+    }
+
+    /// With the server up, a closed desk that is not permanent has exited: its line waits only for the
+    /// exit path to remove it, so it is no desk to rename. Renaming it would keep the line for good.
+    @Test func aDeskThatHasJustExitedIsNotRenamed() throws {
+        let h = try HostHarness(); defer { h.cleanUp() }
+        h.setEnvironment("MACMOSH_HOOK_DELAY", "5")
+        _ = h.run(["start"])
+        #expect(h.run(["desk-new", "website", h.home.path, "--command", "echo hi"]).exitCode == 0)
+        typeExit(h, "=website:")
+        try wait(h) { !isOpen(h, "website") }
+        #expect(defined(h, "website"), "the exit path ran before the rename")
+        let before = desksFile(h)
+        let r = h.run(["desk-rename", "website", "notes"])
+        #expect(r.exitCode == 4, "\(r.stderr)")
+        #expect(desksFile(h) == before)
+        try wait(h) { !defined(h, "website") }
+        #expect(!defined(h, "notes"))
+    }
+
+    /// tmux matches "=name" against an attached client's tty name when no session has that name, so a
+    /// desk named like a client's tty must not stand for the session that client shows.
+    @Test func aNameLikeAnAttachedClientsTtyIsNotThatClientsDesk() throws {
+        let h = try HostHarness(); defer { h.cleanUp() }
+        _ = h.run(["start"])
+        #expect(h.run(["desk-new", "website", h.home.path]).exitCode == 0)
+        // A client attached to website through a terminal of its own, as mosh attaches one.
+        _ = h.shell("(sleep 60 | script -q /dev/null env TERM=xterm-256color tmux -L \"$MACMOSH_SOCKET\""
+            + " attach-session -t =website"
+            + " >/dev/null 2>&1 &)")
+        var tty = ""
+        try wait(h) {
+            tty = h.tmux(["list-clients", "-F", "#{client_tty}"]).stdout
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return !tty.isEmpty
+        }
+        let client = (tty as NSString).lastPathComponent
+        let websiteLine = try #require(line(h, "website"))
+
+        // No desk has the client's name.
+        let r = h.run(["desk-rename", client, "notes"])
+        #expect(r.exitCode == 4, "\(r.stderr)")
+        #expect(sessions(h) == ["website"])
+        #expect(desksFile(h) == websiteLine + "\n")
+        #expect(h.run(["desk-remove", client, "--kill"]).exitCode == 4)
+        #expect(sessions(h) == ["website"])
+
+        // A closed permanent desk has it: only its line is renamed.
+        try writeDesksFile(h, desksFile(h) + "\(client)\t1\t0\t1\t/gone\t\n")
+        #expect(h.run(["desk-rename", client, "notes"]).exitCode == 0)
+        #expect(sessions(h) == ["website"])
+        #expect(desksFile(h) == websiteLine + "\nnotes\t1\t0\t1\t/gone\t\n")
+
+        // And a new name like the client's is free.
+        #expect(h.run(["desk-rename", "notes", client]).exitCode == 0)
+        #expect(sessions(h) == ["website"])
+    }
+
+    /// A kept desk types "<script> keep <name>" into its shell, which may run it only after a rename.
+    /// keep then finds the desk by the session it runs in.
+    @Test func aKeptDeskRenamedBeforeItsShellRunsKeepStillStartsItsCommand() throws {
+        let h = try HostHarness(); defer { h.cleanUp() }
+        _ = h.run(["start"])
+        try writeDesksFile(h, "api2\t1\t1\t0\t\(h.home.path)\techo run >> runs.txt; sleep 4343\n")
+        #expect(h.tmux(["new-session", "-d", "-s", "api2", "-c", h.home.path]).exitCode == 0)
+        _ = h.tmux(["send-keys", "-t", "=api2:", "-l", "--", "'\(h.scriptURL.path)' keep api"])
+        _ = h.tmux(["send-keys", "-t", "=api2:", "Enter"])
+        let runs = { (try? String(contentsOf: h.home.appendingPathComponent("runs.txt"), encoding: .utf8)) ?? "" }
+        try wait(h) { runs() == "run\n" }
+        #expect(!hostLog(h).contains("no such desk: api"))
+    }
+
+    /// The reopen loop reads the list it opened. A desk renamed while it runs is opened by a second pass.
+    @Test func aDeskRenamedWhileTheServerReopensDesksIsOpened() throws {
+        let h = try HostHarness(); defer { h.cleanUp() }
+        try writeDesksFile(h, "alpha\t1\t0\t0\t\(h.home.path)\t\ngamma\t1\t0\t1\t\(h.home.path)\t\n")
+        let real = h.shell("command -v tmux").stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        // A tmux that, as alpha is made, renames gamma to delta in the list the way desk-rename does.
+        try h.stub("tmux", script: """
+            case " $* " in
+                *" new-session "*" alpha "*)
+                    if [ ! -e "$HOME/renamed" ]; then
+                        : > "$HOME/renamed"
+                        f="$HOME/.macmosh/desks.tsv"
+                        /usr/bin/sed 's/^gamma\t/delta\t/' "$f" > "$f.x" && /bin/mv "$f.x" "$f"
+                    fi
+                    ;;
+            esac
+            exec '\(real)' "$@"
+            """)
+        #expect(h.run(["start"]).exitCode == 0)
+        #expect(FileManager.default.fileExists(atPath: h.home.appendingPathComponent("renamed").path))
+        #expect(sessions(h) == ["alpha", "delta"])
+    }
+
     @Test func ifTheListCantBeWrittenTheSessionGetsItsNameBack() throws {
         let h = try HostHarness(); defer { h.cleanUp() }
         _ = h.run(["start"])
