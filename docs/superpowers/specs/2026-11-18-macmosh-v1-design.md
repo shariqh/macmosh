@@ -187,7 +187,7 @@ Restart recovery over ssh needs a workhorse with Apple silicon and macOS 26 or l
 | Option | Cost | State of knowledge |
 |---|---|---|
 | Leave the lid open | Free | Works. The Mac never sleeps on power once prepared. |
-| **"Keep running with the lid closed" switch** | Free | Experimental. It sets a hidden macOS power setting that Apple doesn't document [15]. Most reports say it works on Apple silicon; one says it doesn't [16]. We test it on the MacBook Pro before promising it. |
+| **"Keep running with the lid closed" switch** | Free | Tested on the MacBook Pro on 2026-11-22 (section 8.5): with the lid closed, on power and with no display, it stayed awake and reachable for 43 minutes, and the setting was still on after a restart. It sets a macOS power setting that Apple doesn't document [15]. Reports disagree on whether it works on Apple silicon [16]. |
 | A dummy display plug | About $10 | Imitates an external display, which is what Apple's own lid-closed use needs, along with power [17]. Apple says nothing about dummy plugs, and we have not tested one. |
 
 The switch warns that the Mac must stay plugged in (the setting also blocks sleep on battery, so a closed Mac would run until the battery is empty [16]) and that a closed Mac runs hotter.
@@ -358,8 +358,8 @@ v1 does not set this up. It ships:
 ### 7.10 Lid closed
 
 - The switch runs `sudo pmset -a disablesleep 1` (off: `0`) in a password tab and then re-reads the setting.
-- It is offered only for laptop workhorses, and it is labelled experimental until the test in section 9 passes.
-- If the test fails, the switch is removed and the app only explains the dummy-plug option.
+- The setting is read from plain `pmset -g`, which shows it as a `SleepDisabled` line once it has been turned on. `pmset -g custom` never lists it (section 8.5).
+- It is offered only for laptop workhorses. The test in section 9 passed, so it is not labelled experimental.
 - The app links to a MacMosh guide (`docs/lid-closed.md`). It never links to a shop: Amazon's Associates rules say a member may not use an affiliate link, "or otherwise link to an Amazon Site, on or in connection with" a desktop app [26]. An affiliate link, if Shariq wants one, lives on his own site next to a clear disclosure [26], and the guide may link to that page.
 
 ### 7.11 What MacMosh puts on a workhorse
@@ -614,6 +614,13 @@ Added after sitting 1, on 2026-11-20, and not yet checked by Shariq:
 Added after the first run, on 2026-11-20, and not yet checked by Shariq:
 
 21. **A workhorse that has just stopped answering is checked once more, five seconds later, before the menu says "Can't reach it".** The cost is that a workhorse that really is gone shows as gone a few seconds later. The gain is that a daily Mac that has just woken doesn't raise a false alarm (section 7.4, issue #83).
+
+Added with the lid-closed switch (Task 25), on 2026-11-22, and not yet checked by Shariq:
+
+22. **The workhorse's report reads the lid setting from plain `pmset -g`**, not from `pmset -g custom`. The report's `disablesleep` field is the number on the `SleepDisabled` line, and `-` when the line is not there, which is the case on a Mac where the setting was never turned on (sections 7.10 and 8.5). What the line looks like after the setting is turned off again was not recorded, so a `0` is read as off and so is a missing line.
+23. **The summary line always says `Lid-closed mode on` or `off` for a laptop**, and says nothing about the lid for a Mac with no battery. Before this it said nothing whenever the report had no value, which is why the menu never showed it (section 5.1).
+24. **A Ready laptop's menu gets one more button, after `Restart…`:** `Turn on lid-closed mode…` or `Turn off lid-closed mode…`, which opens a password tab running `macmosh power <workhorse> lid on` or `lid off`. A Mac with no battery gets neither (section 7.10).
+25. **Turning the lid mode off takes it off the list that `Remove` prints** of power changes made through MacMosh, instead of adding the off command to it. That list is for settings you might want to put back, and an off setting is already back.
 
 ## 14. Left to the builder
 

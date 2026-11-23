@@ -5,6 +5,8 @@ import Testing
 private let sudoSentence = "ssh asks for the Mac's password, for sudo. You are typing into ssh; MacMosh can't see it."
 private let awakeCommand = "sudo pmset -c sleep 0 womp 1"
 private let autorestartCommand = "sudo pmset -a autorestart 1"
+private let lidOnCommand = "sudo pmset -a disablesleep 1"
+private let lidOffCommand = "sudo pmset -a disablesleep 0"
 
 @Suite struct PowerTests {
     // MARK: The plan
@@ -53,7 +55,88 @@ private let autorestartCommand = "sudo pmset -a autorestart 1"
 
     @Test func theValuesLineSaysWhatIsNotListed() {
         let line = PowerPlanner.valuesLine(.sampleLaptop)
-        #expect(line == "Sleep on power: 0 · Wake for network access: 1 · Restart after a power cut: not listed")
+        #expect(line == "Sleep on power: 0 · Wake for network access: 1 · Restart after a power cut: not listed · Lid-closed mode: off")
+    }
+
+    @Test func theValuesLineGivesTheLidForLaptopsOnly() {
+        var laptop = HostStatus.sampleLaptop
+        laptop.power.disableSleep = 1
+        #expect(PowerPlanner.valuesLine(laptop).hasSuffix(" · Lid-closed mode: on"))
+        laptop.power.disableSleep = 0
+        #expect(PowerPlanner.valuesLine(laptop).hasSuffix(" · Lid-closed mode: off"))
+        #expect(PowerPlanner.valuesLine(.sampleDesktop)
+            == "Sleep on power: 10 · Wake for network access: 0 · Restart after a power cut: 0")
+    }
+
+    // MARK: The lid-closed switch
+
+    @Test func lidOnAndOffAreTheFixedCommands() throws {
+        #expect(try PowerPlanner.plan(.lid, turnOn: true, status: .sampleLaptop).command == lidOnCommand)
+        #expect(try PowerPlanner.plan(.lid, turnOn: false, status: .sampleLaptop).command == lidOffCommand)
+    }
+
+    @Test func lidIsForLaptopsOnly() {
+        for turnOn in [true, false] {
+            do {
+                _ = try PowerPlanner.plan(.lid, turnOn: turnOn, status: .sampleDesktop)
+                Issue.record("a Mac with no battery was given a lid plan")
+            } catch let error as PowerError {
+                #expect(error == .notApplicable("This setting is for laptops. This Mac has no battery, so it has no lid to close."))
+            } catch {
+                Issue.record("unexpected error \(error)")
+            }
+        }
+    }
+
+    @Test func turningTheLidModeOnWarnsAboutPowerHeatAndRestarts() throws {
+        let words = try PowerPlanner.plan(.lid, turnOn: true, status: .sampleLaptop).explanation
+        #expect(words.contains("plugged in"))
+        #expect(words.contains("battery"))
+        #expect(words.contains("in a bag"))
+        #expect(words.contains("empty"))
+        #expect(words.contains("hotter"))
+        #expect(words.contains("after a restart"))
+        #expect(words.contains("turn it off"))
+    }
+
+    @Test func turningTheLidModeOffSaysTheMacSleepsAgain() throws {
+        let words = try PowerPlanner.plan(.lid, turnOn: false, status: .sampleLaptop).explanation
+        #expect(words == "The Mac sleeps again when its lid closes.")
+    }
+
+    @Test func lidCommandsAreFixedText() throws {
+        var odd = HostStatus.sampleLaptop
+        odd.consoleUser = "alex; sudo rm -rf /"
+        odd.home = HostStatus.Home(address: "192.168.1.20", prefix: 24, localName: "wor'k$(reboot)horse.local")
+        odd.osVersion = "27.3; reboot"
+        odd.power.disableSleep = 1
+        #expect(try PowerPlanner.plan(.lid, turnOn: true, status: odd).command == lidOnCommand)
+        #expect(try PowerPlanner.plan(.lid, turnOn: false, status: odd).command == lidOffCommand)
+    }
+
+    // MARK: Reading `power <workhorse> lid on|off`
+
+    @Test func lidNeedsOnOrOff() {
+        for word in [nil, "", "maybe", "ON", "1"] as [String?] {
+            #expect(throws: PowerUsageError.self) { try PowerRequest.parse(setting: .lid, word: word) }
+        }
+        #expect(PowerUsageError.lidNeedsOnOrOff.description == "Say whether to turn lid-closed mode on or off: macmosh power <workhorse> lid on, or macmosh power <workhorse> lid off.")
+    }
+
+    @Test func onAndOffBelongToLidOnly() {
+        for setting in [PowerSetting.awake, .autorestart] {
+            #expect(throws: PowerUsageError.self) { try PowerRequest.parse(setting: setting, word: "on") }
+            #expect(throws: PowerUsageError.self) { try PowerRequest.parse(setting: setting, word: "off") }
+        }
+        #expect(PowerUsageError.onOffOnlyForLid(.awake).description
+            == "awake takes no on or off. Only lid does: macmosh power <workhorse> lid on.")
+    }
+
+    @Test func requestsParse() throws {
+        #expect(try PowerRequest.parse(setting: .lid, word: "on") == PowerRequest(setting: .lid, turnOn: true))
+        #expect(try PowerRequest.parse(setting: .lid, word: "off") == PowerRequest(setting: .lid, turnOn: false))
+        #expect(try PowerRequest.parse(setting: .awake, word: nil) == PowerRequest(setting: .awake, turnOn: true))
+        #expect(try PowerRequest.parse(setting: .autorestart, word: nil) == PowerRequest(setting: .autorestart, turnOn: true))
     }
 
     // MARK: Asking
@@ -156,7 +239,39 @@ private let autorestartCommand = "sudo pmset -a autorestart 1"
                                  answers: ["yes"])
         #expect(await f.flow.power(f.workhorse, setting: .awake, ui: f.ui) == 0)
         #expect(f.checker.checks == 2)
-        #expect(f.ui.said.last == "Sleep on power: 0 · Wake for network access: 1 · Restart after a power cut: not listed")
+        #expect(f.ui.said.last == "Sleep on power: 0 · Wake for network access: 1 · Restart after a power cut: not listed · Lid-closed mode: off")
+    }
+
+    // MARK: The lid-closed switch through the flow
+
+    @Test func lidOnShowsItsWordsAndRunsTheCommand() async throws {
+        let f = try PowerFixture(script: [PowerFixture.laptop(), PowerFixture.laptop()], answers: ["yes"])
+        let code = await f.flow.power(f.workhorse, setting: .lid, turnOn: true, ui: f.ui)
+        #expect(code == 0)
+        #expect(f.ui.indexOfSaid(lidOnCommand) != nil)
+        #expect(f.ui.said.contains { $0.contains("plugged in") })
+        #expect(sshRemote(try #require(f.interactive.calls.first)) == [lidOnCommand])
+        #expect(try f.savedPowerChanges() == [lidOnCommand])
+    }
+
+    @Test func lidOffRunsTheOffCommandAndTakesTheOnNoteBack() async throws {
+        let f = try PowerFixture(script: Array(repeating: PowerFixture.laptop(), count: 4), answers: ["yes", "yes"])
+        _ = await f.flow.power(f.workhorse, setting: .lid, turnOn: true, ui: f.ui)
+        #expect(try f.savedPowerChanges() == [lidOnCommand])
+        let code = await f.flow.power(f.workhorse, setting: .lid, turnOn: false, ui: f.ui)
+        #expect(code == 0)
+        #expect(sshRemote(try #require(f.interactive.calls.last)) == [lidOffCommand])
+        #expect(f.ui.said.contains("The Mac sleeps again when its lid closes."))
+        // Nothing is left to put back, so "Remove" has nothing to list.
+        #expect(try f.savedPowerChanges().isEmpty)
+    }
+
+    @Test func lidOnADesktopRunsNothing() async throws {
+        let f = try PowerFixture(script: [PowerFixture.desktop()], answers: ["yes"])
+        let code = await f.flow.power(f.workhorse, setting: .lid, turnOn: true, ui: f.ui)
+        #expect(code == 1)
+        #expect(f.interactive.calls.isEmpty)
+        #expect(f.ui.asked.isEmpty)
     }
 
     // MARK: Refusals

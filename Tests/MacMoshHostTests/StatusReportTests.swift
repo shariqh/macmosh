@@ -53,6 +53,57 @@ extension HostScriptTests {
             .contains("\npower\tsleep=0\twomp=1\tautorestart=-\tdisablesleep=-\n"))
     }
 
+    /// A stand-in `pmset` whose plain `pmset -g` prints `lines` (as recorded on macOS 27.3, the
+    /// setting's own line is ` SleepDisabled`, two tabs, then the number). `pmset -g custom` lists
+    /// the AC Power section and never the lid setting.
+    private func stubPmset(_ h: HostHarness, plain lines: String) throws {
+        try h.stub("pmset", script: """
+            case "$*" in
+            "-g custom")
+            cat <<'OUT'
+            AC Power:
+             lowpowermode         0
+             sleep                0
+             womp                 1
+            OUT
+            ;;
+            "-g")
+            printf 'System-wide power settings:\\n'
+            \(lines)
+            printf 'Currently in use:\\n'
+            printf ' standby              1\\n'
+            ;;
+            esac
+            """)
+    }
+
+    @Test func lidSettingComesFromPlainPmsetWhenOn() throws {
+        let h = try HostHarness(); defer { h.cleanUp() }
+        try stubPmset(h, plain: "printf ' SleepDisabled\\t\\t1\\n'")
+        #expect(h.run(["status"]).stdout
+            .contains("\npower\tsleep=0\twomp=1\tautorestart=-\tdisablesleep=1\n"))
+    }
+
+    @Test func lidSettingIsZeroWhenPmsetListsZero() throws {
+        let h = try HostHarness(); defer { h.cleanUp() }
+        try stubPmset(h, plain: "printf ' SleepDisabled\\t\\t0\\n'")
+        #expect(h.run(["status"]).stdout
+            .contains("\npower\tsleep=0\twomp=1\tautorestart=-\tdisablesleep=0\n"))
+    }
+
+    @Test func lidSettingIsADashWhenPmsetHasNoLine() throws {
+        let h = try HostHarness(); defer { h.cleanUp() }
+        try stubPmset(h, plain: "true")
+        #expect(h.run(["status"]).stdout
+            .contains("\npower\tsleep=0\twomp=1\tautorestart=-\tdisablesleep=-\n"))
+    }
+
+    @Test func lidSettingIgnoresOtherLinesThatMentionSleep() throws {
+        let h = try HostHarness(); defer { h.cleanUp() }
+        try stubPmset(h, plain: "printf ' sleep                0\\n SleepDisabledSoon\\t\\t1\\n'")
+        #expect(h.run(["status"]).stdout.contains("disablesleep=-\n"))
+    }
+
     @Test func batteryOnALaptop() throws {
         let h = try HostHarness(); defer { h.cleanUp() }
         try h.stub("pmset", script: """
@@ -317,7 +368,7 @@ extension HostScriptTests {
         let version = h.run(["version"])
         #expect(version.exitCode == 0)
         #expect(version.stdout == h.scriptVersion + "\n")
-        #expect(version.stdout == "0.3.0\n")
+        #expect(version.stdout == "0.4.0\n")
         #expect(h.run([]).exitCode == 2)
         #expect(h.run(["nonsense"]).exitCode == 2)
     }

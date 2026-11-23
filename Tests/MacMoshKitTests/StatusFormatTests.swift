@@ -171,12 +171,22 @@ private func report(replacing target: String? = nil, with new: String = "") thro
     // MARK: the summary line
 
     @Test func summaryLineFollowsTheReport() throws {
+        // The sample report is a laptop (a battery) and lists no lid value: the lid is off.
         let full = try report()
-        #expect(StatusFormat.summaryLine(full) == "Sign-ins working · Awake on power · On power, 82%")
+        #expect(StatusFormat.summaryLine(full) == "Sign-ins working · Awake on power · Lid-closed mode off · On power, 82%")
         let lidOff = try report(replacing: "disablesleep=-", with: "disablesleep=0")
         #expect(StatusFormat.summaryLine(lidOff) == "Sign-ins working · Awake on power · Lid-closed mode off · On power, 82%")
         let lidOn = try report(replacing: "disablesleep=-", with: "disablesleep=1")
-        #expect(StatusFormat.summaryLine(lidOn).contains("Lid-closed mode on"))
+        #expect(StatusFormat.summaryLine(lidOn) == "Sign-ins working · Awake on power · Lid-closed mode on · On power, 82%")
+    }
+
+    @Test func aDesktopSaysNothingAboutTheLid() throws {
+        var s = try report()
+        s.battery = .init(present: false, onAC: nil, percent: nil)
+        for lid in [nil, 0, 1] as [Int?] {
+            s.power.disableSleep = lid
+            #expect(StatusFormat.summaryLine(s) == "Sign-ins working · Awake on power · On power")
+        }
     }
 
     @Test func summaryLineNamesSleepSignInsAndPowerSource() throws {
@@ -184,7 +194,7 @@ private func report(replacing target: String? = nil, with new: String = "") thro
         s.signIns = .no
         s.power.sleepOnPower = 10
         s.battery = .init(present: true, onAC: false, percent: 40)
-        #expect(StatusFormat.summaryLine(s) == "Sign-ins off · Sleeps on power · On battery, 40%")
+        #expect(StatusFormat.summaryLine(s) == "Sign-ins off · Sleeps on power · Lid-closed mode off · On battery, 40%")
         s.battery = .init(present: false, onAC: nil, percent: nil)
         #expect(StatusFormat.summaryLine(s) == "Sign-ins off · Sleeps on power · On power")
     }
@@ -198,7 +208,7 @@ private func report(replacing target: String? = nil, with new: String = "") thro
         #expect(text == """
         MacBook Pro · Ready
           website  2 windows  1 tab attached
-          Sign-ins working · Awake on power · On power, 82%
+          Sign-ins working · Awake on power · Lid-closed mode off · On power, 82%
 
         """)
     }

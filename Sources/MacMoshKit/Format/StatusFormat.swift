@@ -117,12 +117,13 @@ public enum StatusFormat {
 
     // MARK: The summary line
 
-    /// "Sign-ins working · Awake on power · On power, 82%". The lid-closed part appears only when the
-    /// report carries a value for it.
+    /// "Sign-ins working · Awake on power · Lid-closed mode off · On power, 82%". The lid-closed part is
+    /// there for a laptop only: on when the report's value is 1, off when it is 0 or not listed (the
+    /// workhorse lists the setting only once it was first turned on).
     public static func summaryLine(_ s: HostStatus) -> String {
         var parts: [String] = [s.signIns == .yes ? "Sign-ins working" : "Sign-ins off"]
         parts.append(s.power.sleepOnPower == 0 ? "Awake on power" : "Sleeps on power")
-        if let lid = s.power.disableSleep { parts.append(lid == 0 ? "Lid-closed mode off" : "Lid-closed mode on") }
+        if s.isLaptop { parts.append(s.power.disableSleep == 1 ? "Lid-closed mode on" : "Lid-closed mode off") }
         if s.battery.present {
             let source = s.battery.onAC == false ? "On battery" : "On power"
             parts.append(s.battery.percent.map { "\(source), \($0)%" } ?? source)

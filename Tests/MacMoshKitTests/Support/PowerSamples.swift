@@ -61,6 +61,11 @@ struct PowerFixture {
         ScriptedCheck(.ready(signIns: true), status: .sampleDesktop, answeredAt: "workhorse")
     }
 
+    /// A check that finds a laptop, Ready.
+    static func laptop() -> ScriptedCheck {
+        ScriptedCheck(.ready(signIns: true), status: .sampleLaptop, answeredAt: "workhorse")
+    }
+
     func savedPowerChanges() throws -> [String] {
         try store.find(workhorse.id).powerChanges
     }

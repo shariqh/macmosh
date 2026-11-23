@@ -17,10 +17,11 @@ private func menu(_ state: WorkhorseState, workhorse: Workhorse = .sample(), sta
         let menu = MenuModel.build([.checked(.sampleReady(id: "mbp", name: "MacBook Pro"))])
         let expected: [String] = [
             "MacBook Pro · Ready", "website (2 windows: zsh, vim, open in 1 tab)", "New window in website",
-            "New desk…", "Share screen", "Restart…", "Sign-ins working · Awake on power · On power, 82%",
+            "New desk…", "Share screen", "Restart…", "Turn on lid-closed mode…",
+            "Sign-ins working · Awake on power · Lid-closed mode off · On power, 82%",
             "Home address reachable from here: yes",
         ]
-        #expect(Array(titles(menu).prefix(8)) == expected)
+        #expect(Array(titles(menu).prefix(9)) == expected)
         #expect(menu.symbol == "checkmark.circle")
         #expect(menu.items[1].action == .tab(["connect", "mbp", "website"]))
     }
@@ -35,6 +36,51 @@ private func menu(_ state: WorkhorseState, workhorse: Workhorse = .sample(), sta
         #expect(item(menu, "Share screen")?.action == .run(["screen", "mbp"]))
         #expect(item(menu, "Restart…")?.action == .tab(["restart", "mbp"]))
         #expect(item(menu, "Restart…")?.indent == 1)
+    }
+
+    // MARK: the lid-closed switch
+
+    private func lidMenu(lid: Int?, laptop: Bool = true) -> Menu {
+        var status = HostStatus.sampleWithDesk
+        status.power.disableSleep = lid
+        if !laptop { status.battery = .init(present: false, onAC: nil, percent: nil) }
+        return MenuModel.build([.checked(.sample(.ready(signIns: true), workhorse: .sample(id: "mbp"), status: status))])
+    }
+
+    @Test func aLaptopWithTheLidSettingOffOffersToTurnItOn() {
+        for lid in [0, nil] as [Int?] {
+            let m = lidMenu(lid: lid)
+            #expect(item(m, "Turn on lid-closed mode…")?.action == .tab(["power", "mbp", "lid", "on"]))
+            #expect(item(m, "Turn on lid-closed mode…")?.indent == 1)
+            #expect(item(m, "Turn off lid-closed mode…") == nil)
+        }
+    }
+
+    @Test func aLaptopWithTheLidSettingOnOffersToTurnItOff() {
+        let m = lidMenu(lid: 1)
+        #expect(item(m, "Turn off lid-closed mode…")?.action == .tab(["power", "mbp", "lid", "off"]))
+        #expect(item(m, "Turn on lid-closed mode…") == nil)
+    }
+
+    @Test func theLidItemComesRightAfterRestart() {
+        let t = titles(lidMenu(lid: 1))
+        let restart = t.firstIndex(of: "Restart…")
+        #expect(restart != nil)
+        #expect(restart.map { t[$0 + 1] } == "Turn off lid-closed mode…")
+    }
+
+    @Test func aMacWithNoBatteryHasNoLidItem() {
+        for lid in [0, 1, nil] as [Int?] {
+            let m = lidMenu(lid: lid, laptop: false)
+            #expect(item(m, "Turn on lid-closed mode…") == nil)
+            #expect(item(m, "Turn off lid-closed mode…") == nil)
+            #expect(!titles(m).contains { $0.contains("Lid-closed") })
+        }
+    }
+
+    @Test func noLidItemWhenTheWorkhorseIsNotReady() {
+        let m = menu(.waitingForLogin, status: .sampleWithDesk)
+        #expect(!titles(m).contains { $0.contains("lid-closed mode") })
     }
 
     @Test func theMenuEndsWithTheChecklistAndTheTwoButtons() {
