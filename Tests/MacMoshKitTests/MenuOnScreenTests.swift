@@ -20,6 +20,39 @@ private final class Lines: @unchecked Sendable {
     var all: [String] { lock.withLock { lines } }
 }
 
+/// Stands in for the wait after the menu closes: records each wait asked for, and each one ends only
+/// when the test ends it (by its number, in the order they were asked), so nothing really sleeps.
+private final class Moments: @unchecked Sendable {
+    private let lock = NSLock()
+    private var asked: [Duration] = []
+    private var gates: [Int: CheckedContinuation<Void, Never>] = [:]
+    private var endedEarly: Set<Int> = []
+    var durations: [Duration] { lock.withLock { asked } }
+
+    func sleep(_ duration: Duration) async {
+        await withCheckedContinuation { (gate: CheckedContinuation<Void, Never>) in
+            let now: Bool = lock.withLock {
+                let number = asked.count
+                asked.append(duration)
+                if endedEarly.remove(number) != nil { return true }
+                gates[number] = gate
+                return false
+            }
+            if now { gate.resume() }
+        }
+    }
+
+    /// Ends wait `number`, or makes it end at once if it has not been asked for yet.
+    func end(_ number: Int) {
+        let gate: CheckedContinuation<Void, Never>? = lock.withLock {
+            if let gate = gates.removeValue(forKey: number) { return gate }
+            endedEarly.insert(number)
+            return nil
+        }
+        gate?.resume()
+    }
+}
+
 private let t0 = Date(timeIntervalSince1970: 1_800_000_000)
 
 /// Ready with the sample desk (so the menu has submenus), checked `at` seconds after t0.
@@ -35,11 +68,12 @@ private func locked(at offset: TimeInterval = 0) -> Gathered {
 /// The object the menu's view observes (issue #107): only the menu on screen and its notice, let
 /// through by `HoldStill`.
 @MainActor @Suite struct MenuOnScreenTests {
-    private func make(_ steps: [[Gathered]], log: Lines = Lines()) -> (MenuRefresher, MenuOnScreen) {
+    private func make(_ steps: [[Gathered]], log: Lines = Lines(),
+                      moments: Moments = Moments()) -> (MenuRefresher, MenuOnScreen) {
         let answers = Answers(steps)
         let r = MenuRefresher(load: { [.sample(id: "mbp", name: "MacBook Pro")] }, gather: { _ in answers.next() },
                               save: { _ in }, log: { _ in }, pause: { _ in })
-        return (r, MenuOnScreen(refresher: r, log: { log.add($0) }))
+        return (r, MenuOnScreen(refresher: r, log: { log.add($0) }, sleep: { await moments.sleep($0) }))
     }
 
     @Test func itStartsWithTheRefreshersMenu() {
@@ -71,9 +105,12 @@ private func locked(at offset: TimeInterval = 0) -> Gathered {
         watch.cancel()
     }
 
-    @Test func anOpenMenuWithASubmenuHoldsStillUntilItCloses() async {
+    /// AppKit posts the end of tracking before it sends the clicked line's action (the trial,
+    /// question 6), so a held change is shown 300 milliseconds after the close, not in its notice.
+    @Test func anOpenMenuWithASubmenuHoldsStillUntilAMomentAfterItCloses() async {
         let log = Lines()
-        let (r, screen) = make([[ready()], [ready("Renamed")]], log: log)
+        let moments = Moments()
+        let (r, screen) = make([[ready()], [ready("Renamed")]], log: log, moments: moments)
         await r.refresh()
         let first = screen.shown
         screen.menuBegan()
@@ -81,6 +118,99 @@ private func locked(at offset: TimeInterval = 0) -> Gathered {
         #expect(r.menu.items.first?.title == "Renamed · Ready")
         #expect(screen.shown == first)
         screen.menuEnded()
+        #expect(screen.shown == first)   // not in the close notice
+        #expect(log.all == ["menu held a change: open with a submenu"])
+        moments.end(0)
+        await screen.closing?.value
+        #expect(moments.durations == [.milliseconds(300)])
+        #expect(screen.shown.menu.items.first?.title == "Renamed · Ready")
+        #expect(log.all == ["menu held a change: open with a submenu", "menu showed the held change: closed"])
+    }
+
+    @Test func aChangeArrivingJustAfterTheCloseWaitsForTheMomentToo() async {
+        let log = Lines()
+        let moments = Moments()
+        let (r, screen) = make([[ready()], [ready("Renamed")], [ready("Again")]], log: log, moments: moments)
+        await r.refresh()
+        let first = screen.shown
+        screen.menuBegan()
+        screen.menuEnded()
+        await r.refresh()
+        #expect(screen.shown == first)
+        #expect(log.all == ["menu held a change: closing with a submenu"])
+        moments.end(0)
+        await screen.closing?.value
+        #expect(screen.shown.menu.items.first?.title == "Renamed · Ready")
+        #expect(log.all.last == "menu showed the held change: closed")
+        // The moment has passed: the menu is closed, and changes go through at once again.
+        await r.refresh()
+        #expect(screen.shown.menu.items.first?.title == "Again · Ready")
+        #expect(log.all.count == 2)
+    }
+
+    @Test func aCloseWithNothingWaitingShowsAndLogsNothing() async {
+        let log = Lines()
+        let moments = Moments()
+        let (r, screen) = make([[ready()], [ready("Renamed")]], log: log, moments: moments)
+        await r.refresh()
+        let first = screen.shown
+        var published = 0
+        let watch = screen.objectWillChange.sink { _ in published += 1 }
+        screen.menuBegan()
+        screen.menuEnded()
+        moments.end(0)
+        await screen.closing?.value
+        #expect(screen.shown == first)
+        #expect(published == 0)
+        #expect(log.all.isEmpty)
+        watch.cancel()
+        await r.refresh()
+        #expect(screen.shown.menu.items.first?.title == "Renamed · Ready")
+    }
+
+    /// The menu opens again before the moment after its close has passed: what waits is shown at once,
+    /// the moment is cancelled, and its timer, should it still arrive, does nothing.
+    @Test func anOpeningDuringTheMomentShowsWhatWaitsAndTheLateTimerDoesNothing() async {
+        let log = Lines()
+        let moments = Moments()
+        let (r, screen) = make([[ready()], [ready("Renamed")], [ready("Again")]], log: log, moments: moments)
+        await r.refresh()
+        screen.menuBegan()
+        await r.refresh()
+        screen.menuEnded()
+        let late = screen.closing
+        screen.menuBegan()
+        #expect(late?.isCancelled == true)
+        #expect(screen.closing == nil)
+        #expect(screen.shown.menu.items.first?.title == "Renamed · Ready")
+        #expect(log.all.last == "menu showed the held change: opened")
+        await r.refresh()   // open with a submenu again: it waits
+        moments.end(0)
+        await late?.value
+        #expect(screen.shown.menu.items.first?.title == "Renamed · Ready")
+        #expect(log.all == ["menu held a change: open with a submenu", "menu showed the held change: opened",
+                            "menu held a change: open with a submenu"])
+    }
+
+    @Test func twoClosesInARowOnlyTheLastMomentShowsWhatWaits() async {
+        let log = Lines()
+        let moments = Moments()
+        let (r, screen) = make([[ready()], [ready("Renamed")]], log: log, moments: moments)
+        await r.refresh()
+        let first = screen.shown
+        screen.menuBegan()
+        await r.refresh()
+        screen.menuEnded()
+        let earlier = screen.closing
+        screen.menuEnded()
+        let later = screen.closing
+        #expect(earlier?.isCancelled == true)
+        moments.end(0)
+        await earlier?.value
+        #expect(screen.shown == first)
+        moments.end(1)
+        await later?.value
+        #expect(moments.durations == [.milliseconds(300), .milliseconds(300)])
         #expect(screen.shown.menu.items.first?.title == "Renamed · Ready")
         #expect(log.all == ["menu held a change: open with a submenu", "menu showed the held change: closed"])
     }
@@ -108,7 +238,8 @@ private func locked(at offset: TimeInterval = 0) -> Gathered {
     }
 
     @Test func theNoticeWaitsTooWhileAMenuWithASubmenuIsOpen() async {
-        let (r, screen) = make([[ready()]])
+        let moments = Moments()
+        let (r, screen) = make([[ready()]], moments: moments)
         await r.refresh()
         let fake = FakeRunner { _ in FakeRunner.failed(1, stderr: "no screen sharing\n") }
         let actions = MenuActionRunner(macmoshPath: "/Applications/MacMosh.app/Contents/Helpers/macmosh",
@@ -118,6 +249,9 @@ private func locked(at offset: TimeInterval = 0) -> Gathered {
         #expect(r.notice == "no screen sharing")
         #expect(screen.shown.notice == nil)
         screen.menuEnded()
+        #expect(screen.shown.notice == nil)
+        moments.end(0)
+        await screen.closing?.value
         #expect(screen.shown.notice == "no screen sharing")
     }
 }

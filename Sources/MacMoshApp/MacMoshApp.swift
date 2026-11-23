@@ -40,7 +40,9 @@ struct MacMoshApp: App {
                 }
                 // Apple: "Posted when menu tracking ends, even if no action is sent."
                 // (https://developer.apple.com/documentation/appkit/nsmenu/didendtrackingnotification)
-                // A change held while the menu was open is shown now.
+                // A change held while the menu was open is not shown now: on the trial's runners this
+                // notice came about 2 ms before the clicked line's action (question 6), so it is shown
+                // 300 milliseconds later (`MenuOnScreen.closingWait`), unless the menu opens again first.
                 .onReceive(NotificationCenter.default.publisher(for: NSMenu.didEndTrackingNotification)) { _ in
                     screen.menuEnded()
                 }

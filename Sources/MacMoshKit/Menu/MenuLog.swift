@@ -38,10 +38,21 @@ public enum MenuLog {
         "menu tracking: object=\(object.rawValue)"
     }
 
-    /// The menu was open with a submenu, and a different menu or notice was held back (`HoldStill`).
-    static let held = "menu held a change: open with a submenu"
+    /// When a change was held back: the menu was open, or had just closed and the moment after the
+    /// close had not passed yet (`HoldStill.Phase.closing`).
+    enum HeldWhen: String {
+        case open = "open with a submenu"
+        case closing = "closing with a submenu"
+    }
 
-    /// When a held menu was shown: the menu closed, or it began to open again with no close heard.
+    /// The menu on screen had a submenu, and a different menu or notice was held back (`HoldStill`):
+    /// `menu held a change: open with a submenu`.
+    static func held(_ when: HeldWhen) -> String {
+        "menu held a change: \(when.rawValue)"
+    }
+
+    /// When a held menu was shown: the moment after the menu closed had passed, or it began to open
+    /// again (with no close heard, or before that moment had passed).
     enum HeldShown: String { case closed, opened }
 
     /// `menu showed the held change: closed`

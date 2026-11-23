@@ -33,7 +33,8 @@ private final class Lines: @unchecked Sendable {
 
     /// Issue #107: a change held back while the menu is open with a submenu, and when it was shown.
     @Test func theHeldChangeLinesAreFixedWords() {
-        #expect(MenuLog.held == "menu held a change: open with a submenu")
+        #expect(MenuLog.held(.open) == "menu held a change: open with a submenu")
+        #expect(MenuLog.held(.closing) == "menu held a change: closing with a submenu")
         #expect(MenuLog.heldShown(.closed) == "menu showed the held change: closed")
         #expect(MenuLog.heldShown(.opened) == "menu showed the held change: opened")
     }
