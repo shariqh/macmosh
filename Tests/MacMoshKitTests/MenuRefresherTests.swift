@@ -347,7 +347,28 @@ private final class Saved: @unchecked Sendable {
     @Test func aFirstCheckWithTheServerDownWaitsAMinute() {
         var wait = DeskServerWait()
         #expect(wait.update([Self.down(at: 0)]) == ["mbp"])
-        #expect(wait.update([Self.down(at: 60)]) == [])
+        #expect(wait.update([Self.down(at: DeskServerWait.limit - 1)]) == ["mbp"])
+        #expect(wait.update([Self.down(at: DeskServerWait.limit)]) == [])
+    }
+
+    @Test func aWaitThatAnotherStateClearsDoesNotComeBack() {
+        // Ready ends a running wait, so a server that stops later shows the fix at once.
+        var wait = DeskServerWait()
+        _ = wait.update([Self.found(.waitingForLogin, at: -30)])
+        #expect(wait.update([Self.down(at: 0)]) == ["mbp"])
+        #expect(wait.update([Self.found(.ready(signIns: true), at: 30)]) == [])
+        #expect(wait.update([Self.down(at: 45)]) == [])
+        // So does a check that finds no login agent.
+        var noAgent = DeskServerWait()
+        #expect(noAgent.update([Self.down(at: 0)]) == ["mbp"])
+        #expect(noAgent.update([Self.down(agent: false, at: 20)]) == [])
+        #expect(noAgent.update([Self.down(at: 40)]) == [])
+    }
+
+    @Test func aClockSetBackDoesNotKeepTheWaitUp() {
+        var wait = DeskServerWait()
+        #expect(wait.update([Self.down(at: 0)]) == ["mbp"])
+        #expect(wait.update([Self.down(at: -300)]) == [])
     }
 
     @Test func aLockedOrUnreachableWorkhorseThatComesBackLoggedInWaits() {

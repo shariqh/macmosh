@@ -177,7 +177,8 @@ struct DeskServerWait {
             }
             if since[id] == nil, Self.mayBegin(after: before) { since[id] = r.checkedAt }
             if let began = since[id] {
-                if r.checkedAt.timeIntervalSince(began) < Self.limit {
+                let elapsed = r.checkedAt.timeIntervalSince(began)
+                if elapsed >= 0, elapsed < Self.limit {   // a clock set back ends the wait
                     waiting.insert(id)
                 } else {
                     since[id] = nil
