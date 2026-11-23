@@ -1,7 +1,8 @@
 import Combine
 import Foundation
 
-/// Holds the menu the app shows and refreshes it. All logic the app needs that can be tested lives here, not in a view.
+/// Builds the menu and refreshes it; the menu's view reads it through `MenuOnScreen`, which holds it still
+/// while it is open with a submenu. All logic the app needs that can be tested lives here, not in a view.
 @MainActor
 public final class MenuRefresher: ObservableObject {
     @Published public private(set) var menu: MenuLines

@@ -15,6 +15,9 @@ public final class MenuOnScreen: ObservableObject {
     /// open with a submenu only when the menu closes or next opens.
     @Published public private(set) var shown: MenuShown
 
+    /// Checks the workhorses and does what a line asks. Kept here so the app observes only this object.
+    public let refresher: MenuRefresher
+
     private var hold: HoldStill
     private let log: @Sendable (String) -> Void
     private var watch: AnyCancellable?
@@ -24,9 +27,14 @@ public final class MenuOnScreen: ObservableObject {
         let first = MenuShown(menu: refresher.menu, notice: refresher.notice)
         shown = first
         hold = HoldStill(first)
+        self.refresher = refresher
         self.log = log
-        // `@Published` sends each new value on the thread that sets it, before it is stored; the refresher
-        // sets its values on the main actor, so this runs there, with the new pair.
+        // Apple, Published (https://developer.apple.com/documentation/combine/published): "publishing
+        // occurs in the property's willSet block, meaning subscribers receive the new value before it's
+        // actually set on the property". So this reads the new pair from the publishers, never from the
+        // refresher. The refresher is a main-actor class, so its values are set on the main actor, and
+        // this runs there; `MainActor.assumeIsolated` "will crash" if that is ever not so
+        // (https://developer.apple.com/documentation/swift/mainactor/assumeisolated(_:file:line:)).
         watch = refresher.$menu.combineLatest(refresher.$notice)
             .sink { [weak self] menu, notice in
                 MainActor.assumeIsolated { self?.offer(MenuShown(menu: menu, notice: notice)) }
