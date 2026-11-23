@@ -1,6 +1,6 @@
 # Running a workhorse with its lid closed
 
-This guide is for a spare Mac laptop that you use as your workhorse and want to keep running with its lid shut. The short answer: keep it plugged in, on a hard, flat surface, and turn on MacMosh's lid-closed mode from the menu. This project tested that on one MacBook Pro and it stayed awake and reachable, but it relies on a setting Apple doesn't document, so read the battery and heat sections before you depend on it.
+This guide is for a spare Mac laptop that you use as your workhorse and want to keep running with its lid shut. The short answer: keep it plugged in, on a hard, flat surface, and turn on MacMosh's lid-closed mode from the menu. This project turned the setting on by hand on one MacBook Pro, and it stayed awake and reachable for 43 minutes. MacMosh's menu button sends the same command, but the button itself was not part of that test. The setting is one Apple doesn't document, so read the battery and heat sections before you depend on it.
 
 Two names come up throughout. The **workhorse** is the laptop that runs your work. The **daily Mac** is the one you sit at, with the MacMosh menu.
 
@@ -9,7 +9,7 @@ Two names come up throughout. The **workhorse** is the laptop that runs your wor
 | Option | What it costs | What is known | Pick it when |
 |---|---|---|---|
 | Leave the lid open | Nothing | Works, per the design: once set up, the Mac doesn't sleep on power. The setup checklist line `It stays awake on power and wakes for network access` covers it. | You have room for an open laptop. It is the simplest choice. |
-| MacMosh's lid-closed mode | Nothing | Tested by this project on one MacBook Pro on 2026-11-22: lid closed, on power, no display, awake and reachable for 43 minutes. It uses a setting Apple doesn't document. | You want the lid shut with no extra hardware, and the Mac stays plugged in on a hard surface. |
+| MacMosh's lid-closed mode | Nothing | The setting it changes was tested by hand on one MacBook Pro on 2026-11-22: lid closed, on power, no display, awake and reachable for 43 minutes. The menu button and `macmosh power` were not part of that test. It uses a setting Apple doesn't document. | You want the lid shut with no extra hardware, and the Mac stays plugged in on a hard surface. |
 | An external display (Apple's own way) | A display, plus an external keyboard and mouse | Documented by Apple. Apple's pages describe working on the display with the lid closed; they don't say whether the Mac stays awake when nobody is using it. Not tested by this project. | You already have a display for the workhorse, or you want the setup Apple supports. |
 | A display emulator plug (a "dummy plug" that imitates a display) | About $10 | Apple says nothing about these plugs. Not tested by this project. | Only if you want to try it yourself. This guide can't tell you whether it works. |
 
@@ -48,7 +48,7 @@ Before you start, plug the workhorse into power and put it on a hard, flat surfa
    ```
 
 3. **Read it, then type `yes` and press Return.**
-   Anything other than `yes` stops here with `Nothing was changed.`
+   Anything other than `yes` stops here with `Nothing was changed.` After `yes`, ssh asks for a password.
 
 4. **When ssh asks for a password, type the workhorse's login password.**
    You should see a line that ends in `Lid-closed mode: on`, such as:
@@ -61,14 +61,14 @@ Before you start, plug the workhorse into power and put it on a hard, flat surfa
    The summary line now includes `Lid-closed mode on`, and the button reads `Turn off lid-closed mode…`. If the menu still shows the old text, click `Check now`.
 
 6. **Close the workhorse's lid.**
-   The menu should keep saying `Ready`.
+   The menu should keep saying `Ready`. In this project's test, `macmosh status` and ssh reached the workhorse for the whole 43 minutes.
 
 ## Turn it on from the command line
 
 `macmosh` below is the command inside the app: `/Applications/MacMosh.app/Contents/Helpers/macmosh`.
 
 1. **Run `macmosh list`.**
-   You should see one line per workhorse: its name, its id in brackets, and `paired`.
+   You should see one line per workhorse, such as `workhorse (id) · alex@192.168.1.20 · paired`: its name, its id in brackets, the user and address, and `paired`. The last word is `not paired` if the workhorse isn't paired.
 
 2. **Run `macmosh power workhorse lid on`**, with your workhorse's name or id in place of `workhorse`.
    You should see the same lines as in step 2 above, ending in `Type yes to run it:`.
@@ -97,7 +97,7 @@ MacMosh reads the same `SleepDisabled` line. A Mac where the setting was never t
 3. **Look at the menu.**
    The summary line includes `Lid-closed mode off`, and the button reads `Turn on lid-closed mode…` again.
 
-If you are at the workhorse without the daily Mac, you can type `sudo pmset -a disablesleep 0` in Terminal there instead.
+If you are at the workhorse without the daily Mac, you can type `sudo pmset -a disablesleep 0` in Terminal there instead. Type your password when sudo asks for it. To check, run `pmset -g` and look at the `SleepDisabled` line; what it shows after the setting is turned off was not recorded in this project's test.
 
 What `pmset -g` prints after the setting is turned off was not recorded in this project's test. MacMosh treats a `0` and a missing line both as off.
 
@@ -117,15 +117,16 @@ If you take MacMosh off the workhorse with `macmosh remove`, it doesn't turn lid
 
 ## Use an external display (Apple's way)
 
-Apple documents a closed lid only with a display connected. These steps follow Apple's own order. This project has not tried them with MacMosh, and Apple's pages don't say whether the Mac stays awake when nobody is using it.
+Apple documents a closed lid only with a display connected. These steps follow the order on Apple's page for M3 MacBook Air and MacBook Pro with two displays. This project has not tried them with MacMosh, and Apple's pages don't say whether the Mac stays awake when nobody is using it.
 
 1. **Connect an external keyboard and mouse or trackpad.**
+   Apple's page doesn't say what you see at this step.
 
 2. **Connect the workhorse to power.**
-   If the display provides power to the Mac, Apple says a separate power adapter isn't needed.
+   If the display provides power to the Mac, Apple says a separate power adapter isn't needed. Apple's page doesn't say what you see at this step.
 
 3. **Connect the display.**
-   If the display needs power, plug it in to an outlet first. You may also need to turn it on.
+   If the display needs power, plug it in to an outlet first. You may also need to turn it on. Apple's page doesn't say what you see at this step.
 
 4. **Close the lid.**
    You should be able to keep working on the display with the keyboard and mouse. Apple's words: "After you connect a display to your MacBook Pro, you can close the lid and continue to use it with connected accessories."
@@ -136,7 +137,7 @@ If the display stays dark, Apple suggests these steps:
 - Disconnect the display from the Mac and from its power source, then connect it again.
 - Put the Mac to sleep, then wake it. On a laptop you can close the lid for a few seconds, then open it again.
 
-With two displays connected, Apple says opening the lid makes the second display go dark or disconnect.
+On a MacBook Air or MacBook Pro with M3 chip and two displays connected, Apple says opening the lid makes the second display go dark or disconnect.
 
 ## On battery, and before the Mac goes in a bag
 
@@ -150,9 +151,9 @@ Before you put the workhorse in a bag:
 2. **Check the menu.** The summary line includes `Lid-closed mode off`.
 
 3. **Close the lid and pack it.**
-   This project has not yet watched the workhorse go to sleep after the mode is turned off. If you need to be sure, shut the Mac down from the Apple menu instead.
+   MacMosh's off text says `The Mac sleeps again when its lid closes.`, so the menu should soon show `Can't reach it`. This project has not watched that happen. If you need to be sure, shut the Mac down from the Apple menu instead.
 
-A workhorse that stays plugged in spends a lot of time on power. Apple has two features that cut down the time a Mac spends fully charged, to reduce wear on the battery. Its page about them doesn't mention a closed lid.
+A workhorse that stays plugged in spends a lot of time on power. Apple has two features for a Mac that spends long stretches on power. Apple says Optimized Battery Charging reduces wear on the battery by reducing the time the Mac spends fully charged; Charge Limit lets you cap the charge. Its page about them doesn't mention a closed lid.
 
 - **Optimized Battery Charging** (macOS Big Sur 11 or later) learns your daily charging routine and can delay charging past 80% when it predicts the Mac will be on power for a long time.
 - **Charge Limit** (macOS Tahoe 26.4 or later, on a Mac with Apple silicon) lets you set a limit between 80% and 100%. The Mac stops charging a few points short of it. With either feature, the Mac will still charge to 100% now and then.
@@ -192,6 +193,7 @@ The test ran on 2026-11-22 on one MacBook Pro running macOS 27.3. The full recor
 
 **What was not tested.**
 
+- Turning the mode on or off with MacMosh's menu button or `macmosh power`. The test typed the command by hand; the button's screens in this guide come from the code.
 - Running on battery with the mode on.
 - Closing the lid with the mode off, to watch the workhorse go to sleep.
 - A restart with the lid closed.
@@ -227,4 +229,4 @@ This project:
 - The test: [`sittings/sitting-2-results.md`](sittings/sitting-2-results.md)
 - The design, sections 5.6, 7.10 and 8.5: [`superpowers/specs/2026-11-18-macmosh-v1-design.md`](superpowers/specs/2026-11-18-macmosh-v1-design.md)
 - Heat: issue #91, "Show when a lid-closed workhorse runs hot"
-- The commands and the words MacMosh shows: `Sources/MacMoshKit/Setup/PowerPlanner.swift` and `Sources/MacMoshKit/Setup/PowerFlow.swift`
+- The commands and the words MacMosh shows: `Sources/MacMoshKit/Setup/PowerPlanner.swift`, `Sources/MacMoshKit/Setup/PowerFlow.swift`, `Sources/MacMoshKit/Menu/MenuModel.swift`, `Sources/MacMoshKit/Format/StatusFormat.swift`, `Sources/MacMoshKit/Setup/Removal.swift` and `Sources/macmosh/PowerCommand.swift`
