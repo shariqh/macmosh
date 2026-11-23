@@ -152,8 +152,11 @@ public enum MenuModel {
         ])
     }
 
-    /// The headline, and under it: the hint (a Ready workhorse with sign-ins working has none), the
-    /// state's own button, a Ready workhorse's desks and buttons, and the checklist.
+    /// The headline, and under it: the hint (a Ready workhorse with sign-ins working has none) and the
+    /// state's own button. Every state but Ready then has the checklist under it, flat.
+    ///
+    /// A Ready headline opens a submenu of the lines used rarely (issue #107), and has its desks and
+    /// New desk… under it at the top level, after the hint and Fix…: a problem is never in a submenu.
     private static func block(for r: CheckResult, now: Date, timeZone: TimeZone) -> MenuEntry {
         let id = workhorseID(r.workhorse)
         var children: [MenuEntry] = []
@@ -161,13 +164,43 @@ public enum MenuModel {
             children.append(MenuEntry(id: "\(id):hint", title: hint))
         }
         children += ButtonRules.forState(r).map { .button($0, under: id) }
-        if case .ready = r.state { children += readyEntries(r, under: id) }
-        children.append(.button(ButtonRules.checklist(r.workhorse.id), under: id))
-        return MenuEntry(id: id, title: StatusFormat.headline(r), children: children)
+        guard case .ready = r.state else {
+            children.append(.button(ButtonRules.checklist(r.workhorse.id), under: id))
+            return MenuEntry(id: id, title: StatusFormat.headline(r), children: children)
+        }
+        children += deskEntries(r)
+        children.append(.button(ButtonRules.newDesk(r.workhorse.id), under: id))
+        return MenuEntry(id: id, title: StatusFormat.headline(r), submenu: headlineSubmenu(r, under: id),
+                         children: children)
     }
 
-    /// Desks, the buttons (a laptop's lid-closed switch among them), the summary line and the home-address light.
-    private static func readyEntries(_ r: CheckResult, under parent: String) -> [MenuEntry] {
+    /// Share screen, a laptop's lid-closed switch, Restart…; then the summary line and the home-address
+    /// light, as text; then the checklist. A separator between each group that has lines.
+    private static func headlineSubmenu(_ r: CheckResult, under id: String) -> [MenuEntry] {
+        var texts: [MenuEntry] = []
+        if let status = r.status {
+            texts.append(MenuEntry(id: "\(id):summary", title: StatusFormat.summaryLine(status)))
+        }
+        if let reachable = r.homeReachable {
+            texts.append(MenuEntry(id: "\(id):home", title: "Home address reachable from here: \(reachable ? "yes" : "no")"))
+        }
+        let groups = [ButtonRules.forHeadline(r).map { MenuEntry.button($0, under: id) }, texts,
+                      [.button(ButtonRules.checklist(r.workhorse.id), under: id)]]
+        return joined(groups.filter { !$0.isEmpty }, under: id)
+    }
+
+    /// The groups with a separator between each two, numbered `<id>:sep1`, `<id>:sep2`, ….
+    private static func joined(_ groups: [[MenuEntry]], under id: String) -> [MenuEntry] {
+        var lines: [MenuEntry] = []
+        for (i, group) in groups.enumerated() {
+            if i > 0 { lines.append(.separator(id: "\(id):sep\(i)")) }
+            lines += group
+        }
+        return lines
+    }
+
+    /// One row per desk: the open desks as the report lists them, then each closed permanent desk.
+    private static func deskEntries(_ r: CheckResult) -> [MenuEntry] {
         let id = r.workhorse.id
         var entries: [MenuEntry] = []
         let definitions = r.status?.definitions ?? []
@@ -186,23 +219,18 @@ public enum MenuModel {
             let name = definition.name.value
             entries.append(deskEntry(workhorse: id, desk: name, isOpen: false, title: "\(name) (closed)"))
         }
-        entries += ButtonRules.forReady(r).map { .button($0, under: parent) }
-        if let status = r.status {
-            entries.append(MenuEntry(id: "\(parent):summary", title: StatusFormat.summaryLine(status)))
-        }
-        if let reachable = r.homeReachable {
-            entries.append(MenuEntry(id: "\(parent):home",
-                                     title: "Home address reachable from here: \(reachable ? "yes" : "no")"))
-        }
         return entries
     }
 
-    /// A desk's line opens it; its actions are the lines under it.
+    /// A desk's row opens it when clicked (its primary action), and opens its submenu when the pointer
+    /// rests on it: Open <desk>, New window, then Rename… and Remove….
     private static func deskEntry(workhorse id: String, desk name: String, isOpen: Bool, title: String) -> MenuEntry {
         let deskID = "desk:\(id):\(name)"
+        let buttons = ButtonRules.forDesk(workhorse: id, desk: name, isOpen: isOpen).map { MenuEntry.button($0, under: deskID) }
+        let asks = buttons.filter { $0.id.hasSuffix(":rename") || $0.id.hasSuffix(":remove") }
+        let does = buttons.filter { !asks.contains($0) }
         return MenuEntry(id: deskID, title: title, action: ButtonRules.connect(workhorse: id, desk: name),
-                         children: ButtonRules.forDesk(workhorse: id, desk: name, isOpen: isOpen)
-                             .map { .button($0, under: deskID) })
+                         submenu: joined([does, asks], under: deskID))
     }
 
     /// `website (2 windows: zsh, vim, kept running, permanent, open in 1 tab)`

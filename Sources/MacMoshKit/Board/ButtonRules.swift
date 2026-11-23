@@ -48,19 +48,37 @@ public enum ButtonRules {
     public static func forReady(_ r: CheckResult) -> [ActionButton] {
         guard case .ready = r.state else { return [] }
         let id = r.workhorse.id
-        var buttons = [
-            ActionButton(key: "newDesk", title: "New desk…", action: .tab(["desk", "new", id])),
-            ActionButton(key: "share", title: "Share screen", action: .run(["screen", id])),
-            ActionButton(key: "restart", title: "Restart…", action: .tab(["restart", id])),
-        ]
-        if let status = r.status, status.isLaptop {
-            if status.power.disableSleep == 1 {
-                buttons.append(ActionButton(key: "lid", title: "Turn off lid-closed mode…", action: .tab(["power", id, "lid", "off"])))
-            } else {
-                buttons.append(ActionButton(key: "lid", title: "Turn on lid-closed mode…", action: .tab(["power", id, "lid", "on"])))
-            }
+        return [newDesk(id), share(id), restart(id)] + (lid(r).map { [$0] } ?? [])
+    }
+
+    /// The buttons in a Ready workhorse's own submenu (issue #107): Share screen, on a laptop the
+    /// lid-closed switch, and Restart…. None in any other state.
+    public static func forHeadline(_ r: CheckResult) -> [ActionButton] {
+        guard case .ready = r.state else { return [] }
+        let id = r.workhorse.id
+        return [share(id)] + (lid(r).map { [$0] } ?? []) + [restart(id)]
+    }
+
+    public static func newDesk(_ id: String) -> ActionButton {
+        ActionButton(key: "newDesk", title: "New desk…", action: .tab(["desk", "new", id]))
+    }
+
+    private static func share(_ id: String) -> ActionButton {
+        ActionButton(key: "share", title: "Share screen", action: .run(["screen", id]))
+    }
+
+    private static func restart(_ id: String) -> ActionButton {
+        ActionButton(key: "restart", title: "Restart…", action: .tab(["restart", id]))
+    }
+
+    /// A laptop's lid-closed switch, offering the opposite of how the setting is now; nil on a Mac with no battery.
+    private static func lid(_ r: CheckResult) -> ActionButton? {
+        guard let status = r.status, status.isLaptop else { return nil }
+        let id = r.workhorse.id
+        if status.power.disableSleep == 1 {
+            return ActionButton(key: "lid", title: "Turn off lid-closed mode…", action: .tab(["power", id, "lid", "off"]))
         }
-        return buttons
+        return ActionButton(key: "lid", title: "Turn on lid-closed mode…", action: .tab(["power", id, "lid", "on"]))
     }
 
     /// What clicking a desk does: open a tab attached to it. A closed permanent desk is made again.
@@ -68,12 +86,12 @@ public enum ButtonRules {
         .tab(["connect", id, name])
     }
 
-    /// The buttons under one desk. An open desk can have a window added; a closed one can't. Rename and
-    /// Remove open a tab that asks first.
+    /// The buttons of one desk: Open (what a click on the desk's row does too), New window for an open
+    /// desk (a closed one has none to add to), Rename… and Remove…, which open a tab that asks first.
     public static func forDesk(workhorse id: String, desk name: String, isOpen: Bool) -> [ActionButton] {
-        var buttons: [ActionButton] = []
+        var buttons = [ActionButton(key: "open", title: "Open \(name)", action: connect(workhorse: id, desk: name))]
         if isOpen {
-            buttons.append(ActionButton(key: "window", title: "New window in \(name)", action: .run(["desk", "window", id, name])))
+            buttons.append(ActionButton(key: "window", title: "New window", action: .run(["desk", "window", id, name])))
         }
         buttons.append(ActionButton(key: "rename", title: "Rename \(name)…", action: .tab(["desk", "rename", id, name])))
         buttons.append(ActionButton(key: "remove", title: "Remove \(name)…", action: .tab(["desk", "remove", id, name, "--ask"])))

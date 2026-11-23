@@ -7,6 +7,11 @@ func allIDs(_ entries: [MenuEntry]) -> [String] {
     entries.flatMap { [$0.id] + allIDs($0.submenu) + allIDs($0.children) }
 }
 
+/// Every entry in a tree, depth first.
+func allEntries(_ entries: [MenuEntry]) -> [MenuEntry] {
+    entries.flatMap { [$0] + allEntries($0.submenu) + allEntries($0.children) }
+}
+
 func entry(_ entries: [MenuEntry], _ id: String) -> MenuEntry? {
     for e in entries {
         if e.id == id { return e }
@@ -112,33 +117,171 @@ private func twoWithTheSameDesk() -> MenuLines {
 
     // MARK: the shape
 
-    @Test func aWorkhorseIsOneEntryWithItsLinesUnderIt() {
+    /// Changed on purpose for issue #107: the rare lines are in the headline's submenu; the desks and
+    /// New desk… are under it at the top level.
+    @Test func aReadyWorkhorseIsOneEntryWithItsSubmenuAndItsDesksUnderIt() {
         let m = MenuModel.build([.checked(.sampleReady(id: "mbp", name: "MacBook Pro"))])
         #expect(m.entries.map(\.id) == ["wh:mbp", "top:sep1", "top:add", "top:check"])
         let block = m.entries[0]
         #expect(block.title == "MacBook Pro · Ready")
-        #expect(block.action == .none)
-        #expect(block.children.map(\.id) == [
-            "desk:mbp:website", "wh:mbp:newDesk", "wh:mbp:share", "wh:mbp:restart", "wh:mbp:lid",
-            "wh:mbp:summary", "wh:mbp:home", "wh:mbp:checklist",
+        #expect(block.action == .none)   // the headline's row has no primary action
+        #expect(block.submenu.map(\.id) == [
+            "wh:mbp:share", "wh:mbp:lid", "wh:mbp:restart", "wh:mbp:sep1", "wh:mbp:summary", "wh:mbp:home",
+            "wh:mbp:sep2", "wh:mbp:checklist",
         ])
+        #expect(block.children.map(\.id) == ["desk:mbp:website", "wh:mbp:newDesk"])
         #expect(m.entries[1].isSeparator)
         #expect(m.entries[2].title == "Add a Mac…" && m.entries[3].title == "Check now")
     }
 
-    @Test func aDeskIsOneEntryThatOpensItWithItsActionsUnderIt() {
+    /// Changed on purpose for issue #107: a desk's actions are in its submenu, which starts with Open.
+    @Test func aDeskIsOneRowThatOpensItWithItsActionsInItsSubmenu() {
         let m = MenuModel.build([.checked(.sampleReady(id: "mbp"))])
         let desk = entry(m.entries, "desk:mbp:website")
         #expect(desk?.title == "website (2 windows: zsh, vim, open in 1 tab)")
         #expect(desk?.action == .tab(["connect", "mbp", "website"]))
-        #expect(desk?.children.map(\.id) == ["desk:mbp:website:window", "desk:mbp:website:rename", "desk:mbp:website:remove"])
-        #expect(desk?.children.allSatisfy(\.children.isEmpty) == true)
+        #expect(desk?.submenu.map(\.id) == ["desk:mbp:website:open", "desk:mbp:website:window",
+                                            "desk:mbp:website:sep1", "desk:mbp:website:rename",
+                                            "desk:mbp:website:remove"])
+        #expect(desk?.submenu.map(\.title) == ["Open website", "New window", "", "Rename website…", "Remove website…"])
+        #expect(desk?.submenu.first?.action == desk?.action)
+        #expect(desk?.submenu.allSatisfy { $0.submenu.isEmpty && $0.children.isEmpty } == true)
+        #expect(desk?.children.isEmpty == true)
     }
 
-    @Test func aClosedPermanentDeskHasOnlyRenameAndRemoveUnderIt() {
+    /// Changed on purpose for issue #107: Open is in the submenu too, then a separator.
+    @Test func aClosedPermanentDeskHasOpenRenameAndRemoveInItsSubmenu() {
         let notes = entry(twoWithTheSameDesk().entries, "desk:workhorse:notes")
         #expect(notes?.title == "notes (closed)")
-        #expect(notes?.children.map(\.id) == ["desk:workhorse:notes:rename", "desk:workhorse:notes:remove"])
+        #expect(notes?.action == .tab(["connect", "workhorse", "notes"]))
+        #expect(notes?.submenu.map(\.id) == ["desk:workhorse:notes:open", "desk:workhorse:notes:sep1",
+                                             "desk:workhorse:notes:rename", "desk:workhorse:notes:remove"])
+        #expect(notes?.submenu.first?.title == "Open notes")
+    }
+
+    // MARK: the shape with submenus (issue #107)
+
+    /// The owner's example: a laptop workhorse with six desks, five open and one closed.
+    private func sixDesks(signIns: Bool = true) -> MenuLines {
+        var status = HostStatus.sampleWithDesk
+        func desk(_ name: String, _ windows: [String], tabs: Int) -> HostStatus.Desk {
+            .init(name: DeskName(name)!, windows: windows.enumerated().map { .init(index: $0.offset, name: $0.element) },
+                  windowCount: windows.count, attached: tabs)
+        }
+        status.desks = [
+            desk("website", ["claude", "zsh", "vim"], tabs: 1), desk("api", ["server", "tests"], tabs: 0),
+            desk("notes", ["zsh"], tabs: 1), desk("blog", ["zsh"], tabs: 0), desk("shop", ["web", "db"], tabs: 1),
+        ]
+        status.definitions = [
+            .init(name: DeskName("garden")!, reopen: false, keep: false, folder: "/Users/alex/garden", command: "",
+                  permanent: true),
+        ]
+        return MenuModel.build([.checked(.sample(.ready(signIns: signIns), workhorse: .sample(id: "workhorse", name: "workhorse"),
+                                                 status: status, homeReachable: true))])
+    }
+
+    /// The rows drawn at the top level: each top-level entry and the lines under it, not what a submenu holds.
+    private func topLevel(_ entries: [MenuEntry]) -> [MenuEntry] {
+        entries.flatMap { [$0] + topLevel($0.children) }
+    }
+
+    @Test func withSixDesksTheTopLevelIsTheHeadlineTheDesksAndNewDesk() {
+        let top = topLevel(sixDesks().entries)
+        #expect(top.map(\.title) == [
+            "workhorse · Ready",
+            "website (3 windows: claude, zsh, vim, open in 1 tab)", "api (2 windows: server, tests)",
+            "notes (1 window: zsh, open in 1 tab)", "blog (1 window: zsh)", "shop (2 windows: web, db, open in 1 tab)",
+            "garden (closed)", "New desk…", "", "Add a Mac…", "Check now",
+        ])
+        #expect(top.count == 11)   // 35 lines before
+        let opens = top.map(\.opensSubmenu)
+        #expect(opens == Array(repeating: true, count: 7) + Array(repeating: false, count: 4))
+    }
+
+    @Test func withSignInsOffTheHintAndFixAreAtTheTopAboveTheDesks() {
+        let top = topLevel(sixDesks(signIns: false).entries)
+        #expect(Array(top.prefix(4).map(\.title)) == [
+            "workhorse · Ready, sign-ins off", "Tools that keep logins in the keychain look signed out here.", "Fix…",
+            "website (3 windows: claude, zsh, vim, open in 1 tab)",
+        ])
+        #expect(top.count == 13)
+        #expect(top[2].action == .tab(["prepare", "workhorse", "--restart-desk-server", "--pause"]))
+        // A problem is never inside a submenu.
+        let headline = sixDesks(signIns: false).entries[0]
+        #expect(!headline.submenu.contains { $0.title == "Fix…" || $0.id.hasSuffix(":hint") })
+    }
+
+    /// Every case: no submenu inside a submenu, and nothing drawn under a line inside a submenu.
+    @Test func submenusGoOneLevelDeepOnly() {
+        func check(_ entries: [MenuEntry], inSubmenu: Bool) {
+            for e in entries {
+                if inSubmenu { #expect(e.submenu.isEmpty && e.children.isEmpty, "\(e.id)") }
+                check(e.submenu, inSubmenu: true)
+                check(e.children, inSubmenu: inSubmenu)
+            }
+        }
+        for menu in everySampleMenu() + moreSampleMenus() + [twoWithTheSameDesk(), sixDesks(), sixDesks(signIns: false)] {
+            check(menu.entries, inSubmenu: false)
+        }
+    }
+
+    /// A desk's row does what its first line, Open <desk>, does. The headline's row does nothing of its own.
+    @Test func aRowWithAPrimaryActionDoesWhatItsOpenLineDoes() {
+        var seen = 0
+        for menu in everySampleMenu() + moreSampleMenus() + [twoWithTheSameDesk(), sixDesks()] {
+            for e in allEntries(menu.entries) where e.opensSubmenu {
+                if e.id.hasPrefix("wh:") {
+                    #expect(e.action == .none, "\(e.id)")
+                } else {
+                    seen += 1
+                    guard case .tab(let args) = e.action, args.count == 3, args[0] == "connect" else {
+                        Issue.record("\(e.id) has \(e.action)"); continue
+                    }
+                    #expect(e.submenu.first?.action == e.action, "\(e.id)")
+                    #expect(e.submenu.first?.title == "Open \(args[2])", "\(e.id)")
+                }
+            }
+        }
+        #expect(seen > 10)
+    }
+
+    /// Every state that is not Ready, "Still checking…", "Waiting for the desk server" and "No
+    /// workhorses yet" are drawn flat, as before: a menu without a submenu updates at once.
+    @Test func onlyAReadyWorkhorseOpensASubmenu() {
+        let menus = everySampleMenu() + moreSampleMenus()
+        for (i, menu) in menus.enumerated() {
+            let ready = menu.entries.contains { $0.title.contains(" · Ready") }
+            #expect(menu.hasSubmenu == ready, "menu \(i)")
+        }
+        #expect(!MenuModel.build([]).hasSubmenu)
+    }
+
+    /// No word on screen says view, session, pane or tmux.
+    @Test func noTitleNamesTheMachinery() {
+        for menu in everySampleMenu() + moreSampleMenus() + [twoWithTheSameDesk(), sixDesks(), sixDesks(signIns: false)] {
+            for e in allEntries(menu.entries) {
+                let words = e.title.lowercased()
+                for bad in ["view", "session", "pane", "tmux"] { #expect(!words.contains(bad), "\(e.title)") }
+            }
+        }
+    }
+
+    /// Every argument of every action in the tree, a row's primary action included, is a plain word.
+    @Test func everyActionInTheTreeUsesOnlyPlainWords() {
+        var seen = 0
+        for menu in everySampleMenu() + moreSampleMenus() + [twoWithTheSameDesk(), sixDesks()] {
+            for action in allActions(menu.entries) {
+                switch action {
+                case .tab(let args), .run(let args):
+                    seen += 1
+                    #expect(!args.isEmpty)
+                    for word in args { #expect(PlainWords.isPlain(word), "\(word)") }
+                case .refresh, .none:
+                    break
+                }
+            }
+        }
+        #expect(seen > 20)
     }
 
     @Test func theHintAndTheStatesButtonAreUnderTheHeadline() {
