@@ -115,6 +115,29 @@ If you take MacMosh off the workhorse with `macmosh remove`, it doesn't turn lid
 | `The change ran, but a new check couldn't read the values.` | Click `Check now` in the menu, or run `macmosh status`, and look at the summary line. |
 | The menu says `Can't reach it` after you close the lid | Open the lid. Check that the workhorse is plugged in and that `pmset -g` on it shows `SleepDisabled` followed by `1`. |
 
+## Use an external display (Apple's way)
+
+Apple documents a closed lid only with a display connected. These steps follow Apple's own order. This project has not tried them with MacMosh, and Apple's pages don't say whether the Mac stays awake when nobody is using it.
+
+1. **Connect an external keyboard and mouse or trackpad.**
+
+2. **Connect the workhorse to power.**
+   If the display provides power to the Mac, Apple says a separate power adapter isn't needed.
+
+3. **Connect the display.**
+   If the display needs power, plug it in to an outlet first. You may also need to turn it on.
+
+4. **Close the lid.**
+   You should be able to keep working on the display with the keyboard and mouse. Apple's words: "After you connect a display to your MacBook Pro, you can close the lid and continue to use it with connected accessories."
+
+If the display stays dark, Apple suggests these steps:
+
+- Make sure the Mac is connected to power and using an external keyboard and mouse.
+- Disconnect the display from the Mac and from its power source, then connect it again.
+- Put the Mac to sleep, then wake it. On a laptop you can close the lid for a few seconds, then open it again.
+
+With two displays connected, Apple says opening the lid makes the second display go dark or disconnect.
+
 ## On battery, and before the Mac goes in a bag
 
 With lid-closed mode on, assume the workhorse does **not** sleep on battery either. The `-a` in the command applies the setting to every power source, and MacMosh's own warning says that "a closed Mac in a bag keeps running until its battery is empty." That warning comes from a published report, not from this project: the workhorse was tested on power only. Another report says a laptop goes to sleep within a few minutes once the charger comes loose. The reports disagree, so plan for the worse case.
