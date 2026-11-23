@@ -4,6 +4,8 @@ Status: the design to build for issues #107 and #105 (part 2). Written: 2026-11-
 
 This document adds to the v1 design (`docs/superpowers/specs/2026-11-18-macmosh-v1-design.md`, "the v1 design") and to the main-window design (`docs/superpowers/specs/2026-11-23-main-window-design.md`, "the main-window design"). Both carry dated amendments that point here.
 
+The layout started from a design that a reviewing agent joined from three independent drafts, called "the base design" below. It is not kept in the repository. Where the trial changed it, this document says so.
+
 ## 1. The short version
 
 The menu gets one row per desk. Resting the pointer on a desk's row opens a submenu with that desk's windows and actions. Clicking the row opens the desk, or takes him to its tab if it already has one. The workhorse's rarer lines (Share screen, Restart…, the lid-closed switch, the power summary, Run the checklist…) move into a submenu under the workhorse's own row. Each window of a desk gets its own line, and clicking that line brings forward the terminal tab that shows it, or opens one. `New window` opens in a tab of its own, so the tab he was using keeps showing what it showed.
@@ -26,7 +28,7 @@ Check now
 Quit MacMosh
 ```
 
-`▸` marks a row that opens a submenu. The top level drops from 35 rows today to 11 (both counts leave out Quit and include the separator above Add a Mac…). While the menu is open it holds still: a background check never changes it under his pointer, and what the check found shows the next time he opens it.
+`▸` marks a row that opens a submenu. With six desks the top level drops from 35 rows today (six open desks, section 3) to 11 (both counts leave out Quit and include the separator above Add a Mac…). While the menu is open it holds still: a background check never changes it under his pointer, and what the check found shows the next time he opens it.
 
 ## 2. Words used
 
