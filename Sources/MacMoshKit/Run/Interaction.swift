@@ -23,6 +23,14 @@ extension Interaction {
         waitForKey("Press any key to close.")
         return code
     }
+
+    /// The last line of a command the menu opens a tab for when the tab itself is the answer (a rename,
+    /// a removal): like `finish`, but it waits for a key on success too, so what happened can be read.
+    public func finishTab(_ code: Int32, reason: String?) -> Int32 {
+        guard code == 0 else { return finish(code, reason: reason) }
+        waitForKey("Press any key to close.")
+        return code
+    }
 }
 
 /// The real terminal: standard output for what is said, standard input for answers.

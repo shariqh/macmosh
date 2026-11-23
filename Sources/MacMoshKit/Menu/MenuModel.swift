@@ -196,6 +196,7 @@ public enum MenuModel {
             items.append(.line(deskTitle(desk, kept: kept.contains(name), permanent: permanent.contains(name)),
                                .tab(["connect", id, name])))
             items.append(.line("New window in \(name)", .run(["desk", "window", id, name]), indent: 2))
+            items += deskActions(id, name)
         }
         // A permanent desk whose last shell exited stays, closed; connect makes it again. Any other
         // definition with no desk is a leftover the workhorse clears up, so it gets no line.
@@ -203,6 +204,7 @@ public enum MenuModel {
         for definition in definitions where definition.permanent && !open.contains(definition.name.value) {
             let name = definition.name.value
             items.append(.line("\(name) (closed)", .tab(["connect", id, name])))
+            items += deskActions(id, name)
         }
         items.append(.line("New desk…", .tab(["desk", "new", id])))
         items.append(.line("Share screen", .run(["screen", id])))
@@ -219,6 +221,12 @@ public enum MenuModel {
             items.append(.line("Home address reachable from here: \(reachable ? "yes" : "no")"))
         }
         return items
+    }
+
+    /// The lines under every desk in the menu, open or closed: each opens a tab that asks first.
+    private static func deskActions(_ id: String, _ name: String) -> [MenuItem] {
+        [.line("Rename \(name)…", .tab(["desk", "rename", id, name]), indent: 2),
+         .line("Remove \(name)…", .tab(["desk", "remove", id, name, "--ask"]), indent: 2)]
     }
 
     /// `website (2 windows: zsh, vim, kept running, permanent, open in 1 tab)`

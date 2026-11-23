@@ -29,9 +29,10 @@ extension DeskResult {
 struct DeskCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "desk",
-        abstract: "Make, remove or add a window to a desk on a workhorse.",
+        abstract: "Make, rename, remove or add a window to a desk on a workhorse.",
         subcommands: [
             New.self,
+            Rename.self,
             Remove.self,
             Window.self,
         ]
@@ -40,7 +41,7 @@ struct DeskCommand: AsyncParsableCommand {
     struct New: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
             commandName: "new",
-            abstract: "Make a desk. With no desk name or folder it asks for them.",
+            abstract: "Make a desk. With no desk name or folder it asks for them, and for a command to start.",
             discussion: """
                 A new desk opens again by itself after the workhorse restarts, unless you say --no-reopen. \
                 When you close its last window (typing exit, for example), the desk is removed and its name \
@@ -70,7 +71,7 @@ struct DeskCommand: AsyncParsableCommand {
         @Flag(help: "The startup command is kept running (not active yet).")
         var keep = false
 
-        @Option(help: "A command to type into the desk when it starts.")
+        @Option(help: "A command to type into the desk when it starts. Given here, it isn't asked for.")
         var command: String?
 
         func run() async throws {
@@ -114,12 +115,56 @@ struct DeskCommand: AsyncParsableCommand {
         @Flag(help: "Also close the desk's windows and whatever runs in them.")
         var kill = false
 
+        @Flag(help: "Say what will close and ask first. On yes the desk's windows close too, as with --kill. This is what the menu's Remove runs.")
+        var ask = false
+
         func run() async throws {
+            let ui = TerminalInteraction()
+            var outcome: DeskResult
             switch await checkedForDesk(workhorse) {
-            case .failure(let failed): try failed.finishPlainly()
+            case .failure(let failed): outcome = failed
             case .success(let check):
-                try await deskFlow().removeDesk(check, name: desk, kill: kill, ui: TerminalInteraction()).finishPlainly()
+                outcome = ask ? await deskFlow().removeDeskAsking(check, name: desk, ui: ui)
+                              : await deskFlow().removeDesk(check, name: desk, kill: kill, ui: ui)
             }
+            guard ask else { return try outcome.finishPlainly() }
+            // It runs in a tab from the menu: it stays open until a key is pressed.
+            outcome.code = ui.finishTab(outcome.code, reason: outcome.reason)
+            if outcome.code != 0 { throw ExitCode(outcome.code) }
+        }
+    }
+
+    struct Rename: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "rename",
+            abstract: "Rename a desk. With no new name it asks for one.",
+            discussion: """
+                The desk keeps its windows and whatever runs in them, its folder, its startup command, and \
+                whether it comes back after a restart or is permanent. Tabs that are open on it keep working; \
+                their titles may still say the old name.
+                """
+        )
+
+        @Argument(help: "The workhorse's id or name.")
+        var workhorse: String
+
+        @Argument(help: "The desk's name now.")
+        var desk: String
+
+        @Argument(help: "The new name: letters, digits, - and _ only. Leave it out to be asked.")
+        var newName: String?
+
+        func run() async throws {
+            let ui = TerminalInteraction()
+            var outcome: DeskResult
+            switch await checkedForDesk(workhorse) {
+            case .failure(let failed): outcome = failed
+            case .success(let check): outcome = await deskFlow().renameDesk(check, from: desk, to: newName, ui: ui)
+            }
+            guard newName == nil else { return try outcome.finishPlainly() }
+            // The form that asks runs in a tab from the menu: it stays open until a key is pressed.
+            outcome.code = ui.finishTab(outcome.code, reason: outcome.reason)
+            if outcome.code != 0 { throw ExitCode(outcome.code) }
         }
     }
 

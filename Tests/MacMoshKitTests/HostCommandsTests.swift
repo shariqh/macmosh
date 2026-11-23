@@ -78,6 +78,12 @@ private func desksListing(_ names: [String]) -> FakeRunner {
         #expect(remote(runner, 1) == "~/.macmosh/macmosh-host desk-remove web --kill")
     }
 
+    @Test func renameSendsTheOldNameThenTheNew() async throws {
+        let runner = FakeRunner { _ in FakeRunner.ok() }
+        try await commands(runner).renameDesk(on: .sample(), address: "workhorse", from: web, to: DeskName("notes")!)
+        #expect(remote(runner) == "~/.macmosh/macmosh-host desk-rename web notes")
+    }
+
     @Test func newWindowAsksForAWindowInTheDesk() async throws {
         let runner = FakeRunner { _ in FakeRunner.ok() }
         try await commands(runner).newWindow(on: .sample(), address: "workhorse", desk: web)
@@ -136,6 +142,13 @@ private func desksListing(_ names: [String]) -> FakeRunner {
         }
         await #expect(throws: HostCommandError.noSuchDesk) {
             try await hc.newWindow(on: .sample(), address: "workhorse", desk: web)
+        }
+        await #expect(throws: HostCommandError.noSuchDesk) {
+            try await hc.renameDesk(on: .sample(), address: "workhorse", from: web, to: DeskName("notes")!)
+        }
+        let seven = commands(scriptEnds(7))
+        await #expect(throws: HostCommandError.alreadyExists) {
+            try await seven.renameDesk(on: .sample(), address: "workhorse", from: web, to: DeskName("notes")!)
         }
         let six = commands(scriptEnds(6))
         await #expect(throws: HostCommandError.badInput) {
@@ -220,6 +233,9 @@ private func desksListing(_ names: [String]) -> FakeRunner {
                 await f.newDesk(check, request: NewDeskRequest(name: "web", folder: "/x"), ui: ui),
                 await f.removeDesk(check, name: "web", kill: false, ui: ui),
                 await f.newWindow(check, desk: "web", ui: ui),
+                await f.renameDesk(check, from: "web", to: "notes", ui: ui),
+                await f.renameDesk(check, from: "web", to: nil, ui: ui),
+                await f.removeDeskAsking(check, name: "web", ui: ui),
                 await f.folders(check),
             ]
             for result in results {
@@ -342,7 +358,7 @@ private func desksListing(_ names: [String]) -> FakeRunner {
         let w = Workhorse.sample(projectsFolder: "~/Development")
         let result = await flow(runner).newDesk(checked(at: "workhorse", w), request: NewDeskRequest(), ui: ui)
         #expect(result.code == 0)
-        #expect(ui.asked.count == 2)
+        #expect(ui.asked.count == 3)
         #expect(ui.said.contains("  1  alpha"))
         #expect(ui.said.contains("  2  beta"))
         #expect(ui.said.contains("  3  gamma"))
@@ -387,7 +403,64 @@ private func desksListing(_ names: [String]) -> FakeRunner {
         #expect(request.isInteractive)
         let result = await flow(runner).newDesk(checked(), request: request, ui: ui)
         #expect(result.code == 0)
-        #expect(ui.asked.count == 1)
+        // The folder, then the command to start (#98).
+        #expect(ui.asked.count == 2)
+        #expect(ui.asked.first?.hasPrefix("Folder on") == true)
+    }
+
+    // MARK: the interactive form's third question (#98)
+
+    static let commandQuestion = "Command to start in it (Enter for none): "
+
+    @Test func theFormAsksForACommandAfterTheNameAndTheFolder() async {
+        let runner = FakeRunner { _ in FakeRunner.ok() }
+        let ui = ScriptedInteraction(answers: ["web", "/Users/alex/web", "npm run dev"])
+        let result = await flow(runner).newDesk(checked(), request: NewDeskRequest(), ui: ui)
+        #expect(result.code == 0)
+        #expect(ui.asked.count == 3)
+        #expect(ui.asked.last == Self.commandQuestion)
+        #expect(remote(runner) == "~/.macmosh/macmosh-host desk-new web /Users/alex/web --reopen --command 'npm run dev'")
+    }
+
+    @Test func enterAtTheThirdQuestionIsNoCommand() async {
+        for answer in ["", "   "] {
+            let runner = FakeRunner { _ in FakeRunner.ok() }
+            let ui = ScriptedInteraction(answers: ["web", "/Users/alex/web", answer])
+            let result = await flow(runner).newDesk(checked(), request: NewDeskRequest(), ui: ui)
+            #expect(result.code == 0)
+            #expect(ui.asked.last == Self.commandQuestion)
+            #expect(remote(runner) == "~/.macmosh/macmosh-host desk-new web /Users/alex/web --reopen")
+        }
+    }
+
+    @Test func aCommandWithSpacesAndQuotesArrivesUnchanged() async {
+        let runner = FakeRunner { _ in FakeRunner.ok() }
+        let typed = #"claude --resume "my chat" it's $HOME"#
+        let ui = ScriptedInteraction(answers: ["web", "/Users/alex/web", typed])
+        let result = await flow(runner).newDesk(checked(), request: NewDeskRequest(), ui: ui)
+        #expect(result.code == 0)
+        #expect(remote(runner) ==
+            #"~/.macmosh/macmosh-host desk-new web /Users/alex/web --reopen --command 'claude --resume "my chat" it'\''s $HOME'"#)
+        #expect(ShellQuote.posix(typed) == #"'claude --resume "my chat" it'\''s $HOME'"#)
+    }
+
+    @Test func aCommandGivenOnTheCommandLineIsNotAskedFor() async {
+        let runner = FakeRunner { _ in FakeRunner.ok() }
+        let ui = ScriptedInteraction(answers: ["web", "/Users/alex/web", "should not be read"])
+        let result = await flow(runner).newDesk(checked(), request: NewDeskRequest(command: "npm run dev"), ui: ui)
+        #expect(result.code == 0)
+        #expect(ui.asked.count == 2)
+        #expect(!ui.asked.contains(Self.commandQuestion))
+        #expect(remote(runner) == "~/.macmosh/macmosh-host desk-new web /Users/alex/web --reopen --command 'npm run dev'")
+    }
+
+    @Test func aTabInTheCommandIsRefusedByTheWorkhorse() async {
+        let runner = FakeRunner { _ in FakeRunner.failed(6, stderr: "macmosh-host: a folder or command can't contain a tab or a new line\n") }
+        let ui = ScriptedInteraction(answers: ["web", "/Users/alex/web", "a\tb"])
+        let result = await flow(runner).newDesk(checked(), request: NewDeskRequest(), ui: ui)
+        #expect(result.code == 1)
+        #expect(result.reason == DeskFormat.message(.badInput, workhorse: .sample()))
+        #expect(remote(runner)?.hasSuffix(" --command 'a\tb'") == true)
     }
 
     @Test func anInvalidNameIsAskedAgain() async {
@@ -395,7 +468,7 @@ private func desksListing(_ names: [String]) -> FakeRunner {
         let ui = ScriptedInteraction(answers: ["my desk", "", "web", "/Users/alex/web"])
         let result = await flow(runner).newDesk(checked(), request: NewDeskRequest(), ui: ui)
         #expect(result.code == 0)
-        #expect(ui.asked.count == 4)
+        #expect(ui.asked.count == 5)
         #expect(ui.said.filter { $0 == DeskFormat.nameRule }.count == 2)
         #expect(remote(runner) == "~/.macmosh/macmosh-host desk-new web /Users/alex/web --reopen")
     }
@@ -449,6 +522,167 @@ private func desksListing(_ names: [String]) -> FakeRunner {
         let none = await flow(runner).folders(checked(at: "workhorse", .sample(id: "mbp", projectsFolder: nil)))
         #expect(none.code == 1)
         #expect(none.reason == DeskFormat.message(.noProjectsFolder, workhorse: .sample()))
+    }
+
+    // MARK: rename
+
+    static let renamedLine = "Renamed web to notes. Tabs that are open on it keep working; their titles may still say web."
+
+    @Test func renameWithTheNewNameGivenAsksNothing() async {
+        let runner = FakeRunner { _ in FakeRunner.ok() }
+        let ui = ScriptedInteraction(answers: ["should not be read"])
+        let result = await flow(runner).renameDesk(checked(), from: "web", to: "notes", ui: ui)
+        #expect(result.code == 0)
+        #expect(ui.asked.isEmpty)
+        #expect(remote(runner) == "~/.macmosh/macmosh-host desk-rename web notes")
+        #expect(ui.said == [Self.renamedLine])
+    }
+
+    @Test func renameWithoutTheNewNameAsksForIt() async {
+        let runner = FakeRunner { _ in FakeRunner.ok() }
+        let ui = ScriptedInteraction(answers: ["  notes  "])
+        let result = await flow(runner).renameDesk(checked(), from: "web", to: nil, ui: ui)
+        #expect(result.code == 0)
+        #expect(ui.asked == ["New name for web: "])
+        #expect(remote(runner) == "~/.macmosh/macmosh-host desk-rename web notes")
+        #expect(ui.said == [Self.renamedLine])
+    }
+
+    @Test func anEmptyAnswerChangesNothing() async {
+        let runner = FakeRunner { _ in FakeRunner.ok() }
+        let ui = ScriptedInteraction(answers: [""])
+        let result = await flow(runner).renameDesk(checked(), from: "web", to: nil, ui: ui)
+        #expect(result.code == 1)
+        #expect(result.reason == "Nothing was changed.")
+        #expect(ui.asked.count == 1)
+        #expect(runner.calls.isEmpty)
+    }
+
+    @Test func aNewNameThatBreaksTheRuleIsAskedAgainUpToThreeTimes() async {
+        let runner = FakeRunner { _ in FakeRunner.ok() }
+        let ui = ScriptedInteraction(answers: ["my notes", "notes"])
+        let result = await flow(runner).renameDesk(checked(), from: "web", to: nil, ui: ui)
+        #expect(result.code == 0)
+        #expect(ui.said.first == DeskFormat.nameRule)
+        #expect(remote(runner) == "~/.macmosh/macmosh-host desk-rename web notes")
+
+        let three = ScriptedInteraction(answers: ["a b", "c/d", "e.f", "notes"])
+        let stopped = await flow(runner).renameDesk(checked(), from: "web", to: nil, ui: three)
+        #expect(stopped.code == 1)
+        #expect(stopped.reason == "That wasn't a desk name three times, so MacMosh stopped. \(DeskFormat.nameRule)")
+        #expect(three.asked.count == 3)
+        #expect(runner.calls.count == 1)
+    }
+
+    @Test func aBadNameOnTheCommandLineIsAnErrorNotAQuestion() async {
+        let runner = FakeRunner { _ in FakeRunner.ok() }
+        for (old, new) in [("web", "my notes"), ("we b", "notes")] {
+            let ui = ScriptedInteraction(answers: ["notes"])
+            let result = await flow(runner).renameDesk(checked(), from: old, to: new, ui: ui)
+            #expect(result.code == 1)
+            #expect(result.reason == DeskFormat.nameRule)
+            #expect(ui.asked.isEmpty)
+        }
+        #expect(runner.calls.isEmpty)
+    }
+
+    @Test func aTakenNameOrAMissingDeskBecomesTheWorkhorsesWords() async {
+        let taken = await flow(scriptEnds(7)).renameDesk(checked(), from: "web", to: "notes", ui: ScriptedInteraction())
+        #expect(taken.code == 1)
+        #expect(taken.reason == DeskFormat.message(.alreadyExists, workhorse: .sample()))
+        let missing = await flow(scriptEnds(4)).renameDesk(checked(), from: "web", to: "notes", ui: ScriptedInteraction())
+        #expect(missing.reason == DeskFormat.message(.noSuchDesk, workhorse: .sample()))
+    }
+
+    // MARK: remove --ask
+
+    /// A Ready check whose report has `website` open with two windows and `notes` closed and permanent.
+    private func checkedWithDesks() -> CheckResult {
+        var status = HostStatus.sampleWithDesk
+        status.definitions = [
+            .init(name: DeskName("website")!, reopen: true, keep: false, folder: "/Users/alex/site", command: ""),
+            .init(name: DeskName("notes")!, reopen: false, keep: false, folder: "/Users/alex/notes", command: "",
+                  permanent: true),
+        ]
+        return .sample(.ready(signIns: true), workhorse: .sample(), status: status, answeredAt: "workhorse")
+    }
+
+    static let removeQuestion = "Type yes to remove it: "
+
+    @Test func removingAnOpenDeskNamesItsWindowsAndClosesThemOnYes() async {
+        let runner = FakeRunner { _ in FakeRunner.ok() }
+        let ui = ScriptedInteraction(answers: [" yes "])
+        let result = await flow(runner).removeDeskAsking(checkedWithDesks(), name: "website", ui: ui)
+        #expect(result.code == 0)
+        #expect(ui.said == [
+            "This removes the desk website and closes its 2 windows (zsh, vim), with whatever is running in them.",
+            "Removed the desk website and closed its windows.",
+        ])
+        #expect(ui.asked == [Self.removeQuestion])
+        #expect(remote(runner) == "~/.macmosh/macmosh-host desk-remove website --kill")
+    }
+
+    @Test func removingAClosedDeskSaysItHasNoOpenWindows() async {
+        let runner = FakeRunner { _ in FakeRunner.ok() }
+        let ui = ScriptedInteraction(answers: ["yes"])
+        let result = await flow(runner).removeDeskAsking(checkedWithDesks(), name: "notes", ui: ui)
+        #expect(result.code == 0)
+        #expect(ui.said == ["This removes the desk notes. It has no open windows.", "Removed the desk notes."])
+        #expect(ui.asked == [Self.removeQuestion])
+        #expect(remote(runner) == "~/.macmosh/macmosh-host desk-remove notes --kill")
+    }
+
+    @Test(arguments: ["website", "notes"])
+    func noOrEnterRemovesNothing(desk: String) async {
+        for answer in ["no", "", "y", "YES please"] {
+            let runner = FakeRunner { _ in FakeRunner.ok() }
+            let ui = ScriptedInteraction(answers: [answer])
+            let result = await flow(runner).removeDeskAsking(checkedWithDesks(), name: desk, ui: ui)
+            #expect(result.code == 1, "\(answer)")
+            #expect(result.reason == "Nothing was removed.", "\(answer)")
+            #expect(ui.asked == [Self.removeQuestion])
+            #expect(runner.calls.isEmpty, "\(answer)")
+        }
+    }
+
+    @Test func oneWindowIsOneWindow() async {
+        var status = HostStatus.sampleReady
+        status.desks = [.init(name: DeskName("solo")!, windows: [.init(index: 0, name: "zsh")], windowCount: 1, attached: 0)]
+        let check = CheckResult.sample(.ready(signIns: true), status: status, answeredAt: "workhorse")
+        let ui = ScriptedInteraction()
+        _ = await flow(FakeRunner { _ in FakeRunner.ok() }).removeDeskAsking(check, name: "solo", ui: ui)
+        #expect(ui.said.first == "This removes the desk solo and closes its 1 window (zsh), with whatever is running in them.")
+    }
+
+    @Test func aDeskTheReportDoesntHaveIsNotAskedAbout() async {
+        let runner = FakeRunner { _ in FakeRunner.ok() }
+        let ui = ScriptedInteraction(answers: ["yes"])
+        let result = await flow(runner).removeDeskAsking(checkedWithDesks(), name: "journal", ui: ui)
+        #expect(result.code == 1)
+        #expect(result.reason == DeskFormat.message(.noSuchDesk, workhorse: .sample()))
+        #expect(ui.asked.isEmpty)
+        #expect(runner.calls.isEmpty)
+    }
+
+    @Test func removeWithoutAskIsAsBefore() async {
+        let runner = FakeRunner { _ in FakeRunner.ok() }
+        let ui = ScriptedInteraction(answers: ["no"])
+        let result = await flow(runner).removeDesk(checkedWithDesks(), name: "website", kill: false, ui: ui)
+        #expect(result.code == 0)
+        #expect(ui.asked.isEmpty)
+        #expect(remote(runner) == "~/.macmosh/macmosh-host desk-remove website")
+    }
+
+    // MARK: the end of a tab
+
+    @Test func aTabThatAskedWaitsForAKeyEvenWhenItWorked() {
+        let ui = ScriptedInteraction()
+        #expect(ui.finishTab(0, reason: nil) == 0)
+        #expect(ui.waits == 1)
+        let failed = ScriptedInteraction()
+        #expect(failed.finishTab(1, reason: "Nothing was changed.") == 1)
+        #expect(failed.said == ["Nothing was changed."])
+        #expect(failed.waits == 1)
     }
 
     @Test func foldersJSONIsAnArrayOfNames() throws {

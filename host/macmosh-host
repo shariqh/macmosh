@@ -4,7 +4,7 @@
 # Plain bash 3.2 (what macOS ships at /bin/bash): no associative arrays, no mapfile, no ${var,,}.
 set -u
 
-MACMOSH_HOST_VERSION=0.5.0
+MACMOSH_HOST_VERSION=0.6.0
 MACMOSH_PROTOCOL=1
 AGENT_LABEL=io.github.shariqh.macmosh.host
 
@@ -147,7 +147,15 @@ mm_def_line() {
     awk -F '\t' -v n="$1" '($1 "") == (n "") { print; exit }' "$file"
 }
 
-mm_session_exists() { mm_tmux has-session -t "=$1" >/dev/null 2>&1; }
+# The tmux id ($n) of the session with exactly this name, or nothing. Not has-session -t "=name": when
+# no session has the name, tmux also matches it against an attached client's tty (ttys003), and then
+# stands for the session that client shows.
+mm_session_id() {
+    mm_tmux list-sessions -F "#{session_id}$TAB#{session_name}" 2>/dev/null |
+        awk -F '\t' -v n="$1" '($2 "") == (n "") { print $1; exit }'
+}
+
+mm_session_exists() { [ -n "$(mm_session_id "$1")" ]; }
 
 # Reads one line of desks.tsv into d_name, d_reopen, d_keep, d_permanent, d_folder and d_command.
 # A line is: name, reopen (0 or 1), keep (0 or 1), permanent (0 or 1), folder, startup command.
@@ -267,9 +275,12 @@ mm_shell_quote() {
 # For a desk that keeps its command running, it types "<this script> keep <desk>" instead, and that
 # runs the command again whenever it ends.
 # The keys wait in the terminal's input queue, so a shell that is slow to start still receives them.
+# The keys go to the new session's id, never "=name" (see mm_session_id). MM_NEW_SID holds that id, or
+# nothing when no session was made, so a caller that rolls back kills only the session made here.
 mm_create_session() {
     # $1 name, $2 folder, $3 startup command (may be empty), $4 keep: 1 or 0 (optional)
-    local folder="$2" typed="$3"
+    local folder="$2" typed="$3" sid
+    MM_NEW_SID=""
     if [ ! -d "$folder" ]; then
         mm_log "create-desk" "$1: folder is gone, using the home folder"
         folder="$HOME"
@@ -277,10 +288,12 @@ mm_create_session() {
     if [ "${4:-0}" = 1 ] && [ -n "$typed" ]; then
         typed="$(mm_shell_quote "$(mm_self_path)") keep $1"
     fi
-    mm_tmux new-session -d -s "$1" -c "$folder" >/dev/null 2>&1 || return 1
+    sid=$(mm_tmux new-session -d -P -F '#{session_id}' -s "$1" -c "$folder" 2>/dev/null) || return 1
+    MM_NEW_SID="$sid"
+    [ -n "$sid" ] || return 1
     if [ -n "$typed" ]; then
-        mm_tmux send-keys -t "=$1:" -l -- "$typed" || return 1
-        mm_tmux send-keys -t "=$1:" Enter || return 1
+        mm_tmux send-keys -t "$sid:" -l -- "$typed" || return 1
+        mm_tmux send-keys -t "$sid:" Enter || return 1
     fi
     return 0
 }
@@ -289,7 +302,19 @@ mm_create_session() {
 # This includes a permanent desk that was closed: it is marked reopen, so it opens again.
 # Each desk is made under the desk list's lock, with its line read again there, so a desk-new or a
 # desk-remove of the same name running at the same moment goes wholly before or wholly after it.
+# The loop reads the list it opened, which a desk-rename replaces with mv, so a second pass over the
+# current list opens a desk renamed during the first. It skips the names the first pass handled.
+# Accepted: a desk made or renamed during the first pass and then exited before the second pass
+# reaches it is opened once more.
 mm_reopen_desks() {
+    MM_REOPENED=""
+    mm_reopen_pass 1
+    mm_reopen_pass 2
+    return 0
+}
+
+# One pass of mm_reopen_desks. Pass 1 records each name in MM_REOPENED; pass 2 skips those names.
+mm_reopen_pass() {
     local file line name
     file=$(mm_desks_file)
     [ -f "$file" ] || return 0
@@ -298,6 +323,10 @@ mm_reopen_desks() {
         mm_valid_desk_name "$d_name" || continue
         [ "$d_reopen" = 1 ] || continue
         name="$d_name"
+        case "$MM_REOPENED" in
+            *" $name "*) continue ;;
+        esac
+        if [ "$1" = 1 ]; then MM_REOPENED="$MM_REOPENED $name "; fi
         if ! mm_lock; then
             mm_log start "could not reopen $name: could not lock the desk list"
             continue
@@ -481,7 +510,7 @@ cmd_desk_new() {
         return 1
     fi
     if ! mm_create_session "$name" "$folder" "$command" "$keep"; then
-        mm_tmux kill-session -t "=$name" >/dev/null 2>&1
+        if [ -n "$MM_NEW_SID" ]; then mm_tmux kill-session -t "$MM_NEW_SID" >/dev/null 2>&1; fi
         mm_drop_def_line "$name"
         mm_release_lock
         echo "macmosh-host: could not create the desk" >&2
@@ -494,7 +523,7 @@ cmd_desk_new() {
 }
 
 cmd_desk_remove() {
-    local name="" kill=0 npos=0 had_def=0 had_session=0
+    local name="" kill=0 npos=0 had_def=0 had_session=0 sid
     while [ $# -gt 0 ]; do
         case "$1" in
             --kill) kill=1 ;;
@@ -522,7 +551,8 @@ cmd_desk_remove() {
         return 1
     fi
     if [ -n "$(mm_def_line "$name")" ]; then had_def=1; fi
-    if mm_session_exists "$name"; then had_session=1; fi
+    sid=$(mm_session_id "$name")
+    if [ -n "$sid" ]; then had_session=1; fi
     if [ "$had_def" = 0 ] && { [ "$kill" = 0 ] || [ "$had_session" = 0 ]; }; then
         mm_release_lock
         echo "macmosh-host: no such desk: $name" >&2
@@ -539,9 +569,83 @@ cmd_desk_remove() {
     fi
     mm_release_lock
     if [ "$kill" = 1 ] && [ "$had_session" = 1 ]; then
-        mm_tmux kill-session -t "=$name" >/dev/null 2>&1
+        mm_tmux kill-session -t "$sid" >/dev/null 2>&1
     fi
     mm_log desk-remove "removed $name"
+    return 0
+}
+
+# Renames a desk: its tmux session, if it has one, and the first field of its definition, if it has
+# one. Everything else stays: the windows and what runs in them, the folder, the startup command and
+# the reopen, keep and permanent fields. A rename closes no session, so the exit path never runs for it.
+# With the desk server up, the new name is taken by an open desk or a permanent one, as for desk-new,
+# and a line that is neither is left over from an exit and is replaced. With no server, any line takes
+# it, because the desk waits to reopen at the next login.
+cmd_desk_rename() {
+    local old new taken file tmp up sid line
+    [ $# -eq 2 ] || mm_usage_error desk-rename "usage: desk-rename <name> <new name>"
+    old="$1"
+    new="$2"
+    if ! mm_valid_desk_name "$old" || ! mm_valid_desk_name "$new"; then
+        mm_usage_error desk-rename "a desk name uses letters, digits, - and _ only, up to 64 characters"
+    fi
+    # No mm_require_server here, as for desk-remove: a closed desk is renamed in the list alone, and
+    # has-session and rename-session only talk to a server that is already running.
+    if ! mm_lock; then
+        echo "macmosh-host: could not lock the desk list" >&2
+        mm_log desk-rename "failed: lock"
+        return 1
+    fi
+    # Sessions are found by id, never by "=name" (see mm_session_id). With a server up, a closed desk
+    # that is not permanent has exited and its line only waits for the exit path, so it is no desk to
+    # rename. With none, every line is a desk waiting for the next login.
+    up=0
+    if mm_server_up; then up=1; fi
+    sid=$(mm_session_id "$old")
+    line=$(mm_def_line "$old")
+    if [ -n "$line" ]; then mm_read_def "$line"; fi
+    if [ -z "$sid" ] && { [ -z "$line" ] || { [ "$up" = 1 ] && [ "$d_permanent" = 0 ]; }; }; then
+        mm_release_lock
+        echo "macmosh-host: no such desk: $old" >&2
+        mm_log desk-rename "no such desk: $old"
+        return 4
+    fi
+    # The new name is taken by an open desk, a permanent one, or, with no server, any line.
+    taken=$(mm_def_line "$new")
+    if [ -n "$taken" ]; then mm_read_def "$taken"; fi
+    if [ "$old" = "$new" ] || [ -n "$(mm_session_id "$new")" ] ||
+        { [ -n "$taken" ] && { [ "$d_permanent" != 0 ] || [ "$up" = 0 ]; }; }; then
+        mm_release_lock
+        echo "macmosh-host: the desk $new already exists" >&2
+        mm_log desk-rename "refused: $new already exists"
+        return 7
+    fi
+    if [ -n "$sid" ] && ! mm_tmux rename-session -t "$sid" -- "$new" >/dev/null 2>&1; then
+        mm_release_lock
+        echo "macmosh-host: could not rename the desk $old" >&2
+        mm_log desk-rename "failed: the session $old was not renamed"
+        return 1
+    fi
+    # The list: the old name's line gets the new name, and a leftover line for the new name goes.
+    # substr keeps the rest of the line byte for byte.
+    file=$(mm_desks_file)
+    if [ -f "$file" ]; then
+        tmp="$MACMOSH_HOME/$DESKS_FILE_NAME.$$.tmp"
+        if ! awk -F '\t' -v o="$old" -v n="$new" '
+                ($1 "") == (n "") { next }
+                ($1 "") == (o "") { print n substr($0, length($1) + 1); next }
+                { print }' "$file" > "$tmp" || ! mv "$tmp" "$file"; then
+            rm -f "$tmp"
+            # Put the session's name back, so the desk and its definition still agree.
+            if [ -n "$sid" ]; then mm_tmux rename-session -t "$sid" -- "$old" >/dev/null 2>&1; fi
+            mm_release_lock
+            echo "macmosh-host: could not write the desk list" >&2
+            mm_log desk-rename "failed: $old could not be saved"
+            return 1
+        fi
+    fi
+    mm_release_lock
+    mm_log desk-rename "renamed $old to $new"
     return 0
 }
 
@@ -615,7 +719,7 @@ cmd_desk_closed() {
 }
 
 cmd_window_new() {
-    local name
+    local name sid
     [ $# -eq 1 ] || mm_usage_error window-new "usage: window-new <desk>"
     name="$1"
     if ! mm_valid_desk_name "$name"; then
@@ -625,12 +729,13 @@ cmd_window_new() {
     fi
     mm_require_server window-new
     mm_set_hook
-    if ! mm_session_exists "$name"; then
+    sid=$(mm_session_id "$name")
+    if [ -z "$sid" ]; then
         echo "macmosh-host: the desk $name isn't open" >&2
         mm_log window-new "no such desk: $name"
         return 4
     fi
-    if ! mm_tmux new-window -t "=$name:" >/dev/null 2>&1; then
+    if ! mm_tmux new-window -t "$sid:" >/dev/null 2>&1; then
         echo "macmosh-host: could not add a window" >&2
         mm_log window-new "failed: $name"
         return 1
@@ -640,7 +745,7 @@ cmd_window_new() {
 }
 
 cmd_attach() {
-    local name="" cc=0 dry=0 npos=0 line
+    local name="" cc=0 dry=0 npos=0 line sid
     while [ $# -gt 0 ]; do
         case "$1" in
             --cc) cc=1 ;;
@@ -695,13 +800,20 @@ cmd_attach() {
         mm_log attach "dry run $name"
         return 0
     fi
+    # By id, looked up last: a desk that closed since the check above is no desk to attach to.
+    sid=$(mm_session_id "$name")
+    if [ -z "$sid" ]; then
+        echo "macmosh-host: no such desk: $name" >&2
+        mm_log attach "no such desk: $name"
+        return 4
+    fi
     mm_log attach "$name"
     # The terminal may itself be inside another tmux; the desk server is a separate one.
     unset TMUX
     if [ "$cc" = 1 ]; then
-        exec tmux -L "$MACMOSH_SOCKET" -CC attach-session -t "=$name"
+        exec tmux -L "$MACMOSH_SOCKET" -CC attach-session -t "$sid"
     fi
-    exec tmux -L "$MACMOSH_SOCKET" attach-session -t "=$name"
+    exec tmux -L "$MACMOSH_SOCKET" attach-session -t "$sid"
 }
 
 # Runs the desk's startup command, and again each time it ends. It runs inside the desk's own shell
@@ -711,13 +823,28 @@ cmd_attach() {
 # keeps ending within 10 seconds. A run of a minute or more sets it back to the start. A run in
 # between leaves it as it is.
 cmd_keep() {
-    local name line folder command start pause next began took code stopped=0
+    local name line folder command start pause next began took code stopped=0 cur locked=0
     [ $# -eq 1 ] || mm_usage_error keep "usage: keep <desk>"
     name="$1"
     line=""
-    if mm_valid_desk_name "$name"; then
+    # The desk is the session this runs in, when it runs in one: the shell may read the typed
+    # "keep <desk>" only after a rename. The answer counts only when it comes from the server this
+    # shell runs in, whose socket $TMUX names.
+    # The name and the line are read under the lock, which desk-rename holds while it changes both,
+    # so they are both old or both new. Without the lock they are read as they are.
+    if mm_lock; then locked=1; fi
+    if [ -n "${TMUX:-}" ] && [ -n "${TMUX_PANE:-}" ]; then
+        cur=$(mm_tmux display-message -p -t "$TMUX_PANE" "#{socket_path}$TAB#{session_name}" 2>/dev/null)
+        if [ "${cur%%"$TAB"*}" = "${TMUX%%,*}" ]; then cur="${cur#*"$TAB"}"; else cur=""; fi
+        if [ -n "$cur" ] && mm_valid_desk_name "$cur"; then
+            line=$(mm_def_line "$cur")
+            if [ -n "$line" ]; then name="$cur"; fi
+        fi
+    fi
+    if [ -z "$line" ] && mm_valid_desk_name "$name"; then
         line=$(mm_def_line "$name")
     fi
+    if [ "$locked" = 1 ]; then mm_release_lock; fi
     if [ -z "$line" ]; then
         echo "macmosh-host: no such desk: $name" >&2
         mm_log keep "no such desk: $name"
@@ -1134,10 +1261,10 @@ mm_tool_records() {
 }
 
 # The windows of one desk. A window name can hold odd characters; a line that does not start with
-# "index|" is the rest of the previous name.
+# "index|" is the rest of the previous name. $1 is the desk's name, $2 its session id.
 mm_window_records() {
-    local desk="$1" text
-    text=$(mm_tmux list-windows -t "=$desk:" -F '#{window_index}|#{window_name}' 2>/dev/null)
+    local desk="$1" sid="$2" text
+    text=$(mm_tmux list-windows -t "$sid:" -F '#{window_index}|#{window_name}' 2>/dev/null)
     printf '%s\n' "$text" | {
         local line prev=""
         while IFS= read -r line; do
@@ -1158,11 +1285,18 @@ mm_window_records() {
 }
 
 mm_desk_records() {
-    local text line name rest windows attached
+    local text line name rest windows attached sid
     mm_server_up || return 0
-    # Format: name|windows|attached. A name that breaks the naming rule is left out.
-    text=$(mm_tmux list-sessions -F '#{session_name}|#{session_windows}|#{session_attached}' 2>/dev/null)
+    # Format: id|name|windows|attached. A name that breaks the naming rule is left out. The windows are
+    # listed by the session's id, never by "=name" (see mm_session_id).
+    text=$(mm_tmux list-sessions -F '#{session_id}|#{session_name}|#{session_windows}|#{session_attached}' 2>/dev/null)
     printf '%s\n' "$text" | while IFS= read -r line; do
+        sid="${line%%|*}"
+        line="${line#*|}"
+        case "$sid" in
+            '$'[0-9]*) ;;
+            *) continue ;;
+        esac
         attached="${line##*|}"
         rest="${line%|*}"
         windows="${rest##*|}"
@@ -1172,7 +1306,7 @@ mm_desk_records() {
             '' | *[!0-9]*) continue ;;
         esac
         printf 'desk\t%s\t%s\t%s\n' "$name" "$windows" "$attached"
-        mm_window_records "$name"
+        mm_window_records "$name" "$sid"
     done
 }
 
@@ -1281,6 +1415,8 @@ usage: macmosh-host <subcommand>
             a new desk comes back after a restart unless --no-reopen, and is removed
             when its last shell exits unless --permanent
   desk-remove <name> [--kill]
+  desk-rename <name> <new name>
+            the desk keeps its windows, what runs in them and its settings
   desk-closed <desk> <pid>   run by the desk server when a desk's session closes
   keep <desk>   run the desk's startup command again each time it ends
   window-new <desk>
@@ -1315,6 +1451,10 @@ main() {
         desk-remove)
             shift
             cmd_desk_remove "$@"
+            ;;
+        desk-rename)
+            shift
+            cmd_desk_rename "$@"
             ;;
         desk-closed)
             shift

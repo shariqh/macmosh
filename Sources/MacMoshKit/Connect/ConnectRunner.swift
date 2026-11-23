@@ -47,14 +47,20 @@ public struct ConnectRunner: Sendable {
                 return ui.finish(code, reason: StatusFormat.hint(result))
             }
         }
-        return ui.finish(code, reason: Self.reason(for: code, tool: plan.argv.first))
+        return ui.finish(code, reason: Self.reason(for: code, tool: plan.argv.first, desk: title))
     }
 
-    private static func reason(for code: Int32, tool: String?) -> String {
+    /// The workhorse script's exit code for "no such desk", which ssh hands on as its own.
+    static let noSuchDesk: Int32 = 4
+
+    private static func reason(for code: Int32, tool: String?, desk: String) -> String {
         let name = tool.map { ($0 as NSString).lastPathComponent } ?? "The connection"
         var sentence = "\(name) ended with exit code \(code)."
         if code == connectionLost {
             sentence += " It couldn't connect, or the connection dropped. Your work keeps running on the workhorse."
+        } else if code == noSuchDesk, name == "ssh" {
+            // A tab keeps the desk's name it was opened with, and tries it again after a drop.
+            sentence += " The workhorse has no desk named \(desk) now. If it was renamed or removed, open it again from the menu."
         }
         return sentence
     }

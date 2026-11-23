@@ -384,7 +384,7 @@ extension HostScriptTests {
         let version = h.run(["version"])
         #expect(version.exitCode == 0)
         #expect(version.stdout == h.scriptVersion + "\n")
-        #expect(version.stdout == "0.5.0\n")
+        #expect(version.stdout == "0.6.0\n")
         #expect(h.run([]).exitCode == 2)
         #expect(h.run(["nonsense"]).exitCode == 2)
     }
@@ -420,6 +420,20 @@ extension HostScriptTests {
         let startBody = try #require(text.components(separatedBy: "cmd_start() {\n").last?
             .components(separatedBy: "\n}\n").first)
         #expect(startBody.contains(startServer))
+    }
+
+    /// The script names a session to tmux by its id, never by "=name": when no session has the name,
+    /// tmux matches "=name" against an attached client's tty and acts on the desk that client shows.
+    @Test func noTmuxTargetIsASessionName() throws {
+        let text = try String(contentsOf: HostHarness.repoRoot().appendingPathComponent("host/macmosh-host"),
+                              encoding: .utf8)
+        let target = try Regex(#"(^|\s)-t\s*["']?="#)
+        var offenders: [String] = []
+        for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
+            if line.trimmingCharacters(in: .whitespaces).hasPrefix("#") { continue }
+            if line.contains(target) { offenders.append(String(line)) }
+        }
+        #expect(offenders.isEmpty, "a tmux target by name: \(offenders)")
     }
 
     @Test func startWritesALogLine() throws {

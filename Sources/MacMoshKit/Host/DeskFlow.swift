@@ -4,7 +4,8 @@ import Foundation
 ///
 /// A new desk comes back after a restart unless asked not to (`reopen`), and is removed for good when
 /// its last shell exits unless it is `permanent`. The form that asks questions asks about neither, so
-/// a desk made from the menu's `New desk…` comes back and is not permanent.
+/// a desk made from the menu's `New desk…` comes back and is not permanent. It does ask for a command
+/// to start, after the name and the folder, unless `command` was given.
 public struct NewDeskRequest: Sendable, Equatable {
     public var name: String?
     public var folder: String?
@@ -103,10 +104,14 @@ public struct DeskFlow: Sendable {
             folder = chosen
         }
 
+        // The form that asks questions asks a third, unless --command was given (#98).
+        var command = request.command
+        if request.isInteractive && command == nil { command = askCommand(ui) }
+
         do {
             try await commands.newDesk(on: w, address: address, name: name, folder: folder,
                                        reopen: request.reopen, keep: request.keep, permanent: request.permanent,
-                                       command: request.command)
+                                       command: command)
         } catch {
             return .failure(DeskFormat.message(error, workhorse: w))
         }
@@ -119,6 +124,48 @@ public struct DeskFlow: Sendable {
             try await commands.removeDesk(on: w, address: address, name: desk, kill: kill)
             ui.say(kill ? "Removed the desk \(desk.value) and closed its windows."
                         : "Removed the desk \(desk.value). Anything running in it keeps running.")
+        }
+    }
+
+    static let removeQuestion = "Type yes to remove it: "
+    static let yes = "yes"
+
+    /// `desk remove --ask`, what the menu's `Remove <name>…` runs: names the desk and the windows that
+    /// will close, from the check's report, and asks once. Only `yes` removes it, and then its windows
+    /// close too, with whatever runs in them. A desk the report doesn't have is not asked about.
+    public func removeDeskAsking(_ check: CheckResult, name: String, ui: Interaction) async -> DeskResult {
+        await onDesk(check, name: name) { w, address, desk in
+            let open = check.status?.desks.first { $0.name == desk }
+            if let open {
+                let count = open.windowCount == 1 ? "1 window" : "\(open.windowCount) windows"
+                let names = open.windows.map(\.name).filter { !$0.isEmpty }
+                let list = names.isEmpty ? "" : " (" + names.joined(separator: ", ") + ")"
+                ui.say("This removes the desk \(desk.value) and closes its \(count)\(list), with whatever is running in them.")
+            } else if check.status?.definitions.contains(where: { $0.name == desk }) == true {
+                ui.say("This removes the desk \(desk.value). It has no open windows.")
+            } else {
+                throw HostCommandError.noSuchDesk
+            }
+            let answer = ui.ask(Self.removeQuestion).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard answer == Self.yes else { throw DeskResult.failure("Nothing was removed.") }
+            try await commands.removeDesk(on: w, address: address, name: desk, kill: true)
+            ui.say(open == nil ? "Removed the desk \(desk.value)." : "Removed the desk \(desk.value) and closed its windows.")
+        }
+    }
+
+    /// With `new` nil it asks for the new name: that is the form the menu's `Rename <name>…` runs.
+    /// An empty answer changes nothing.
+    public func renameDesk(_ check: CheckResult, from old: String, to new: String?, ui: Interaction) async -> DeskResult {
+        await onDesk(check, name: old) { w, address, desk in
+            let target: DeskName
+            if let new {
+                guard let valid = DeskName(new) else { throw DeskResult.failure(DeskFormat.nameRule) }
+                target = valid
+            } else {
+                target = try askNewName(for: desk, ui)
+            }
+            try await commands.renameDesk(on: w, address: address, from: desk, to: target)
+            ui.say("Renamed \(desk.value) to \(target.value). Tabs that are open on it keep working; their titles may still say \(desk.value).")
         }
     }
 
@@ -164,9 +211,22 @@ public struct DeskFlow: Sendable {
         do {
             try await body(check.workhorse, address, desk)
             return .success
+        } catch let stopped as DeskResult {
+            return stopped
         } catch {
             return .failure(DeskFormat.message(error, workhorse: check.workhorse))
         }
+    }
+
+    /// Asks for a desk's new name, up to three tries. An empty answer stops with nothing changed.
+    private func askNewName(for desk: DeskName, _ ui: Interaction) throws -> DeskName {
+        for _ in 0..<Self.tries {
+            let answer = ui.ask("New name for \(desk.value): ").trimmingCharacters(in: .whitespacesAndNewlines)
+            if answer.isEmpty { throw DeskResult.failure("Nothing was changed.") }
+            if let name = DeskName(answer) { return name }
+            ui.say(DeskFormat.nameRule)
+        }
+        throw DeskResult.failure("That wasn't a desk name three times, so MacMosh stopped. \(DeskFormat.nameRule)")
     }
 
     /// Asks until it gets a valid name, up to three tries. nil after the third.
@@ -177,6 +237,15 @@ public struct DeskFlow: Sendable {
             ui.say(DeskFormat.nameRule)
         }
         return nil
+    }
+
+    static let commandQuestion = "Command to start in it (Enter for none): "
+
+    /// The startup command, sent exactly as typed, or nil for Enter alone (or only spaces). A tab in it
+    /// is sent too, and the workhorse refuses it as it refuses one in `--command`.
+    private func askCommand(_ ui: Interaction) -> String? {
+        let answer = ui.ask(Self.commandQuestion)
+        return answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : answer
     }
 
     /// With a projects folder: its folders as a numbered list, "or type a path". Without one, just a path.
