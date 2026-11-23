@@ -61,6 +61,11 @@ public struct HostCommands: Sendable {
         _ = try await run(w, address, ["desk-remove", name.value] + (kill ? ["--kill"] : []))
     }
 
+    /// Renames a desk. It keeps its windows, what runs in them and the rest of its definition.
+    public func renameDesk(on w: Workhorse, address: String, from old: DeskName, to new: DeskName) async throws {
+        _ = try await run(w, address, ["desk-rename", old.value, new.value])
+    }
+
     public func newWindow(on w: Workhorse, address: String, desk: DeskName) async throws {
         _ = try await run(w, address, ["window-new", desk.value])
     }

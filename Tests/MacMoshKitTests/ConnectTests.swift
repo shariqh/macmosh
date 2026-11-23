@@ -215,6 +215,17 @@ import Testing
         #expect(ui.waits == 1)
     }
 
+    /// A Tabs-mode tab tries the desk's name again after a drop; after a rename that name is gone,
+    /// and the script's `attach` ends with 4.
+    @Test func aDeskThatIsGoneSaysItMayHaveBeenRenamed() async {
+        let interactive = FakeInteractive(exitCodes: [255, 4]); let ui = ScriptedInteraction()
+        let plan = ConnectPlan(argv: ["ssh"], environment: [:], retryOnDrop: true, intro: "x")
+        let code = await runner(interactive, state: .ready(signIns: true)).run(plan, title: "website", ui: ui)
+        #expect(code == 4)
+        #expect(ui.said.last == "ssh ended with exit code 4. The workhorse has no desk named website now. If it was renamed or removed, open it again from the menu.")
+        #expect(ui.waits == 1)
+    }
+
     @Test func theTerminalIsHandedOverWithThePlansCommandAndEnvironment() async {
         let seen = Box<[[String]]>([])
         let interactive = FakeInteractive(onRun: { seen.value.append($0) })

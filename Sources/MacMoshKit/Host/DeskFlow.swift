@@ -122,6 +122,22 @@ public struct DeskFlow: Sendable {
         }
     }
 
+    /// With `new` nil it asks for the new name: that is the form the menu's `Rename <name>…` runs.
+    /// An empty answer changes nothing.
+    public func renameDesk(_ check: CheckResult, from old: String, to new: String?, ui: Interaction) async -> DeskResult {
+        await onDesk(check, name: old) { w, address, desk in
+            let target: DeskName
+            if let new {
+                guard let valid = DeskName(new) else { throw DeskResult.failure(DeskFormat.nameRule) }
+                target = valid
+            } else {
+                target = try askNewName(for: desk, ui)
+            }
+            try await commands.renameDesk(on: w, address: address, from: desk, to: target)
+            ui.say("Renamed \(desk.value) to \(target.value). Tabs that are open on it keep working; their titles may still say \(desk.value).")
+        }
+    }
+
     public func newWindow(_ check: CheckResult, desk: String, ui: Interaction) async -> DeskResult {
         await onDesk(check, name: desk) { w, address, desk in
             try await commands.newWindow(on: w, address: address, desk: desk)
@@ -164,9 +180,22 @@ public struct DeskFlow: Sendable {
         do {
             try await body(check.workhorse, address, desk)
             return .success
+        } catch let stopped as DeskResult {
+            return stopped
         } catch {
             return .failure(DeskFormat.message(error, workhorse: check.workhorse))
         }
+    }
+
+    /// Asks for a desk's new name, up to three tries. An empty answer stops with nothing changed.
+    private func askNewName(for desk: DeskName, _ ui: Interaction) throws -> DeskName {
+        for _ in 0..<Self.tries {
+            let answer = ui.ask("New name for \(desk.value): ").trimmingCharacters(in: .whitespacesAndNewlines)
+            if answer.isEmpty { throw DeskResult.failure("Nothing was changed.") }
+            if let name = DeskName(answer) { return name }
+            ui.say(DeskFormat.nameRule)
+        }
+        throw DeskResult.failure("That wasn't a desk name three times, so MacMosh stopped. \(DeskFormat.nameRule)")
     }
 
     /// Asks until it gets a valid name, up to three tries. nil after the third.

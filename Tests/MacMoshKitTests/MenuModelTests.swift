@@ -17,11 +17,12 @@ private func menu(_ state: WorkhorseState, workhorse: Workhorse = .sample(), sta
         let menu = MenuModel.build([.checked(.sampleReady(id: "mbp", name: "MacBook Pro"))])
         let expected: [String] = [
             "MacBook Pro · Ready", "website (2 windows: zsh, vim, open in 1 tab)", "New window in website",
+            "Rename website…",
             "New desk…", "Share screen", "Restart…", "Turn on lid-closed mode…",
             "Sign-ins working · Awake on power · Lid-closed mode off · On power, 82%",
             "Home address reachable from here: yes",
         ]
-        #expect(Array(titles(menu).prefix(9)) == expected)
+        #expect(Array(titles(menu).prefix(expected.count)) == expected)
         #expect(menu.symbol == "checkmark.circle")
         #expect(menu.items[1].action == .tab(["connect", "mbp", "website"]))
     }
@@ -133,9 +134,33 @@ private func menu(_ state: WorkhorseState, workhorse: Workhorse = .sample(), sta
         #expect(closed?.indent == 1)
         // After the open desks and before New desk…, with no New window line: there is no desk to add one to.
         let at = titles(m).firstIndex(of: "notes (closed)")
-        #expect(at != nil && titles(m)[at! + 1] == "New desk…")
-        #expect(at != nil && titles(m)[at! - 1] == "New window in website")
+        #expect(at != nil && titles(m)[at! + 1] == "Rename notes…")
+        #expect(at != nil && titles(m)[at! - 1] == "Rename website…")
         #expect(!titles(m).contains("New window in notes"))
+    }
+
+    // MARK: rename and remove under each desk
+
+    @Test func anOpenDeskHasARenameLineAfterItsNewWindowLine() {
+        let m = MenuModel.build([.checked(.sampleReady(id: "mbp"))])
+        let at = titles(m).firstIndex(of: "New window in website")
+        #expect(at.map { titles(m)[$0 + 1] } == "Rename website…")
+        let rename = item(m, "Rename website…")
+        #expect(rename?.action == .tab(["desk", "rename", "mbp", "website"]))
+        #expect(rename?.indent == 2)
+    }
+
+    @Test func aClosedPermanentDeskHasARenameLine() {
+        var status = HostStatus.sampleWithDesk
+        status.definitions = [
+            .init(name: DeskName("notes")!, reopen: false, keep: false, folder: "/Users/alex/notes", command: "",
+                  permanent: true),
+        ]
+        let m = menu(.ready(signIns: true), workhorse: .sample(id: "mbp"), status: status)
+        let at = titles(m).firstIndex(of: "notes (closed)")
+        #expect(at.map { titles(m)[$0 + 1] } == "Rename notes…")
+        #expect(item(m, "Rename notes…")?.action == .tab(["desk", "rename", "mbp", "notes"]))
+        #expect(item(m, "Rename notes…")?.indent == 2)
     }
 
     @Test func anOpenPermanentDeskSaysSo() {

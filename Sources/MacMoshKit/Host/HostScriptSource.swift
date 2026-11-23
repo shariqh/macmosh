@@ -10,7 +10,7 @@ enum HostScriptSource {
 # Plain bash 3.2 (what macOS ships at /bin/bash): no associative arrays, no mapfile, no ${var,,}.
 set -u
 
-MACMOSH_HOST_VERSION=0.5.0
+MACMOSH_HOST_VERSION=0.6.0
 MACMOSH_PROTOCOL=1
 AGENT_LABEL=io.github.shariqh.macmosh.host
 
@@ -548,6 +548,69 @@ cmd_desk_remove() {
         mm_tmux kill-session -t "=$name" >/dev/null 2>&1
     fi
     mm_log desk-remove "removed $name"
+    return 0
+}
+
+# Renames a desk: its tmux session, if it has one, and the first field of its definition, if it has
+# one. Everything else stays: the windows and what runs in them, the folder, the startup command and
+# the reopen, keep and permanent fields. A rename closes no session, so the exit path never runs for it.
+# The new name is taken by an open desk or a permanent one, as for desk-new; a line that is neither is
+# left over from an exit and is replaced.
+cmd_desk_rename() {
+    local old new taken file tmp
+    [ $# -eq 2 ] || mm_usage_error desk-rename "usage: desk-rename <name> <new name>"
+    old="$1"
+    new="$2"
+    if ! mm_valid_desk_name "$old" || ! mm_valid_desk_name "$new"; then
+        mm_usage_error desk-rename "a desk name uses letters, digits, - and _ only, up to 64 characters"
+    fi
+    # No mm_require_server here, as for desk-remove: a closed desk is renamed in the list alone, and
+    # has-session and rename-session only talk to a server that is already running.
+    if ! mm_lock; then
+        echo "macmosh-host: could not lock the desk list" >&2
+        mm_log desk-rename "failed: lock"
+        return 1
+    fi
+    if [ -z "$(mm_def_line "$old")" ] && ! mm_session_exists "$old"; then
+        mm_release_lock
+        echo "macmosh-host: no such desk: $old" >&2
+        mm_log desk-rename "no such desk: $old"
+        return 4
+    fi
+    taken=$(mm_def_line "$new")
+    if [ -n "$taken" ]; then mm_read_def "$taken"; fi
+    if [ "$old" = "$new" ] || mm_session_exists "$new" || { [ -n "$taken" ] && [ "$d_permanent" != 0 ]; }; then
+        mm_release_lock
+        echo "macmosh-host: the desk $new already exists" >&2
+        mm_log desk-rename "refused: $new already exists"
+        return 7
+    fi
+    if mm_session_exists "$old" && ! mm_tmux rename-session -t "=$old" -- "$new" >/dev/null 2>&1; then
+        mm_release_lock
+        echo "macmosh-host: could not rename the desk $old" >&2
+        mm_log desk-rename "failed: tmux did not rename $old"
+        return 1
+    fi
+    # The list: the old name's line gets the new name, and a leftover line for the new name goes.
+    # substr keeps the rest of the line byte for byte.
+    file=$(mm_desks_file)
+    if [ -f "$file" ]; then
+        tmp="$MACMOSH_HOME/$DESKS_FILE_NAME.$$.tmp"
+        if ! awk -F '\t' -v o="$old" -v n="$new" '
+                ($1 "") == (n "") { next }
+                ($1 "") == (o "") { print n substr($0, length($1) + 1); next }
+                { print }' "$file" > "$tmp" || ! mv "$tmp" "$file"; then
+            rm -f "$tmp"
+            # Put the session's name back, so the desk and its definition still agree.
+            if mm_session_exists "$new"; then mm_tmux rename-session -t "=$new" -- "$old" >/dev/null 2>&1; fi
+            mm_release_lock
+            echo "macmosh-host: could not write the desk list" >&2
+            mm_log desk-rename "failed: $old could not be saved"
+            return 1
+        fi
+    fi
+    mm_release_lock
+    mm_log desk-rename "renamed $old to $new"
     return 0
 }
 
@@ -1287,6 +1350,8 @@ usage: macmosh-host <subcommand>
             a new desk comes back after a restart unless --no-reopen, and is removed
             when its last shell exits unless --permanent
   desk-remove <name> [--kill]
+  desk-rename <name> <new name>
+            the desk keeps its windows, what runs in them and its settings
   desk-closed <desk> <pid>   run by the desk server when a desk's session closes
   keep <desk>   run the desk's startup command again each time it ends
   window-new <desk>
@@ -1321,6 +1386,10 @@ main() {
         desk-remove)
             shift
             cmd_desk_remove "$@"
+            ;;
+        desk-rename)
+            shift
+            cmd_desk_rename "$@"
             ;;
         desk-closed)
             shift
