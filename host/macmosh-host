@@ -275,9 +275,12 @@ mm_shell_quote() {
 # For a desk that keeps its command running, it types "<this script> keep <desk>" instead, and that
 # runs the command again whenever it ends.
 # The keys wait in the terminal's input queue, so a shell that is slow to start still receives them.
+# The keys go to the new session's id, never "=name" (see mm_session_id). MM_NEW_SID holds that id, or
+# nothing when no session was made, so a caller that rolls back kills only the session made here.
 mm_create_session() {
     # $1 name, $2 folder, $3 startup command (may be empty), $4 keep: 1 or 0 (optional)
-    local folder="$2" typed="$3"
+    local folder="$2" typed="$3" sid
+    MM_NEW_SID=""
     if [ ! -d "$folder" ]; then
         mm_log "create-desk" "$1: folder is gone, using the home folder"
         folder="$HOME"
@@ -285,10 +288,12 @@ mm_create_session() {
     if [ "${4:-0}" = 1 ] && [ -n "$typed" ]; then
         typed="$(mm_shell_quote "$(mm_self_path)") keep $1"
     fi
-    mm_tmux new-session -d -s "$1" -c "$folder" >/dev/null 2>&1 || return 1
+    sid=$(mm_tmux new-session -d -P -F '#{session_id}' -s "$1" -c "$folder" 2>/dev/null) || return 1
+    MM_NEW_SID="$sid"
+    [ -n "$sid" ] || return 1
     if [ -n "$typed" ]; then
-        mm_tmux send-keys -t "=$1:" -l -- "$typed" || return 1
-        mm_tmux send-keys -t "=$1:" Enter || return 1
+        mm_tmux send-keys -t "$sid:" -l -- "$typed" || return 1
+        mm_tmux send-keys -t "$sid:" Enter || return 1
     fi
     return 0
 }
@@ -299,6 +304,8 @@ mm_create_session() {
 # desk-remove of the same name running at the same moment goes wholly before or wholly after it.
 # The loop reads the list it opened, which a desk-rename replaces with mv, so a second pass over the
 # current list opens a desk renamed during the first. It skips the names the first pass handled.
+# Accepted: a desk made or renamed during the first pass and then exited before the second pass
+# reaches it is opened once more.
 mm_reopen_desks() {
     MM_REOPENED=""
     mm_reopen_pass 1
@@ -503,7 +510,7 @@ cmd_desk_new() {
         return 1
     fi
     if ! mm_create_session "$name" "$folder" "$command" "$keep"; then
-        mm_tmux kill-session -t "=$name" >/dev/null 2>&1
+        if [ -n "$MM_NEW_SID" ]; then mm_tmux kill-session -t "$MM_NEW_SID" >/dev/null 2>&1; fi
         mm_drop_def_line "$name"
         mm_release_lock
         echo "macmosh-host: could not create the desk" >&2
@@ -516,7 +523,7 @@ cmd_desk_new() {
 }
 
 cmd_desk_remove() {
-    local name="" kill=0 npos=0 had_def=0 had_session=0
+    local name="" kill=0 npos=0 had_def=0 had_session=0 sid
     while [ $# -gt 0 ]; do
         case "$1" in
             --kill) kill=1 ;;
@@ -544,7 +551,8 @@ cmd_desk_remove() {
         return 1
     fi
     if [ -n "$(mm_def_line "$name")" ]; then had_def=1; fi
-    if mm_session_exists "$name"; then had_session=1; fi
+    sid=$(mm_session_id "$name")
+    if [ -n "$sid" ]; then had_session=1; fi
     if [ "$had_def" = 0 ] && { [ "$kill" = 0 ] || [ "$had_session" = 0 ]; }; then
         mm_release_lock
         echo "macmosh-host: no such desk: $name" >&2
@@ -561,7 +569,7 @@ cmd_desk_remove() {
     fi
     mm_release_lock
     if [ "$kill" = 1 ] && [ "$had_session" = 1 ]; then
-        mm_tmux kill-session -t "=$name" >/dev/null 2>&1
+        mm_tmux kill-session -t "$sid" >/dev/null 2>&1
     fi
     mm_log desk-remove "removed $name"
     return 0
@@ -711,7 +719,7 @@ cmd_desk_closed() {
 }
 
 cmd_window_new() {
-    local name
+    local name sid
     [ $# -eq 1 ] || mm_usage_error window-new "usage: window-new <desk>"
     name="$1"
     if ! mm_valid_desk_name "$name"; then
@@ -721,12 +729,13 @@ cmd_window_new() {
     fi
     mm_require_server window-new
     mm_set_hook
-    if ! mm_session_exists "$name"; then
+    sid=$(mm_session_id "$name")
+    if [ -z "$sid" ]; then
         echo "macmosh-host: the desk $name isn't open" >&2
         mm_log window-new "no such desk: $name"
         return 4
     fi
-    if ! mm_tmux new-window -t "=$name:" >/dev/null 2>&1; then
+    if ! mm_tmux new-window -t "$sid:" >/dev/null 2>&1; then
         echo "macmosh-host: could not add a window" >&2
         mm_log window-new "failed: $name"
         return 1
@@ -736,7 +745,7 @@ cmd_window_new() {
 }
 
 cmd_attach() {
-    local name="" cc=0 dry=0 npos=0 line
+    local name="" cc=0 dry=0 npos=0 line sid
     while [ $# -gt 0 ]; do
         case "$1" in
             --cc) cc=1 ;;
@@ -791,13 +800,20 @@ cmd_attach() {
         mm_log attach "dry run $name"
         return 0
     fi
+    # By id, looked up last: a desk that closed since the check above is no desk to attach to.
+    sid=$(mm_session_id "$name")
+    if [ -z "$sid" ]; then
+        echo "macmosh-host: no such desk: $name" >&2
+        mm_log attach "no such desk: $name"
+        return 4
+    fi
     mm_log attach "$name"
     # The terminal may itself be inside another tmux; the desk server is a separate one.
     unset TMUX
     if [ "$cc" = 1 ]; then
-        exec tmux -L "$MACMOSH_SOCKET" -CC attach-session -t "=$name"
+        exec tmux -L "$MACMOSH_SOCKET" -CC attach-session -t "$sid"
     fi
-    exec tmux -L "$MACMOSH_SOCKET" attach-session -t "=$name"
+    exec tmux -L "$MACMOSH_SOCKET" attach-session -t "$sid"
 }
 
 # Runs the desk's startup command, and again each time it ends. It runs inside the desk's own shell
@@ -807,13 +823,16 @@ cmd_attach() {
 # keeps ending within 10 seconds. A run of a minute or more sets it back to the start. A run in
 # between leaves it as it is.
 cmd_keep() {
-    local name line folder command start pause next began took code stopped=0 cur
+    local name line folder command start pause next began took code stopped=0 cur locked=0
     [ $# -eq 1 ] || mm_usage_error keep "usage: keep <desk>"
     name="$1"
     line=""
     # The desk is the session this runs in, when it runs in one: the shell may read the typed
     # "keep <desk>" only after a rename. The answer counts only when it comes from the server this
     # shell runs in, whose socket $TMUX names.
+    # The name and the line are read under the lock, which desk-rename holds while it changes both,
+    # so they are both old or both new. Without the lock they are read as they are.
+    if mm_lock; then locked=1; fi
     if [ -n "${TMUX:-}" ] && [ -n "${TMUX_PANE:-}" ]; then
         cur=$(mm_tmux display-message -p -t "$TMUX_PANE" "#{socket_path}$TAB#{session_name}" 2>/dev/null)
         if [ "${cur%%"$TAB"*}" = "${TMUX%%,*}" ]; then cur="${cur#*"$TAB"}"; else cur=""; fi
@@ -825,6 +844,7 @@ cmd_keep() {
     if [ -z "$line" ] && mm_valid_desk_name "$name"; then
         line=$(mm_def_line "$name")
     fi
+    if [ "$locked" = 1 ]; then mm_release_lock; fi
     if [ -z "$line" ]; then
         echo "macmosh-host: no such desk: $name" >&2
         mm_log keep "no such desk: $name"
@@ -1241,10 +1261,10 @@ mm_tool_records() {
 }
 
 # The windows of one desk. A window name can hold odd characters; a line that does not start with
-# "index|" is the rest of the previous name.
+# "index|" is the rest of the previous name. $1 is the desk's name, $2 its session id.
 mm_window_records() {
-    local desk="$1" text
-    text=$(mm_tmux list-windows -t "=$desk:" -F '#{window_index}|#{window_name}' 2>/dev/null)
+    local desk="$1" sid="$2" text
+    text=$(mm_tmux list-windows -t "$sid:" -F '#{window_index}|#{window_name}' 2>/dev/null)
     printf '%s\n' "$text" | {
         local line prev=""
         while IFS= read -r line; do
@@ -1265,11 +1285,18 @@ mm_window_records() {
 }
 
 mm_desk_records() {
-    local text line name rest windows attached
+    local text line name rest windows attached sid
     mm_server_up || return 0
-    # Format: name|windows|attached. A name that breaks the naming rule is left out.
-    text=$(mm_tmux list-sessions -F '#{session_name}|#{session_windows}|#{session_attached}' 2>/dev/null)
+    # Format: id|name|windows|attached. A name that breaks the naming rule is left out. The windows are
+    # listed by the session's id, never by "=name" (see mm_session_id).
+    text=$(mm_tmux list-sessions -F '#{session_id}|#{session_name}|#{session_windows}|#{session_attached}' 2>/dev/null)
     printf '%s\n' "$text" | while IFS= read -r line; do
+        sid="${line%%|*}"
+        line="${line#*|}"
+        case "$sid" in
+            '$'[0-9]*) ;;
+            *) continue ;;
+        esac
         attached="${line##*|}"
         rest="${line%|*}"
         windows="${rest##*|}"
@@ -1279,7 +1306,7 @@ mm_desk_records() {
             '' | *[!0-9]*) continue ;;
         esac
         printf 'desk\t%s\t%s\t%s\n' "$name" "$windows" "$attached"
-        mm_window_records "$name"
+        mm_window_records "$name" "$sid"
     done
 }
 

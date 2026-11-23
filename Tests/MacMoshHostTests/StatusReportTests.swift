@@ -422,6 +422,20 @@ extension HostScriptTests {
         #expect(startBody.contains(startServer))
     }
 
+    /// The script names a session to tmux by its id, never by "=name": when no session has the name,
+    /// tmux matches "=name" against an attached client's tty and acts on the desk that client shows.
+    @Test func noTmuxTargetIsASessionName() throws {
+        let text = try String(contentsOf: HostHarness.repoRoot().appendingPathComponent("host/macmosh-host"),
+                              encoding: .utf8)
+        let target = try Regex(#"(^|\s)-t\s*["']?="#)
+        var offenders: [String] = []
+        for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
+            if line.trimmingCharacters(in: .whitespaces).hasPrefix("#") { continue }
+            if line.contains(target) { offenders.append(String(line)) }
+        }
+        #expect(offenders.isEmpty, "a tmux target by name: \(offenders)")
+    }
+
     @Test func startWritesALogLine() throws {
         let h = try HostHarness(); defer { h.cleanUp() }
         #expect(h.run(["start"]).exitCode == 0)

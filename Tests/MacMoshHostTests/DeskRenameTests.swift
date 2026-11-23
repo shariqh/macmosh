@@ -214,8 +214,21 @@ extension HostScriptTests {
         #expect(r.exitCode == 4, "\(r.stderr)")
         #expect(sessions(h) == ["website"])
         #expect(desksFile(h) == websiteLine + "\n")
-        #expect(h.run(["desk-remove", client, "--kill"]).exitCode == 4)
+        let windows = { h.tmux(["list-windows", "-a", "-F", "#{session_name}:#{window_index}"]).stdout }
+        let websiteWindows = windows()
+        let removed = h.run(["desk-remove", client, "--kill"])
+        #expect(removed.exitCode == 4, "\(removed.stderr)")
+        #expect(removed.stderr.contains("no such desk"), "\(removed.stderr)")
         #expect(sessions(h) == ["website"])
+        let added = h.run(["window-new", client])
+        #expect(added.exitCode == 4, "\(added.stderr)")
+        #expect(windows() == websiteWindows)
+        let attached = h.run(["attach", client])
+        #expect(attached.exitCode == 4, "\(attached.stderr)")
+        #expect(attached.stderr.contains("no such desk"), "\(attached.stderr)")
+        #expect(sessions(h) == ["website"])
+        #expect(windows() == websiteWindows)
+        #expect(desksFile(h) == websiteLine + "\n")
 
         // A closed permanent desk has it: only its line is renamed.
         try writeDesksFile(h, desksFile(h) + "\(client)\t1\t0\t1\t/gone\t\n")
