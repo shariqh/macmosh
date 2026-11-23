@@ -820,7 +820,7 @@ cmd_window_new() {
 # and its id is recorded on the server (@macmosh-view-<n>). The name can be changed by hand (tmux's own
 # rename, prefix and $, renames the view a tab shows), so the tag keeps a view out of every desk lookup
 # (mm_session_id) and the record keeps its closing from counting as a desk's (desk-closed).
-# A view ends with its tab (destroy-unattached keep-last, set once the tab is attached), and status sweeps
+# A view ends with its tab (destroy-unattached on, set once the tab is attached), and status sweeps
 # a view that never got a tab, or whose desk's own session is gone (mm_sweep_views). Seen with tmux 3.8 on
 # a throwaway socket: when a desk's last shell exits, every session of its group closes, and the
 # session-closed hook runs for each name.
@@ -1040,11 +1040,14 @@ cmd_attach() {
         exec tmux -L "$MACMOSH_SOCKET" -CC attach-session -t "$sid"
     fi
     if [ -n "$vid" ]; then
-        # The view goes when its tab goes: keep-last destroys a session in a group with others once it
-        # has no client. It is set after the attach, in the same command list, because set on a view that
-        # has no client yet it destroys the view at once (seen with tmux 3.8). If the attach fails, the
-        # option is never set, and status sweeps the view a minute later.
-        set -- attach-session -t "$vid" \; set-option -t "$vid" destroy-unattached keep-last
+        # The view goes when its tab goes: "on" destroys the session once it has no client. While the
+        # desk's own session is there, that closes no window; once it is gone (killed by hand, or by
+        # the script before 0.7.0, which knows nothing of views), the last view takes the windows with
+        # it. keep-last would keep a view that is alone in its group, with its shells running, until a
+        # status check of 0.7.0 swept it. It is set after the attach, in the same command list, because
+        # set on a view that has no client yet it destroys the view at once (seen with tmux 3.8). If the
+        # attach fails, the option is never set, and status sweeps the view a minute later.
+        set -- attach-session -t "$vid" \; set-option -t "$vid" destroy-unattached on
     else
         set -- attach-session -t "$sid"
     fi

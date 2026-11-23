@@ -155,7 +155,7 @@ extension HostScriptTests {
         #expect(h.clients()[0].hasPrefix(vid + "|"))
         // The desk shows what it showed; the tab's view ends with its tab, and only it.
         #expect(h.currentWindow(desk) == ids[0])
-        try wait(h) { h.sessionFormat(vid, "#{destroy-unattached}") == "keep-last" }
+        try wait(h) { h.sessionFormat(vid, "#{destroy-unattached}") == "on" }
         #expect(h.sessionFormat(desk, "#{destroy-unattached}") == "off")
         #expect(hostLog(h).contains("attach\twebsite (window \(ids[1]))"))
 
@@ -416,16 +416,19 @@ extension HostScriptTests {
     }
 
     /// The desk's own session killed by hand while tabs show its windows: the tabs keep them while
-    /// they are open. When the last one closes, its view is the only session left in the group, so
-    /// tmux keeps it; the next status removes it, and the windows with it.
+    /// they are open. When the last one closes, its view goes too, though it is then alone in its
+    /// group, and the windows go with it, as the kill closed them before views existed. No status
+    /// check is needed for that, so it holds under the script before 0.7.0 too, whose
+    /// "desk-remove --kill" kills only the desk's own session.
     @Test func aViewWhoseDeskWasKilledByHandGoesWhenItsLastTabCloses() throws {
         let h = try HostHarness(); defer { h.cleanUp() }
         _ = h.run(["start"])
+        #expect(h.run(["desk-new", "notes", h.home.path]).exitCode == 0)
         let (desk, ids) = try deskWithWindows(h, "website", 2)
         try openTab(h, "one", ["--window", ids[0], "website"])
         try openTab(h, "two", ["--window", ids[1], "website"])
         try wait(h) { h.clients().count == 2 && views(h, of: desk).count == 2 }
-        try wait(h) { views(h, of: desk).allSatisfy { h.sessionFormat(String($0.split(separator: "|")[0]), "#{destroy-unattached}") == "keep-last" } }
+        try wait(h) { views(h, of: desk).allSatisfy { h.sessionFormat(String($0.split(separator: "|")[0]), "#{destroy-unattached}") == "on" } }
         let made = views(h, of: desk).map { String($0.split(separator: "|")[0]) }
         #expect(h.tmux(["kill-session", "-t", desk]).exitCode == 0)
 
@@ -436,13 +439,45 @@ extension HostScriptTests {
 
         try h.hangUp(clientOf: made[0])
         try wait(h) { h.sessionFormat(made[0], "#{session_name}") == nil }
-        try h.hangUp(clientOf: made[1])
-        try wait(h) { h.clients().isEmpty }
-        #expect(h.sessionFormat(made[1], "#{session_attached}") == "0")
         #expect(windowIDs(h, made[1]) == ids)
+        try h.hangUp(clientOf: made[1])
+        try wait(h) { h.sessionNames() == ["notes"] }
+        let panes = h.tmux(["list-panes", "-a", "-F", "#{session_name}"]).stdout.split(separator: "\n").map(String.init)
+        #expect(panes == ["notes"])
+    }
 
-        #expect(h.run(["status"]).exitCode == 0)
+    /// The same with a desk the script before 0.7.0 made, with no group, as every desk on a workhorse
+    /// is: a view tab that closes while the desk lives takes no window and no definition; once the
+    /// desk's own session is killed, the last view tab takes the windows with it.
+    @Test func aViewOfAnOldDeskLeavesItsWindowsAndGoesWithThemOnceTheDeskIsKilled() throws {
+        let h = try HostHarness(); defer { h.cleanUp() }
+        _ = h.run(["start"])
+        try writeDesksFile(h, "website\t1\t0\t0\t\(h.home.path)\t\n")
+        // The way the older script made a desk: a session with no group.
+        _ = h.tmux(["new-session", "-d", "-s", "website", "-c", h.home.path])
+        let desk = try sid(h, "website")
+        _ = h.tmux(["new-window", "-d", "-t", desk + ":"])
+        let ids = windowIDs(h, desk)
+        #expect(h.sessionFormat(desk, "#{session_grouped}") == "0")
+
+        try openTab(h, "one", ["--window", ids[1], "website"])
+        try wait(h) { views(h, of: desk).count == 1 && h.clients().count == 1 }
+        var vid = String(views(h, of: desk)[0].split(separator: "|")[0])
+        try wait(h) { h.sessionFormat(vid, "#{destroy-unattached}") == "on" }
+        try h.hangUp(clientOf: vid)
+        try wait(h) { h.sessionFormat(vid, "#{session_name}") == nil }
+        #expect(windowIDs(h, desk) == ids)
+        Thread.sleep(forTimeInterval: 2.5)
+        #expect(defined(h, "website"))
+
+        try openTab(h, "two", ["--new-window", "website"])
+        try wait(h) { views(h, of: desk).count == 1 && h.clients().count == 1 }
+        vid = String(views(h, of: desk)[0].split(separator: "|")[0])
+        try wait(h) { h.sessionFormat(vid, "#{destroy-unattached}") == "on" }
+        #expect(h.tmux(["kill-session", "-t", desk]).exitCode == 0)
+        try h.hangUp(clientOf: vid)
         try wait(h) { h.sessionNames().isEmpty }
+        #expect(h.tmux(["list-panes", "-a", "-F", "#{pane_id}"]).stdout.isEmpty)
     }
 
     // MARK: - Every other path, with views there

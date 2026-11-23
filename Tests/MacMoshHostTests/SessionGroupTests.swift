@@ -195,26 +195,28 @@ extension HostScriptTests {
         let sid = try makeDesk(h, "website", windows: 2)
         let ids = windowIDs(h, sid)
 
-        // keep-last set on a view that has no client yet destroys it at once.
+        // destroy-unattached on, set on a view that has no client yet, destroys it at once.
         let early = try makeView(h, desk: sid, "website+1")
-        _ = h.tmux(["set-option", "-t", early, "destroy-unattached", "keep-last"])
+        _ = h.tmux(["set-option", "-t", early, "destroy-unattached", "on"])
         #expect(h.sessionFormat(early, "#{session_name}") == nil)
+        #expect(windowIDs(h, sid) == ids)
 
         // Set in the same command list, after the attach, it applies once the client is there.
         let one = try makeView(h, desk: sid, "website+2")
         let two = try makeView(h, desk: sid, "website+3")
         for (label, vid) in [("one", one), ("two", two)] {
             try h.startClient(label, ["tmux", "-L", h.socket, "attach-session", "-t", vid,
-                                    ";", "set-option", "-t", vid, "destroy-unattached", "keep-last"])
+                                    ";", "set-option", "-t", vid, "destroy-unattached", "on"])
         }
         try waitFor(seconds: 30) { h.clients().count == 2 }
         try waitFor(seconds: 30) {
-            h.sessionFormat(one, "#{destroy-unattached}") == "keep-last"
-                && h.sessionFormat(two, "#{destroy-unattached}") == "keep-last"
+            h.sessionFormat(one, "#{destroy-unattached}") == "on"
+                && h.sessionFormat(two, "#{destroy-unattached}") == "on"
         }
         #expect(h.sessionFormat(sid, "#{destroy-unattached}") == "off")
 
-        // A detach ends the first view; a hangup, as when a terminal closes, ends the second.
+        // A detach ends the first view; a hangup, as when a terminal closes, ends the second. The desk
+        // keeps every window.
         let tty = try #require(h.clients().first { $0.hasPrefix(one + "|") }?.split(separator: "|").last)
         _ = h.tmux(["detach-client", "-t", String(tty)])
         try waitFor(seconds: 30) { h.sessionFormat(one, "#{session_name}") == nil }
@@ -225,9 +227,33 @@ extension HostScriptTests {
 
         // An attach that fails (no terminal) runs nothing after it, so that view stays with no client.
         let stray = try makeView(h, desk: sid, "website+4")
-        let failed = h.tmux(["attach-session", "-t", stray, ";", "set-option", "-t", stray, "destroy-unattached", "keep-last"])
+        let failed = h.tmux(["attach-session", "-t", stray, ";", "set-option", "-t", stray, "destroy-unattached", "on"])
         #expect(failed.exitCode != 0)
         #expect(h.sessionFormat(stray, "#{session_attached}|#{destroy-unattached}") == "0|off")
+    }
+
+    /// The desk's own session killed while a view shows its windows (as the script before 0.7.0 does
+    /// for "desk-remove --kill", knowing nothing of views): with destroy-unattached on, the view still
+    /// goes when its tab hangs up, though it is then alone in its group, and the windows go with it.
+    /// keep-last would keep it there, with no client and the shells running.
+    @Test func aViewLeftAloneInItsGroupStillGoesWithItsClient() throws {
+        let h = try HostHarness(); defer { h.cleanUp() }
+        _ = h.run(["start"])
+        let other = try makeDesk(h, "notes")
+        let sid = try makeDesk(h, "website", windows: 2)
+        let ids = windowIDs(h, sid)
+        let vid = try makeView(h, desk: sid, "website+1")
+        try h.startClient("one", ["tmux", "-L", h.socket, "attach-session", "-t", vid,
+                                  ";", "set-option", "-t", vid, "destroy-unattached", "on"])
+        try waitFor(seconds: 30) { h.clients().count == 1 && h.sessionFormat(vid, "#{destroy-unattached}") == "on" }
+
+        #expect(h.tmux(["kill-session", "-t", sid]).exitCode == 0)
+        #expect(windowIDs(h, vid) == ids)
+        try h.hangUp(clientOf: vid)
+        try waitFor(seconds: 30) { h.sessionFormat(vid, "#{session_name}") == nil }
+        #expect(h.sessionNames() == ["notes"])
+        let panes = h.tmux(["list-panes", "-a", "-F", "#{session_id}"]).stdout.split(separator: "\n").map(String.init)
+        #expect(panes == [other])
     }
 
     // MARK: 4. The last shell
