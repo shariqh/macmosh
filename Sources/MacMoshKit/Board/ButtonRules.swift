@@ -43,12 +43,12 @@ public enum ButtonRules {
         }
     }
 
-    /// A Ready workhorse's buttons after its desks: New desk…, Share screen, Restart…, and on a laptop
-    /// the lid-closed switch, which offers the opposite of how the setting is now. None in any other state.
+    /// Every button a Ready workhorse has besides its desks', in the menu's order (issue #107): New desk…,
+    /// then the headline's submenu (Share screen, a laptop's lid-closed switch, Restart…). The window
+    /// reads this so its buttons come in the menu's order. None in any other state.
     public static func forReady(_ r: CheckResult) -> [ActionButton] {
         guard case .ready = r.state else { return [] }
-        let id = r.workhorse.id
-        return [newDesk(id), share(id), restart(id)] + (lid(r).map { [$0] } ?? [])
+        return [newDesk(r.workhorse.id)] + forHeadline(r)
     }
 
     /// The buttons in a Ready workhorse's own submenu (issue #107): Share screen, on a laptop the

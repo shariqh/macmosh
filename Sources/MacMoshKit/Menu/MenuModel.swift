@@ -226,11 +226,11 @@ public enum MenuModel {
     /// rests on it: Open <desk>, New window, then Rename… and Remove….
     private static func deskEntry(workhorse id: String, desk name: String, isOpen: Bool, title: String) -> MenuEntry {
         let deskID = "desk:\(id):\(name)"
-        let buttons = ButtonRules.forDesk(workhorse: id, desk: name, isOpen: isOpen).map { MenuEntry.button($0, under: deskID) }
-        let asks = buttons.filter { $0.id.hasSuffix(":rename") || $0.id.hasSuffix(":remove") }
-        let does = buttons.filter { !asks.contains($0) }
+        let buttons = ButtonRules.forDesk(workhorse: id, desk: name, isOpen: isOpen)
+        let asksFirst: Set = ["rename", "remove"]
+        let groups = [buttons.filter { !asksFirst.contains($0.key) }, buttons.filter { asksFirst.contains($0.key) }]
         return MenuEntry(id: deskID, title: title, action: ButtonRules.connect(workhorse: id, desk: name),
-                         submenu: joined([does, asks], under: deskID))
+                         submenu: joined(groups.map { $0.map { .button($0, under: deskID) } }, under: deskID))
     }
 
     /// `website (2 windows: zsh, vim, kept running, permanent, open in 1 tab)`
