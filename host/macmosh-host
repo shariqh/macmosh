@@ -812,9 +812,11 @@ cmd_keep() {
     name="$1"
     line=""
     # The desk is the session this runs in, when it runs in one: the shell may read the typed
-    # "keep <desk>" only after a rename. $TMUX names the desk server's socket.
+    # "keep <desk>" only after a rename. The answer counts only when it comes from the server this
+    # shell runs in, whose socket $TMUX names.
     if [ -n "${TMUX:-}" ] && [ -n "${TMUX_PANE:-}" ]; then
-        cur=$(command tmux -S "${TMUX%%,*}" display-message -p -t "$TMUX_PANE" '#{session_name}' 2>/dev/null)
+        cur=$(mm_tmux display-message -p -t "$TMUX_PANE" "#{socket_path}$TAB#{session_name}" 2>/dev/null)
+        if [ "${cur%%"$TAB"*}" = "${TMUX%%,*}" ]; then cur="${cur#*"$TAB"}"; else cur=""; fi
         if [ -n "$cur" ] && mm_valid_desk_name "$cur"; then
             line=$(mm_def_line "$cur")
             if [ -n "$line" ]; then name="$cur"; fi
