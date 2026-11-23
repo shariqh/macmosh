@@ -27,6 +27,18 @@ extension HostScriptTests {
         #expect(status.definitions[0].command == "echo hi")
         #expect(status.definitions[0].reopen)
         #expect(!status.definitions[0].keep)
+        #expect(!status.definitions[0].permanent)
+    }
+
+    @Test func aPermanentDeskRoundTrips() throws {
+        let h = try HostHarness(); defer { h.cleanUp() }
+        #expect(h.run(["start"]).exitCode == 0)
+        #expect(h.run(["desk-new", "kept", h.home.path, "--permanent", "--no-reopen"]).exitCode == 0)
+        let status = try HostStatus.parse(h.run(["status"]).stdout)
+        #expect(status.definitions.count == 1)
+        #expect(status.definitions[0].permanent)
+        #expect(!status.definitions[0].reopen)
+        #expect(status.definitions[0].folder == h.home.path)
     }
 
     @Test func aReportFromAServerThatIsDownStillParses() throws {

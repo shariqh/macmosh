@@ -35,22 +35,25 @@ public struct HostCommands: Sendable {
         self.paths = paths
     }
 
-    /// The script's arguments for a new desk. The flags appear only when asked for, in this order:
-    /// `--reopen`, `--keep`, `--command <text>`. An empty command is no command. `SSHInvocation.hostCommand`
-    /// quotes each one once for the remote shell, so the folder and the command arrive exactly as given.
+    /// The script's arguments for a new desk, in this order: `--reopen` or `--no-reopen`, always one of
+    /// the two, so the result never rests on the script's own default; then `--keep`, `--permanent` and
+    /// `--command <text>`, each only when asked for. An empty command is no command.
+    /// `SSHInvocation.hostCommand` quotes each one once for the remote shell, so the folder and the
+    /// command arrive exactly as given.
     public static func newDeskArguments(name: DeskName, folder: String, reopen: Bool, keep: Bool,
-                                        command: String?) -> [String] {
+                                        permanent: Bool, command: String?) -> [String] {
         var args = ["desk-new", name.value, folder]
-        if reopen { args.append("--reopen") }
+        args.append(reopen ? "--reopen" : "--no-reopen")
         if keep { args.append("--keep") }
+        if permanent { args.append("--permanent") }
         if let command, !command.isEmpty { args += ["--command", command] }
         return args
     }
 
     public func newDesk(on w: Workhorse, address: String, name: DeskName, folder: String,
-                        reopen: Bool, keep: Bool, command: String?) async throws {
+                        reopen: Bool, keep: Bool, permanent: Bool, command: String?) async throws {
         _ = try await run(w, address, Self.newDeskArguments(name: name, folder: folder, reopen: reopen,
-                                                            keep: keep, command: command))
+                                                            keep: keep, permanent: permanent, command: command))
     }
 
     /// Removes the desk's definition. Its open session is closed only with `kill`.

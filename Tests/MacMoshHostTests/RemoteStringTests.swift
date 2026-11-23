@@ -14,7 +14,7 @@ extension HostScriptTests {
             try FileManager.default.createDirectory(at: odd, withIntermediateDirectories: true)
             _ = h.run(["start"])
             let args = HostCommands.newDeskArguments(name: DeskName("odd")!, folder: odd.path, reopen: false, keep: false,
-                                                     command: "echo \"$((6*7))\" > out.txt")
+                                                     permanent: true, command: "echo \"$((6*7))\" > out.txt")
             let remote = SSHInvocation.hostCommand(args)[0]
             #expect(h.shell(remote).exitCode == 0)            // /bin/sh -c <remote>, as sshd's shell would run it
             let path = h.tmux(["display-message", "-p", "-t", "=odd:", "#{session_path}"]).stdout

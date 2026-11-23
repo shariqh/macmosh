@@ -142,6 +142,41 @@ private func versionLine(in text: String) -> String {
         #expect(!s.definitions[1].reopen)
     }
 
+    @Test func aDefinitionCarriesWhetherItIsPermanent() throws {
+        let s = try HostStatus.parse(report([
+            ["def", "kept", "1", "0", "1", "/Users/alex/My Project", "npm run dev"],
+            ["def", "brief", "0", "1", "0", "/Users/alex/b", ""],
+            ["def", "odd", "0", "0", "2", "/Users/alex/c", ""],
+        ]))
+        let names: [String] = s.definitions.map(\.name.value)
+        #expect(names == ["kept", "brief"])
+        #expect(s.definitions[0] == HostStatus.Definition(name: DeskName("kept")!, reopen: true, keep: false,
+                                                           folder: "/Users/alex/My Project", command: "npm run dev",
+                                                           permanent: true))
+        #expect(!s.definitions[1].permanent)
+        #expect(!s.definitions[1].reopen)
+        #expect(s.definitions[1].keep)
+        #expect(s.definitions[1].folder == "/Users/alex/b")
+        #expect(s.definitions[1].command == "")
+    }
+
+    @Test func aDefinitionFromAnOlderScriptIsNotPermanent() throws {
+        // Before script 0.5.0 a definition had five fields: no permanent field before the folder.
+        let s = try HostStatus.parse(report([
+            ["def", "a", "1", "0", "/Users/alex/a", "npm run dev"],
+            ["def", "b", "0", "0", "/Users/alex/b", ""],
+            ["def", "c", "0", "1", "/Users/alex/c"],
+        ]))
+        #expect(s.definitions.count == 3)
+        #expect(s.definitions.allSatisfy { !$0.permanent })
+        #expect(s.definitions[0].reopen)
+        #expect(s.definitions[0].folder == "/Users/alex/a")
+        #expect(s.definitions[0].command == "npm run dev")
+        #expect(s.definitions[2].folder == "/Users/alex/c")
+        #expect(s.definitions[2].keep)
+        #expect(try HostStatus.parse(fullReport()).definitions[0].permanent == false)
+    }
+
     @Test func extraFieldsAfterTheCommandStayInTheCommand() throws {
         // The script never writes a tab into a command, but a reader must not cut one off if it appears.
         let s = try HostStatus.parse(report([["def", "a", "0", "0", "/tmp", "echo", "hi"]]))

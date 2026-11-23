@@ -170,11 +170,22 @@ public enum MenuModel {
     private static func readyItems(_ r: CheckResult) -> [MenuItem] {
         let id = r.workhorse.id
         var items: [MenuItem] = []
-        let kept = Set((r.status?.definitions ?? []).filter(\.keep).map(\.name.value))
-        for desk in r.status?.desks ?? [] {
+        let definitions = r.status?.definitions ?? []
+        let desks = r.status?.desks ?? []
+        let kept = Set(definitions.filter(\.keep).map(\.name.value))
+        let permanent = Set(definitions.filter(\.permanent).map(\.name.value))
+        for desk in desks {
             let name = desk.name.value
-            items.append(.line(deskTitle(desk, kept: kept.contains(name)), .tab(["connect", id, name])))
+            items.append(.line(deskTitle(desk, kept: kept.contains(name), permanent: permanent.contains(name)),
+                               .tab(["connect", id, name])))
             items.append(.line("New window in \(name)", .run(["desk", "window", id, name]), indent: 2))
+        }
+        // A permanent desk whose last shell exited stays, closed; connect makes it again. Any other
+        // definition with no desk is a leftover the workhorse clears up, so it gets no line.
+        let open = Set(desks.map(\.name.value))
+        for definition in definitions where definition.permanent && !open.contains(definition.name.value) {
+            let name = definition.name.value
+            items.append(.line("\(name) (closed)", .tab(["connect", id, name])))
         }
         items.append(.line("New desk…", .tab(["desk", "new", id])))
         items.append(.line("Share screen", .run(["screen", id])))
@@ -193,12 +204,13 @@ public enum MenuModel {
         return items
     }
 
-    /// `website (2 windows: zsh, vim, kept running, open in 1 tab)`
-    private static func deskTitle(_ desk: HostStatus.Desk, kept: Bool) -> String {
+    /// `website (2 windows: zsh, vim, kept running, permanent, open in 1 tab)`
+    private static func deskTitle(_ desk: HostStatus.Desk, kept: Bool, permanent: Bool) -> String {
         var inside = desk.windowCount == 1 ? "1 window" : "\(desk.windowCount) windows"
         let names = desk.windows.map(\.name).filter { !$0.isEmpty }
         if !names.isEmpty { inside += ": " + names.joined(separator: ", ") }
         if kept { inside += ", kept running" }
+        if permanent { inside += ", permanent" }
         if desk.attached > 0 {
             inside += ", open in " + (desk.attached == 1 ? "1 tab" : "\(desk.attached) tabs")
         }

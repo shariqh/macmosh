@@ -10,7 +10,7 @@ enum HostScriptSource {
 # Plain bash 3.2 (what macOS ships at /bin/bash): no associative arrays, no mapfile, no ${var,,}.
 set -u
 
-MACMOSH_HOST_VERSION=0.4.0
+MACMOSH_HOST_VERSION=0.5.0
 MACMOSH_PROTOCOL=1
 AGENT_LABEL=io.github.shariqh.macmosh.host
 
@@ -90,6 +90,7 @@ mm_write_tmux_conf() {
 
 cmd_start() {
     if mm_server_up; then
+        mm_set_hook
         mm_log start "already up"
         return 0
     fi
@@ -100,7 +101,10 @@ cmd_start() {
     fi
     mm_tmux -f "$MACMOSH_HOME/tmux.conf" start-server >/dev/null 2>&1
     if mm_server_up; then
+        # The hook first, so a reopened desk whose shell ends at once is handled like any other.
+        mm_set_hook
         mm_reopen_desks
+        mm_drop_stale_desks
         mm_log start "started"
         return 0
     fi
@@ -142,6 +146,78 @@ mm_def_line() {
 }
 
 mm_session_exists() { mm_tmux has-session -t "=$1" >/dev/null 2>&1; }
+
+# Reads one line of desks.tsv into d_name, d_reopen, d_keep, d_permanent, d_folder and d_command.
+# A line is: name, reopen (0 or 1), keep (0 or 1), permanent (0 or 1), folder, startup command.
+# A line written before 0.5.0 has no permanent field: its folder comes fourth. A folder always starts
+# with /, which tells the two apart, and a desk from such a line is not permanent.
+mm_read_def() {
+    local rest="$1"
+    d_name="" d_reopen="" d_keep="" d_permanent=0 d_folder="" d_command=""
+    d_name="${rest%%"$TAB"*}"
+    [ "$d_name" != "$rest" ] || return 0
+    rest="${rest#*"$TAB"}"
+    d_reopen="${rest%%"$TAB"*}"
+    [ "$d_reopen" != "$rest" ] || return 0
+    rest="${rest#*"$TAB"}"
+    d_keep="${rest%%"$TAB"*}"
+    [ "$d_keep" != "$rest" ] || return 0
+    rest="${rest#*"$TAB"}"
+    case "$rest" in
+        /*) ;;
+        *"$TAB"*)
+            d_permanent="${rest%%"$TAB"*}"
+            rest="${rest#*"$TAB"}"
+            ;;
+    esac
+    d_folder="${rest%%"$TAB"*}"
+    if [ "$d_folder" != "$rest" ]; then d_command="${rest#*"$TAB"}"; fi
+    return 0
+}
+
+# Writes desks.tsv without the line for one desk, through a temporary file and mv. The caller holds the lock.
+mm_drop_def_line() {
+    local file tmp
+    file=$(mm_desks_file)
+    [ -f "$file" ] || return 0
+    tmp="$MACMOSH_HOME/$DESKS_FILE_NAME.$$.tmp"
+    if ! awk -F '\t' -v n="$1" '$1 != n' "$file" > "$tmp" || ! mv "$tmp" "$file"; then
+        rm -f "$tmp"
+        return 1
+    fi
+    return 0
+}
+
+# The desk server's process id, or nothing when no server answers. It never starts a server.
+mm_server_pid() { mm_tmux display-message -p '#{pid}' 2>/dev/null; }
+
+# --- Removing a desk when its last shell exits.
+#
+# The desk server runs a hook when a session closes. It waits a moment, then runs
+# "<this script> desk-closed <desk> <server pid>", and desk-closed removes the desk's definition only
+# when that same server still answers. An exit in a desk's last shell leaves the server running (its
+# exit-empty is off). Shutting the server down (kill-server, restart-server, a signal, the Mac
+# restarting) ends it, so a hook from it finds no server or a different one, and the definition stays.
+# Seen with tmux 3.8: a server that is shutting down runs no session-closed hook at all.
+#
+# The hook lives in one member of the session-closed hook array, so the user's own hooks stay. Every
+# subcommand that talks to a running server sets it again: a server started by an older script gets it
+# with no restart, and a hook cleared by reloading the user's tmux settings comes back.
+MM_HOOK='session-closed[1089]'
+MM_HOOK_DELAY=2
+
+mm_set_hook() {
+    local prefix
+    prefix="MACMOSH_HOME=$(mm_shell_quote "$MACMOSH_HOME") MACMOSH_SOCKET=$(mm_shell_quote "$MACMOSH_SOCKET")"
+    prefix="$prefix $(mm_shell_quote "$(mm_self_path)") desk-closed"
+    # The prefix is kept in a user option and put into the command when the hook runs, so a path with
+    # odd characters never passes through tmux's own command parser. q: quotes the desk name for sh.
+    # shellcheck disable=SC2016  # the #{...} parts are tmux formats, expanded when the hook runs
+    mm_tmux set-option -g @macmosh-desk-closed "$prefix" \; \
+        set-hook -g "$MM_HOOK" "run-shell -b -d $MM_HOOK_DELAY '#{@macmosh-desk-closed} #{q:hook_session_name} #{pid} >/dev/null 2>&1 || true'" \
+        >/dev/null 2>&1
+    return 0
+}
 
 # This script's own full path, so a desk can run it again later.
 mm_self_path() {
@@ -196,18 +272,45 @@ mm_create_session() {
 
 # Recreates the desks marked reopen. Called by start, only when it has just started the server.
 mm_reopen_desks() {
-    local file name reopen keep folder command line
+    local file line
     file=$(mm_desks_file)
     [ -f "$file" ] || return 0
     while IFS= read -r line || [ -n "$line" ]; do
-        IFS="$TAB" read -r name reopen keep folder command <<EOF
-$line
-EOF
-        mm_valid_desk_name "$name" || continue
-        [ "$reopen" = 1 ] || continue
-        mm_session_exists "$name" && continue
-        mm_create_session "$name" "$folder" "$command" "$keep" || mm_log start "could not reopen $name"
+        mm_read_def "$line"
+        mm_valid_desk_name "$d_name" || continue
+        [ "$d_reopen" = 1 ] || continue
+        mm_session_exists "$d_name" && continue
+        mm_create_session "$d_name" "$d_folder" "$d_command" "$d_keep" || mm_log start "could not reopen $d_name"
     done < "$file"
+    return 0
+}
+
+# Drops the lines that would never come back: not permanent, not marked reopen, and no session. start
+# calls it after it has started the server and reopened the desks, so such a desk ended with the old
+# server, and its name should be free again. A line it can't read is kept.
+mm_drop_stale_desks() {
+    local file tmp line dropped="" written=1
+    file=$(mm_desks_file)
+    [ -f "$file" ] || return 0
+    mm_lock || return 0
+    tmp="$MACMOSH_HOME/$DESKS_FILE_NAME.$$.tmp"
+    # The loop runs in this shell, so it can set dropped and written. A line that could not be written
+    # leaves the file as it was.
+    while IFS= read -r line || [ -n "$line" ]; do
+        mm_read_def "$line"
+        if mm_valid_desk_name "$d_name" && [ "$d_permanent" = 0 ] && [ "$d_reopen" = 0 ] \
+            && ! mm_session_exists "$d_name"; then
+            dropped="$dropped $d_name"
+            continue
+        fi
+        printf '%s\n' "$line" || written=0
+    done < "$file" > "$tmp" || written=0
+    if [ -n "$dropped" ] && { [ "$written" = 0 ] || ! mv "$tmp" "$file"; }; then
+        dropped=""
+    fi
+    rm -f "$tmp"
+    mm_release_lock
+    if [ -n "$dropped" ]; then mm_log start "dropped$dropped"; fi
     return 0
 }
 
@@ -289,11 +392,14 @@ mm_usage_error() {
 }
 
 cmd_desk_new() {
-    local name="" folder="" reopen=0 keep=0 command="" npos=0 file tmp
+    local name="" folder="" reopen=1 keep=0 permanent=0 command="" npos=0 file tmp old
     while [ $# -gt 0 ]; do
         case "$1" in
+            # A new desk comes back after a restart unless told not to. --reopen is still accepted.
             --reopen) reopen=1 ;;
+            --no-reopen) reopen=0 ;;
             --keep) keep=1 ;;
+            --permanent) permanent=1 ;;
             --command)
                 [ $# -ge 2 ] || mm_usage_error desk-new "--command needs a value"
                 command="$2"
@@ -311,7 +417,7 @@ cmd_desk_new() {
         esac
         shift
     done
-    [ "$npos" -eq 2 ] || mm_usage_error desk-new "usage: desk-new <name> <folder> [--reopen] [--keep] [--command <text>]"
+    [ "$npos" -eq 2 ] || mm_usage_error desk-new "usage: desk-new <name> <folder> [--no-reopen] [--permanent] [--keep] [--command <text>]"
 
     if ! mm_valid_desk_name "$name"; then
         echo "macmosh-host: a desk name uses letters, digits, - and _ only, up to 64 characters" >&2
@@ -345,13 +451,18 @@ cmd_desk_new() {
     fi
 
     mm_require_server desk-new
+    mm_set_hook
 
     if ! mm_lock; then
         echo "macmosh-host: could not lock the desk list" >&2
         mm_log desk-new "failed: lock"
         return 1
     fi
-    if [ -n "$(mm_def_line "$name")" ] || mm_session_exists "$name"; then
+    # The name is taken by an open desk, or by a permanent one that is closed. A line that is neither
+    # is left over (its last shell exited, or it ended with an older server) and is replaced.
+    old=$(mm_def_line "$name")
+    if [ -n "$old" ]; then mm_read_def "$old"; fi
+    if mm_session_exists "$name" || { [ -n "$old" ] && [ "$d_permanent" != 0 ]; }; then
         mm_release_lock
         echo "macmosh-host: the desk $name already exists" >&2
         mm_log desk-new "refused: $name already exists"
@@ -362,8 +473,8 @@ cmd_desk_new() {
     file=$(mm_desks_file)
     tmp="$MACMOSH_HOME/$DESKS_FILE_NAME.$$.tmp"
     if ! {
-        if [ -f "$file" ]; then cat "$file"; fi
-        printf '%s\t%s\t%s\t%s\t%s\n' "$name" "$reopen" "$keep" "$folder" "$command"
+        { [ ! -f "$file" ] || awk -F '\t' -v n="$name" '$1 != n' "$file"; } &&
+            printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$name" "$reopen" "$keep" "$permanent" "$folder" "$command"
     } > "$tmp" || ! mv "$tmp" "$file"; then
         rm -f "$tmp"
         mm_release_lock
@@ -373,8 +484,7 @@ cmd_desk_new() {
     fi
     if ! mm_create_session "$name" "$folder" "$command" "$keep"; then
         mm_tmux kill-session -t "=$name" >/dev/null 2>&1
-        if awk -F '\t' -v n="$name" '$1 != n' "$file" > "$tmp"; then mv "$tmp" "$file"; fi
-        rm -f "$tmp"
+        mm_drop_def_line "$name"
         mm_release_lock
         echo "macmosh-host: could not create the desk" >&2
         mm_log desk-new "failed: $name could not be created"
@@ -386,7 +496,7 @@ cmd_desk_new() {
 }
 
 cmd_desk_remove() {
-    local name="" kill=0 npos=0 had_def=0 had_session=0 file tmp
+    local name="" kill=0 npos=0 had_def=0 had_session=0
     while [ $# -gt 0 ]; do
         case "$1" in
             --kill) kill=1 ;;
@@ -422,10 +532,7 @@ cmd_desk_remove() {
         return 4
     fi
     if [ "$had_def" = 1 ]; then
-        file=$(mm_desks_file)
-        tmp="$MACMOSH_HOME/$DESKS_FILE_NAME.$$.tmp"
-        if ! awk -F '\t' -v n="$name" '$1 != n' "$file" > "$tmp" || ! mv "$tmp" "$file"; then
-            rm -f "$tmp"
+        if ! mm_drop_def_line "$name"; then
             mm_release_lock
             echo "macmosh-host: could not write the desk list" >&2
             mm_log desk-remove "failed: $name could not be saved"
@@ -440,6 +547,75 @@ cmd_desk_remove() {
     return 0
 }
 
+# Run by the desk server's session-closed hook (see mm_set_hook), a moment after a desk's session
+# closed: removes the desk's definition, unless the desk is permanent. When anything is unclear the
+# definition stays, because a definition removed by mistake is a desk that won't come back after a
+# restart, while one kept by mistake is only a name that desk-new replaces and the menu doesn't show.
+# It stays when: another server answers or none does (the server went away: a restart, kill-server,
+# a signal), nobody is logged in at the screen (logging out), the desk is open again, or it is permanent.
+cmd_desk_closed() {
+    local name pid line
+    [ $# -eq 2 ] || mm_usage_error desk-closed "usage: desk-closed <desk> <desk server pid>"
+    name="$1"
+    pid="$2"
+    if ! mm_valid_desk_name "$name"; then
+        mm_log desk-closed "ignored: not a desk name"
+        return 0
+    fi
+    case "$pid" in
+        '' | *[!0-9]*)
+            mm_log desk-closed "kept $name: no server pid"
+            return 0
+            ;;
+    esac
+    [ -n "$(mm_def_line "$name")" ] || return 0
+    if [ "$(mm_server_pid)" != "$pid" ]; then
+        mm_log desk-closed "kept $name: the desk server went away"
+        return 0
+    fi
+    if ! mm_lock; then
+        mm_log desk-closed "kept $name: could not lock the desk list"
+        return 1
+    fi
+    # Read again under the lock: desk-new or desk-remove may have changed the line in the meantime.
+    line=$(mm_def_line "$name")
+    if [ -z "$line" ]; then
+        mm_release_lock
+        return 0
+    fi
+    mm_read_def "$line"
+    if [ "$d_permanent" != 0 ]; then
+        mm_release_lock
+        mm_log desk-closed "kept $name: permanent"
+        return 0
+    fi
+    if mm_session_exists "$name"; then
+        mm_release_lock
+        mm_log desk-closed "kept $name: open again"
+        return 0
+    fi
+    # Last, the screen and the server once more, just before the write: has-session also fails when the
+    # server has just gone, and a logout or shutdown may have begun while this waited for the lock.
+    if [ -z "$(mm_console_user)" ]; then
+        mm_release_lock
+        mm_log desk-closed "kept $name: nobody is logged in at the screen"
+        return 0
+    fi
+    if [ "$(mm_server_pid)" != "$pid" ]; then
+        mm_release_lock
+        mm_log desk-closed "kept $name: the desk server went away"
+        return 0
+    fi
+    if ! mm_drop_def_line "$name"; then
+        mm_release_lock
+        mm_log desk-closed "kept $name: could not write the desk list"
+        return 1
+    fi
+    mm_release_lock
+    mm_log desk-closed "removed $name: its last shell exited"
+    return 0
+}
+
 cmd_window_new() {
     local name
     [ $# -eq 1 ] || mm_usage_error window-new "usage: window-new <desk>"
@@ -450,6 +626,7 @@ cmd_window_new() {
         return 4
     fi
     mm_require_server window-new
+    mm_set_hook
     if ! mm_session_exists "$name"; then
         echo "macmosh-host: the desk $name isn't open" >&2
         mm_log window-new "no such desk: $name"
@@ -465,7 +642,7 @@ cmd_window_new() {
 }
 
 cmd_attach() {
-    local name="" cc=0 dry=0 npos=0 line reopen keep folder command
+    local name="" cc=0 dry=0 npos=0 line
     while [ $# -gt 0 ]; do
         case "$1" in
             --cc) cc=1 ;;
@@ -487,7 +664,10 @@ cmd_attach() {
         return 4
     fi
     mm_require_server attach
+    mm_set_hook
 
+    # A closed desk that still has its definition (a permanent desk, or one that ended with the
+    # server) is made again from it.
     if ! mm_session_exists "$name"; then
         line=$(mm_def_line "$name")
         if [ -z "$line" ]; then
@@ -495,11 +675,8 @@ cmd_attach() {
             mm_log attach "no such desk: $name"
             return 4
         fi
-        # shellcheck disable=SC2034  # reopen is read only to get to the folder and the command
-        IFS="$TAB" read -r name reopen keep folder command <<EOF
-$line
-EOF
-        if ! mm_create_session "$name" "$folder" "$command" "$keep"; then
+        mm_read_def "$line"
+        if ! mm_create_session "$name" "$d_folder" "$d_command" "$d_keep"; then
             echo "macmosh-host: could not open the desk $name" >&2
             mm_log attach "failed: $name could not be created"
             return 1
@@ -527,7 +704,7 @@ EOF
 # keeps ending within 10 seconds. A run of a minute or more sets it back to the start. A run in
 # between leaves it as it is.
 cmd_keep() {
-    local name line reopen keep folder command start pause next began took code stopped=0
+    local name line folder command start pause next began took code stopped=0
     [ $# -eq 1 ] || mm_usage_error keep "usage: keep <desk>"
     name="$1"
     line=""
@@ -539,10 +716,9 @@ cmd_keep() {
         mm_log keep "no such desk: $name"
         return 4
     fi
-    # shellcheck disable=SC2034  # reopen and keep are read only to get to the folder and the command
-    IFS="$TAB" read -r name reopen keep folder command <<EOF
-$line
-EOF
+    mm_read_def "$line"
+    folder="$d_folder"
+    command="$d_command"
     if [ -z "$command" ]; then
         echo "There is nothing to keep running in the desk $name: it has no startup command."
         mm_log keep "$name: no command"
@@ -993,13 +1169,15 @@ mm_desk_records() {
     done
 }
 
+# Every definition in the newest form, whatever form its line in desks.tsv has:
+# name, reopen, keep, permanent, folder, startup command.
 mm_def_records() {
-    local file="$MACMOSH_HOME/desks.tsv" line name
+    local file="$MACMOSH_HOME/desks.tsv" line
     [ -f "$file" ] || return 0
     while IFS= read -r line || [ -n "$line" ]; do
-        name="${line%%"$TAB"*}"
-        mm_valid_desk_name "$name" || continue
-        printf 'def\t%s\n' "$line"
+        mm_read_def "$line"
+        mm_valid_desk_name "$d_name" || continue
+        printf 'def\t%s\t%s\t%s\t%s\t%s\t%s\n' "$d_name" "$d_reopen" "$d_keep" "$d_permanent" "$d_folder" "$d_command"
     done < "$file"
 }
 
@@ -1010,6 +1188,8 @@ cmd_status() {
 
     if mm_server_up; then
         server=up
+        # The menu checks every 30 seconds, so a running server gets the hook soon after the script is updated.
+        mm_set_hook
         # shellcheck disable=SC2016  # the command is expanded by the desk server's shell, not here
         signins=$(mm_tmux run-shell 'security show-keychain-info "$HOME/Library/Keychains/login.keychain-db" >/dev/null 2>&1 && echo ok || echo off' 2>/dev/null | head -n 1)
         case "$signins" in
@@ -1090,8 +1270,11 @@ usage: macmosh-host <subcommand>
   start     start the desk server if it is down
   status    print the status report
   attach [--cc] [--dry-run] <desk>
-  desk-new <name> <folder> [--reopen] [--keep] [--command <text>]
+  desk-new <name> <folder> [--no-reopen] [--permanent] [--keep] [--command <text>]
+            a new desk comes back after a restart unless --no-reopen, and is removed
+            when its last shell exits unless --permanent
   desk-remove <name> [--kill]
+  desk-closed <desk> <pid>   run by the desk server when a desk's session closes
   keep <desk>   run the desk's startup command again each time it ends
   window-new <desk>
   folders <folder>
@@ -1125,6 +1308,10 @@ main() {
         desk-remove)
             shift
             cmd_desk_remove "$@"
+            ;;
+        desk-closed)
+            shift
+            cmd_desk_closed "$@"
             ;;
         window-new)
             shift

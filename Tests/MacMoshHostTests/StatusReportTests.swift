@@ -311,11 +311,24 @@ extension HostScriptTests {
         let h = try HostHarness(); defer { h.cleanUp() }
         let folder = h.home.appendingPathComponent(".macmosh")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        try "website\t1\t0\t/Users/alex/Development/website\tnpm run dev\nplain\t0\t1\t/Users/alex\t\n"
+        try "website\t1\t0\t1\t/Users/alex/Development/website\tnpm run dev\nplain\t0\t1\t0\t/Users/alex\t\n"
             .write(to: folder.appendingPathComponent("desks.tsv"), atomically: true, encoding: .utf8)
         let out = h.run(["status"]).stdout
-        #expect(out.contains("\ndef\twebsite\t1\t0\t/Users/alex/Development/website\tnpm run dev\n"))
-        #expect(out.contains("\ndef\tplain\t0\t1\t/Users/alex\t\n"))
+        #expect(out.contains("\ndef\twebsite\t1\t0\t1\t/Users/alex/Development/website\tnpm run dev\n"))
+        #expect(out.contains("\ndef\tplain\t0\t1\t0\t/Users/alex\t\n"))
+    }
+
+    @Test func definitionsFromBeforePermanentAreReportedAsNotPermanent() throws {
+        // Lines written before script 0.5.0 have five fields. The report gives every line all six.
+        let h = try HostHarness(); defer { h.cleanUp() }
+        let folder = h.home.appendingPathComponent(".macmosh")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try "website\t1\t0\t/Users/alex/Development/website\tnpm run dev\nplain\t0\t1\t/Users/alex\t\nbare\t1\t0\t/b\n"
+            .write(to: folder.appendingPathComponent("desks.tsv"), atomically: true, encoding: .utf8)
+        let out = h.run(["status"]).stdout
+        #expect(out.contains("\ndef\twebsite\t1\t0\t0\t/Users/alex/Development/website\tnpm run dev\n"))
+        #expect(out.contains("\ndef\tplain\t0\t1\t0\t/Users/alex\t\n"))
+        #expect(out.contains("\ndef\tbare\t1\t0\t0\t/b\t\n"))
     }
 
     @Test func definitionsWithABadNameAreLeftOut() throws {
@@ -368,7 +381,7 @@ extension HostScriptTests {
         let version = h.run(["version"])
         #expect(version.exitCode == 0)
         #expect(version.stdout == h.scriptVersion + "\n")
-        #expect(version.stdout == "0.4.0\n")
+        #expect(version.stdout == "0.5.0\n")
         #expect(h.run([]).exitCode == 2)
         #expect(h.run(["nonsense"]).exitCode == 2)
     }

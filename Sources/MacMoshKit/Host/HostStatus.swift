@@ -69,6 +69,8 @@ public struct HostStatus: Sendable, Equatable {
         public var name: DeskName
         public var reopen, keep: Bool
         public var folder, command: String
+        /// A permanent desk stays after its last shell exits; any other desk is then removed.
+        public var permanent: Bool = false
     }
 
     public static let supportedProtocol = 1
@@ -168,13 +170,7 @@ public struct HostStatus: Sendable, Equatable {
                     windows[field(f, 1), default: []].append(Window(index: index, name: field(f, 3)))
                 }
             case "def":
-                // The startup command is the last field. A report with no tab after the folder has none.
-                if let name = DeskName(field(f, 1)), let reopen = flag(field(f, 2)), let keep = flag(field(f, 3)),
-                   f.count >= 5 {
-                    let command = f.count > 5 ? f[5...].joined(separator: "\t") : ""
-                    s.definitions.append(Definition(name: name, reopen: reopen, keep: keep,
-                                                    folder: f[4], command: command))
-                }
+                if let definition = definition(f) { s.definitions.append(definition) }
             default:
                 break   // a record type from a later version
             }
@@ -213,6 +209,25 @@ public struct HostStatus: Sendable, Equatable {
         case "0": return false
         default: return nil
         }
+    }
+
+    /// `def`: name, reopen, keep, permanent, folder, startup command. A script older than 0.5.0 sends no
+    /// permanent field; its line has the folder fourth, and a folder always starts with `/`, which tells
+    /// the two apart. The startup command is the last field, and a line with no tab after the folder has
+    /// none. nil when a flag isn't 0 or 1, or the line is too short.
+    private static func definition(_ f: [String]) -> Definition? {
+        guard let name = DeskName(field(f, 1)), let reopen = flag(field(f, 2)), let keep = flag(field(f, 3)),
+              f.count >= 5 else { return nil }
+        var permanent = false
+        var folderAt = 4
+        if !f[4].hasPrefix("/") {
+            guard let given = flag(f[4]), f.count >= 6 else { return nil }
+            permanent = given
+            folderAt = 5
+        }
+        let command = f.count > folderAt + 1 ? f[(folderAt + 1)...].joined(separator: "\t") : ""
+        return Definition(name: name, reopen: reopen, keep: keep, folder: f[folderAt], command: command,
+                          permanent: permanent)
     }
 
     /// `power`: `key=value` fields. A key this version doesn't know is ignored; `-` or a non-number is nil.

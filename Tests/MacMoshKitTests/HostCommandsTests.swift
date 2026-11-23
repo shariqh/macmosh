@@ -43,18 +43,22 @@ private func desksListing(_ names: [String]) -> FakeRunner {
         let runner = FakeRunner { _ in FakeRunner.ok() }
         try await HostCommands(runner: runner, paths: .test).newDesk(
             on: .sample(), address: "workhorse", name: DeskName("web")!,
-            folder: "/Users/alex/My \"Proj\" $HOME it's", reopen: true, keep: false, command: "echo \"$((6*7))\"")
+            folder: "/Users/alex/My \"Proj\" $HOME it's", reopen: true, keep: false, permanent: false,
+            command: "echo \"$((6*7))\"")
         #expect(runner.calls[0].argv.last ==
             "~/.macmosh/macmosh-host desk-new web '/Users/alex/My \"Proj\" $HOME it'\\''s' --reopen --command 'echo \"$((6*7))\"'")
     }
 
-    @Test func argumentsCarryOnlyTheFlagsThatWereGiven() {
-        let bare = HostCommands.newDeskArguments(name: web, folder: "/a", reopen: false, keep: false, command: nil)
-        #expect(bare == ["desk-new", "web", "/a"])
-        let noCommand = HostCommands.newDeskArguments(name: web, folder: "/a", reopen: false, keep: false, command: "")
-        #expect(noCommand == ["desk-new", "web", "/a"])
-        let all = HostCommands.newDeskArguments(name: web, folder: "/a", reopen: true, keep: true, command: "npm run dev")
-        #expect(all == ["desk-new", "web", "/a", "--reopen", "--keep", "--command", "npm run dev"])
+    @Test func argumentsAlwaysSayWhetherToReopenAndCarryTheOtherFlagsOnlyWhenGiven() {
+        let bare = HostCommands.newDeskArguments(name: web, folder: "/a", reopen: false, keep: false,
+                                                 permanent: false, command: nil)
+        #expect(bare == ["desk-new", "web", "/a", "--no-reopen"])
+        let noCommand = HostCommands.newDeskArguments(name: web, folder: "/a", reopen: true, keep: false,
+                                                      permanent: false, command: "")
+        #expect(noCommand == ["desk-new", "web", "/a", "--reopen"])
+        let all = HostCommands.newDeskArguments(name: web, folder: "/a", reopen: true, keep: true,
+                                                permanent: true, command: "npm run dev")
+        #expect(all == ["desk-new", "web", "/a", "--reopen", "--keep", "--permanent", "--command", "npm run dev"])
     }
 
     @Test func aTildeInTheProjectsFolderIsSentAsTyped() async throws {
@@ -115,7 +119,7 @@ private func desksListing(_ names: [String]) -> FakeRunner {
             let runner = scriptEnds(code, stderr: "macmosh-host: some words\n")
             do {
                 try await commands(runner).newDesk(on: .sample(), address: "workhorse", name: web, folder: "/x",
-                                                   reopen: false, keep: false, command: nil)
+                                                   reopen: false, keep: false, permanent: false, command: nil)
                 Issue.record("exit code \(code) did not throw")
             } catch {
                 #expect(error as? HostCommandError == want, "exit code \(code)")
@@ -259,6 +263,49 @@ private func desksListing(_ names: [String]) -> FakeRunner {
         #expect(ui.said.last == "Open it from the menu, or run: macmosh connect mbp web")
     }
 
+    @Test func aPermanentDeskIsSentAsPermanent() async throws {
+        let runner = FakeRunner { _ in FakeRunner.ok() }
+        let request = try NewDeskRequest.fromFlags(name: "web", folder: "/Users/alex/web", reopen: false,
+                                                   noReopen: true, keep: false, permanent: true, command: nil)
+        let result = await flow(runner).newDesk(checked(), request: request, ui: ScriptedInteraction())
+        #expect(result.code == 0)
+        #expect(remote(runner) == "~/.macmosh/macmosh-host desk-new web /Users/alex/web --no-reopen --permanent")
+    }
+
+    // MARK: desk new's flags
+
+    @Test func aNewDeskComesBackAfterARestartUnlessToldNot() throws {
+        let plain = try NewDeskRequest.fromFlags(name: "web", folder: "/a", reopen: false, noReopen: false,
+                                                 keep: false, permanent: false, command: nil)
+        #expect(plain.reopen)
+        #expect(!plain.permanent)
+        let saidReopen = try NewDeskRequest.fromFlags(name: "web", folder: "/a", reopen: true, noReopen: false,
+                                                      keep: false, permanent: false, command: nil)
+        #expect(saidReopen == plain)
+        let noReopen = try NewDeskRequest.fromFlags(name: "web", folder: "/a", reopen: false, noReopen: true,
+                                                    keep: false, permanent: false, command: nil)
+        #expect(!noReopen.reopen)
+        let permanent = try NewDeskRequest.fromFlags(name: "web", folder: "/a", reopen: false, noReopen: false,
+                                                     keep: true, permanent: true, command: "npm run dev")
+        #expect(permanent == NewDeskRequest(name: "web", folder: "/a", reopen: true, keep: true, permanent: true,
+                                            command: "npm run dev"))
+    }
+
+    @Test func reopenAndNoReopenTogetherIsAMistake() {
+        #expect(throws: DeskUsageError.reopenAndNoReopen) {
+            try NewDeskRequest.fromFlags(name: nil, folder: nil, reopen: true, noReopen: true,
+                                         keep: false, permanent: false, command: nil)
+        }
+        #expect(DeskUsageError.reopenAndNoReopen.description.contains("--no-reopen"))
+    }
+
+    @Test func theFormThatAsksMakesADeskThatComesBack() {
+        let form = NewDeskRequest()
+        #expect(form.isInteractive)
+        #expect(form.reopen)
+        #expect(!form.permanent)
+    }
+
     @Test func aBadNameInTheArgumentsIsAnErrorNotAQuestion() async {
         let runner = FakeRunner { _ in FakeRunner.ok() }
         let ui = ScriptedInteraction(answers: ["web"])
@@ -302,7 +349,7 @@ private func desksListing(_ names: [String]) -> FakeRunner {
         #expect(ui.asked[1].contains("or type a path"))
         #expect(runner.calls.count == 2)
         #expect(remote(runner, 0) == "~/.macmosh/macmosh-host folders '~/Development'")
-        #expect(remote(runner, 1) == "~/.macmosh/macmosh-host desk-new web '~/Development/beta'")
+        #expect(remote(runner, 1) == "~/.macmosh/macmosh-host desk-new web '~/Development/beta' --reopen")
         #expect(ui.said.last == "Open it from the menu, or run: macmosh connect mbp web")
     }
 
@@ -312,7 +359,7 @@ private func desksListing(_ names: [String]) -> FakeRunner {
         let w = Workhorse.sample(projectsFolder: "~/Development/")
         let result = await flow(runner).newDesk(checked(at: "workhorse", w), request: NewDeskRequest(), ui: ui)
         #expect(result.code == 0)
-        #expect(remote(runner, 1) == "~/.macmosh/macmosh-host desk-new web '/Users/alex/Other Place/it'\\''s'")
+        #expect(remote(runner, 1) == "~/.macmosh/macmosh-host desk-new web '/Users/alex/Other Place/it'\\''s' --reopen")
     }
 
     @Test func aNumberFromTheListJoinsTheProjectsFolderWithoutADoubleSlash() async {
@@ -320,7 +367,7 @@ private func desksListing(_ names: [String]) -> FakeRunner {
         let ui = ScriptedInteraction(answers: ["web", "1"])
         let w = Workhorse.sample(projectsFolder: "~/Development/")
         _ = await flow(runner).newDesk(checked(at: "workhorse", w), request: NewDeskRequest(), ui: ui)
-        #expect(remote(runner, 1) == "~/.macmosh/macmosh-host desk-new web '~/Development/alpha'")
+        #expect(remote(runner, 1) == "~/.macmosh/macmosh-host desk-new web '~/Development/alpha' --reopen")
     }
 
     @Test func withNoProjectsFolderItJustAsksForAPath() async {
@@ -329,7 +376,7 @@ private func desksListing(_ names: [String]) -> FakeRunner {
         let result = await flow(runner).newDesk(checked(), request: NewDeskRequest(), ui: ui)
         #expect(result.code == 0)
         #expect(runner.calls.count == 1)
-        #expect(remote(runner) == "~/.macmosh/macmosh-host desk-new web /Users/alex/web")
+        #expect(remote(runner) == "~/.macmosh/macmosh-host desk-new web /Users/alex/web --reopen")
         #expect(!ui.asked[1].contains("number"))
     }
 
@@ -350,7 +397,7 @@ private func desksListing(_ names: [String]) -> FakeRunner {
         #expect(result.code == 0)
         #expect(ui.asked.count == 4)
         #expect(ui.said.filter { $0 == DeskFormat.nameRule }.count == 2)
-        #expect(remote(runner) == "~/.macmosh/macmosh-host desk-new web /Users/alex/web")
+        #expect(remote(runner) == "~/.macmosh/macmosh-host desk-new web /Users/alex/web --reopen")
     }
 
     @Test func threeBadNamesStop() async {
@@ -369,7 +416,7 @@ private func desksListing(_ names: [String]) -> FakeRunner {
         let w = Workhorse.sample(projectsFolder: "/p")
         let result = await flow(runner).newDesk(checked(at: "workhorse", w), request: NewDeskRequest(), ui: ui)
         #expect(result.code == 0)
-        #expect(remote(runner, 1) == "~/.macmosh/macmosh-host desk-new web /p/alpha")
+        #expect(remote(runner, 1) == "~/.macmosh/macmosh-host desk-new web /p/alpha --reopen")
     }
 
     @Test func threeEmptyFolderAnswersStop() async {
@@ -390,7 +437,7 @@ private func desksListing(_ names: [String]) -> FakeRunner {
         let result = await flow(runner).newDesk(checked(at: "workhorse", w), request: NewDeskRequest(), ui: ui)
         #expect(result.code == 0)
         #expect(ui.said.contains { $0.contains("~/gone") })
-        #expect(remote(runner, 1) == "~/.macmosh/macmosh-host desk-new web /Users/alex/web")
+        #expect(remote(runner, 1) == "~/.macmosh/macmosh-host desk-new web /Users/alex/web --reopen")
     }
 
     @Test func foldersThroughTheFlowGivesTheNames() async {

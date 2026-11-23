@@ -121,6 +121,46 @@ private func menu(_ state: WorkhorseState, workhorse: Workhorse = .sample(), sta
         #expect(item(m, "notes (1 window: zsh)") != nil)
     }
 
+    @Test func aClosedPermanentDeskHasALineThatOpensIt() {
+        var status = HostStatus.sampleWithDesk
+        status.definitions = [
+            .init(name: DeskName("notes")!, reopen: false, keep: false, folder: "/Users/alex/notes", command: "",
+                  permanent: true),
+        ]
+        let m = menu(.ready(signIns: true), status: status)
+        let closed = item(m, "notes (closed)")
+        #expect(closed?.action == .tab(["connect", "mbp", "notes"]))
+        #expect(closed?.indent == 1)
+        // After the open desks and before New desk…, with no New window line: there is no desk to add one to.
+        let at = titles(m).firstIndex(of: "notes (closed)")
+        #expect(at != nil && titles(m)[at! + 1] == "New desk…")
+        #expect(at != nil && titles(m)[at! - 1] == "New window in website")
+        #expect(!titles(m).contains("New window in notes"))
+    }
+
+    @Test func anOpenPermanentDeskSaysSo() {
+        var status = HostStatus.sampleWithDesk
+        status.definitions = [
+            .init(name: DeskName("website")!, reopen: true, keep: true, folder: "/Users/alex/site",
+                  command: "npm run dev", permanent: true),
+        ]
+        let m = menu(.ready(signIns: true), status: status)
+        #expect(item(m, "website (2 windows: zsh, vim, kept running, permanent, open in 1 tab)") != nil)
+        #expect(!titles(m).contains("website (closed)"))
+    }
+
+    @Test func aDeskThatIsNotPermanentAndHasNoSessionIsNotShown() {
+        // A leftover line: the desk's last shell exited, or it ended with the server and won't come back.
+        var status = HostStatus.sampleWithDesk
+        status.definitions = [
+            .init(name: DeskName("scratch")!, reopen: false, keep: false, folder: "/Users/alex/x", command: ""),
+            .init(name: DeskName("again")!, reopen: true, keep: false, folder: "/Users/alex/y", command: ""),
+        ]
+        let m = menu(.ready(signIns: true), status: status)
+        #expect(!titles(m).contains { $0.hasPrefix("scratch") || $0.hasPrefix("again") })
+        #expect(titles(m) == titles(menu(.ready(signIns: true), status: .sampleWithDesk)))
+    }
+
     @Test func theHomeLightIsLeftOutWhenUnknownAndSaysNoWhenNo() {
         let unknown = menu(.ready(signIns: true), status: .sampleWithDesk, homeReachable: nil)
         #expect(!titles(unknown).contains { $0.hasPrefix("Home address") })
