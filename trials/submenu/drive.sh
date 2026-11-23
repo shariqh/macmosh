@@ -19,6 +19,10 @@ app_pid=""
 opener_pid=""
 POINTER=0
 NAV_OK=1
+# Which phases to run: A (no style), B (.menu style), C (live model), D (11 rows). Default: all.
+PHASES=${TRIAL_PHASES:-ABCD}
+# Phase A finds out whether posted pointer events work; TRIAL_POINTER=1 skips asking when A is not run.
+POINTER=${TRIAL_POINTER:-0}
 
 now() { perl -MTime::HiRes=time -e 'printf "%.3f", time'; }
 say() { printf '%s drv %s\n' "$(now)" "$*" >> "$LOG"; }
@@ -164,6 +168,7 @@ wait_change() {
 }
 
 ############################################################ A: no style modifier, static model
+if [[ "$PHASES" == *A* ]]; then
 start_app A-plain TRIAL_STYLE=plain
 tool preflight
 tool where
@@ -354,8 +359,10 @@ if [ "$POINTER" -eq 1 ]; then
     close_all
 fi
 stop_app
+fi
 
 ############################################################ B: .menuBarExtraStyle(.menu)
+if [[ "$PHASES" == *B* ]]; then
 start_app B-menu TRIAL_STYLE=menu
 open_menu
 wins B1-open
@@ -389,80 +396,90 @@ wins B5-after-right
 shot B5-plain-right
 ax dump "Plain submenu" > /dev/null
 stop_app
+fi
 
 ############################################################ C: the model changes every 2 s
+# The live submenus sit above the changing rows, so their rows never move under the pointer.
+if [[ "$PHASES" == *C* ]]; then
 start_app C-live TRIAL_STYLE=plain TRIAL_LIVE=1
 open_menu
-mark "C1 top level open while the model changes"
-for step in a b c; do
-    wins "C1-$step"
-    ax dump top > /dev/null
-    shot "C1-$step"
-    sleep 2.1
+mark "C1 top level open while the model changes: window samples for 5 s"
+tool watch 5 C1
+shot C1-a
+ax dump top > /dev/null
+shot C1-b
+close_all
+
+# C2: click the second row of a changing list a set time after a change.
+for list in P I; do
+    for delay in 50 400 1200; do
+        open_menu
+        read -r first _ _ <<< "$(find_xy top "$list " prefix)"
+        read -r idx x y <<< "$(ax posat top "$((first + 1))" | grep '^found' | tail -n 1 | awk '{print $2, $3, $4}')"
+        mark "C2 list $list: click row $idx ($x,$y) $delay ms after the next change"
+        tool clickafter "$LOG" "$delay" "$x" "$y"
+        sleep 1
+        wins "C2-$list-$delay-after"
+        close_all
+    done
 done
 
-mark "C2 press the first P row just after a row is added at the top"
-wait_change add
-sleep 0.3
-read -r idx x y <<< "$(find_xy top "P " prefix)"
-say "C2 on screen before the press: row $idx at $x,$y"
-shot C2-before-press
-if [ "$POINTER" -eq 1 ]; then tool click "$x" "$y"; else ax press top "$idx" > /dev/null; fi
-sleep 1
-wins C2-after
+# C3: does an open submenu stay open while the model changes?
+open_menu
+read -r idx x y <<< "$(find_xy top "Live submenu I")"
+mark "C3a pointer rests on Live submenu I; window samples for 5 s"
+tool move "$x" "$y"
+tool watch 5 C3a
+shot C3a-sub-open
+ax dump "Live submenu I" > /dev/null
 close_all
 
 open_menu
-mark "C3 press the first I row just after the top row is removed"
-wait_change remove
-sleep 0.3
-read -r idx x y <<< "$(find_xy top "I " prefix)"
-say "C3 on screen before the press: row $idx at $x,$y"
-shot C3-before-press
-if [ "$POINTER" -eq 1 ]; then tool click "$x" "$y"; else ax press top "$idx" > /dev/null; fi
-sleep 1
-wins C3-after
+tool move 300 400
+mark "C3b keyboard opens Live submenu P (pointer parked outside the menu); window samples for 5 s"
+nav_to top "Live submenu P"
+key 124 right
+tool watch 5 C3b
+shot C3b-sub-open
+ax selected "Live submenu P" > /dev/null
 close_all
 
+# C4: click the second row of an open submenu a set time after a change.
 for sub in P I; do
-    open_menu
-    mark "C4-$sub open Live submenu $sub and watch it across changes"
-    if [ "$POINTER" -eq 1 ]; then
+    for delay in 50 1200; do
+        open_menu
         read -r idx x y <<< "$(find_xy top "Live submenu $sub")"
         tool move "$x" "$y"
-        sleep 1
-    else
-        nav_to top "Live submenu $sub"
-        key 124 right
-    fi
-    for step in a b c; do
-        wins "C4-$sub-$step"
-        ax dump "Live submenu $sub" > /dev/null
-        shot "C4-$sub-$step"
-        sleep 2.1
-    done
-    mark "C5-$sub press the second row of the open submenu just after a rename"
-    wait_change rename
-    sleep 0.3
-    read -r idx sx sy <<< "$(find_xy "Live submenu $sub" "S$sub " prefix)"
-    idx2=$((idx + 1))
-    ax dump "Live submenu $sub" > /dev/null
-    shot "C5-$sub-before-press"
-    read -r idx2 sx2 sy2 <<< "$(ax posat "Live submenu $sub" "$idx2" | grep '^found' | tail -n 1 | awk '{print $2, $3, $4}')"
-    say "C5-$sub on screen before the press: row $idx2 at $sx2,$sy2"
-    if [ "$POINTER" -eq 1 ]; then
+        sleep 0.8
+        read -r sidx sx sy <<< "$(ax posat "Live submenu $sub" 2 | grep '^found' | tail -n 1 | awk '{print $2, $3, $4}')"
+        mark "C4 Live submenu $sub: click its row $sidx ($sx,$sy) $delay ms after the next change"
         tool move "$sx" "$y"
-        tool click "$sx2" "$sy2"
-    else
-        ax press "Live submenu $sub" "$idx2" > /dev/null
-    fi
-    sleep 1
-    wins "C5-$sub-after"
-    close_all
+        tool clickafter "$LOG" "$delay" "$sx" "$sy"
+        sleep 1
+        wins "C4-$sub-$delay-after"
+        close_all
+    done
 done
+
+# C5: keyboard: highlight the second row of the open submenu, then press return just after a change.
+open_menu
+tool move 300 400
+mark "C5 keyboard: second row of Live submenu P, return 100 ms after a change"
+nav_to top "Live submenu P"
+key 124 right
+key 125 down
+ax selected "Live submenu P" > /dev/null
+wait_change ""
+sleep 0.1
+key 36 return
+sleep 1
+wins C5-after
+close_all
 stop_app
+fi
 
 ############################################################ D: 11 top-level rows, 12-row submenu
+if [[ "$PHASES" == *D* ]]; then
 start_app D-eleven TRIAL_LAYOUT=eleven
 open_menu
 wins D1-open
@@ -482,5 +499,6 @@ wins D2-sub-open
 shot D2-twelve
 ax dump "Twelve rows" > /dev/null
 stop_app
+fi
 
 mark "done"

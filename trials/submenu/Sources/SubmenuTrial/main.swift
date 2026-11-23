@@ -48,6 +48,22 @@ final class MenuWatcher {
         }
     }
 
+    /// What the open menu shows now: the live rows of the top menu and of the two live submenus.
+    func snapshot(_ why: String) {
+        guard let top = firstTracked else { return }
+        func titles(_ menu: NSMenu) -> String {
+            menu.items.filter { !$0.isSeparatorItem }.map { item in
+                (item == menu.highlightedItem ? "*" : "") + item.title
+            }.filter { $0.contains("row") || $0.contains("renamed") }.joined(separator: "|")
+        }
+        var text = "shows [\(why)] top=\(titles(top))"
+        for item in top.items where item.title.hasPrefix("Live submenu") {
+            if let sub = item.submenu { text += " \(item.title.suffix(1))=\(titles(sub))" }
+        }
+        text += " highlighted=\"\(top.highlightedItem?.title ?? "none")\""
+        log(text)
+    }
+
     private func label(_ menu: NSMenu) -> String {
         if let index = menus.firstIndex(where: { $0 === menu }) { return "m\(index + 1)" }
         menus.append(menu)
@@ -78,6 +94,7 @@ final class MenuWatcher {
             text += " itemIndex=\(index)"
         }
         log(text)
+        if name == "NSMenuItemSelectedNotification" { snapshot("at selection") }
     }
 }
 
@@ -129,6 +146,12 @@ final class LiveModel: ObservableObject {
         }
         let list = rows.map { "\($0.id)=\($0.title)" }.joined(separator: ",")
         log("model change #\(counter) op=\(op) header=\"\(header)\" rows=[\(list)] tracking=\(RunLoop.current.currentMode?.rawValue ?? "none")")
+        let n = counter
+        for delay in [0.05, 0.4] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                MenuWatcher.shared.snapshot("change #\(n) +\(Int(delay * 1000))ms")
+            }
+        }
     }
 }
 
@@ -173,6 +196,18 @@ struct MainMenu: View {
                 button("Twelve row \(n)", id: "twelve\(n)")
             }
         }
+        // The live submenus sit above the changing rows, so their own rows never move.
+        Menu("Live submenu P") {
+            ForEach(model.rows.indices, id: \.self) { index in
+                let shown = model.rows[index]
+                Button("SP \(shown.title)") { pressByPosition(index, shown: shown, where: "sub") }
+            }
+        }
+        Menu("Live submenu I") {
+            ForEach(model.rows) { row in
+                Button("SI \(row.title)") { pressById(row, where: "sub") }
+            }
+        }
         Divider()
         Text(model.header)
         // Rows keyed by position: the action looks the row up again when it runs.
@@ -184,17 +219,6 @@ struct MainMenu: View {
         // Rows keyed by a stable id.
         ForEach(model.rows) { row in
             Button("I \(row.title)") { pressById(row, where: "top") }
-        }
-        Menu("Live submenu P") {
-            ForEach(model.rows.indices, id: \.self) { index in
-                let shown = model.rows[index]
-                Button("SP \(shown.title)") { pressByPosition(index, shown: shown, where: "sub") }
-            }
-        }
-        Menu("Live submenu I") {
-            ForEach(model.rows) { row in
-                Button("SI \(row.title)") { pressById(row, where: "sub") }
-            }
         }
         Divider()
         Button("Quit SubmenuTrial") {

@@ -5,6 +5,9 @@
 //   trialtool move <x> <y>          moves the pointer there in small steps (CGEvent mouseMoved)
 //   trialtool click <x> <y>         moves there, then left button down and up
 //   trialtool where                 where the pointer is now
+//   trialtool clickafter <log> <ms> <x> <y>   moves there, waits for the next "model change" line
+//                                   in the log, waits <ms> more, then clicks (all within 8 s)
+//   trialtool watch <seconds> <label>   samples the menu windows every 50 ms, prints each change
 import AppKit
 import ApplicationServices
 import CoreGraphics
@@ -37,6 +40,27 @@ func moveTo(_ target: CGPoint) {
     }
 }
 
+func click(_ target: CGPoint) {
+    let down = CGEvent(mouseEventSource: source, mouseType: .leftMouseDown, mouseCursorPosition: target, mouseButton: .left)
+    let up = CGEvent(mouseEventSource: source, mouseType: .leftMouseUp, mouseCursorPosition: target, mouseButton: .left)
+    down?.setIntegerValueField(.mouseEventClickState, value: 1)
+    up?.setIntegerValueField(.mouseEventClickState, value: 1)
+    down?.post(tap: .cghidEventTap)
+    usleep(60_000)
+    up?.post(tap: .cghidEventTap)
+}
+
+/// The SubmenuTrial menu windows on screen (layer 101), as "x,y,w,h" strings.
+func menuWindows() -> [String] {
+    let list = (CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]]) ?? []
+    return list.compactMap { info in
+        guard info[kCGWindowOwnerName as String] as? String == "SubmenuTrial",
+              info[kCGWindowLayer as String] as? Int == 101,
+              let b = info[kCGWindowBounds as String] as? [String: Any] else { return nil }
+        return "\(b["X"] ?? "?"),\(b["Y"] ?? "?"),\(b["Width"] ?? "?"),\(b["Height"] ?? "?")"
+    }.sorted()
+}
+
 func point(_ index: Int) -> CGPoint {
     CGPoint(x: Double(args[index]) ?? 0, y: Double(args[index + 1]) ?? 0)
 }
@@ -56,15 +80,55 @@ case "click":
     let target = point(2)
     moveTo(target)
     usleep(150_000)
-    let down = CGEvent(mouseEventSource: source, mouseType: .leftMouseDown, mouseCursorPosition: target, mouseButton: .left)
-    let up = CGEvent(mouseEventSource: source, mouseType: .leftMouseUp, mouseCursorPosition: target, mouseButton: .left)
-    down?.setIntegerValueField(.mouseEventClickState, value: 1)
-    up?.setIntegerValueField(.mouseEventClickState, value: 1)
-    down?.post(tap: .cghidEventTap)
-    usleep(80_000)
-    up?.post(tap: .cghidEventTap)
+    click(target)
     usleep(100_000)
     out("click at \(target) pointer now at \(pointer())")
+case "clickafter":
+    let path = args[2]
+    let delay = UInt32(args[3]) ?? 0
+    let target = point(4)
+    moveTo(target)
+    guard let handle = FileHandle(forReadingAtPath: path) else {
+        out("clickafter: cannot read the log")
+        exit(1)
+    }
+    handle.seekToEndOfFile()
+    let deadline = Date().addingTimeInterval(8)
+    var seen: String?
+    while seen == nil && Date() < deadline {
+        let data = handle.availableData
+        if let text = String(data: data, encoding: .utf8),
+           let line = text.split(separator: "\n").first(where: { $0.contains("model change") }) {
+            seen = String(line.prefix(60))
+        } else {
+            usleep(10_000)
+        }
+    }
+    guard let seen else {
+        out("clickafter: no model change within 8 s, no click")
+        exit(1)
+    }
+    let seenAt = stamp()
+    usleep(delay * 1000)
+    let before = menuWindows()
+    click(target)
+    out("clickafter: saw [\(seen)] at \(seenAt), clicked \(target) \(delay) ms later; menu windows just before the click: \(before)")
+case "watch":
+    let seconds = Double(args[2]) ?? 5
+    let label = args.count > 3 ? args[3] : ""
+    let end = Date().addingTimeInterval(seconds)
+    var last: [String]? = nil
+    var samples = 0
+    while Date() < end {
+        let now = menuWindows()
+        samples += 1
+        if now != last {
+            out("watch [\(label)] menu windows=\(now.count) \(now)")
+            last = now
+        }
+        usleep(50_000)
+    }
+    out("watch [\(label)] done after \(samples) samples")
 case "windows":
     let label = args.count > 2 ? args[2] : ""
     let list = (CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]]) ?? []

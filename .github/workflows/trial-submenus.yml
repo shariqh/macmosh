@@ -46,6 +46,10 @@ jobs:
         timeout-minutes: 15
         env:
           TRIAL_OUT: ${{ runner.temp }}/out
+          # Run 1 (all phases) settled A, B and D and showed posted pointer events work on both
+          # runners; this run repeats only the live-model phase, reworked.
+          TRIAL_PHASES: C
+          TRIAL_POINTER: "1"
         run: |
           trials/submenu/drive.sh
           echo "---- log ----"
