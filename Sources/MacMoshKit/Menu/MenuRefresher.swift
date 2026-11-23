@@ -40,7 +40,7 @@ public final class MenuRefresher: ObservableObject {
         self.log = log
         self.pause = pause
         self.menu = MenuLines(symbol: MenuModel.stillCheckingSymbol,
-                         items: [.line("Checking…", indent: 0)])
+                              entries: [MenuEntry(id: "top:checking", title: "Checking…")])
     }
 
     /// Loads the list, checks every workhorse, saves what the reports changed and builds the menu.
@@ -68,7 +68,7 @@ public final class MenuRefresher: ObservableObject {
             list = try await Task.detached { try load() }.value
         } catch {
             menu = MenuLines(symbol: "exclamationmark.triangle",
-                        items: [.line(StatusFormat.storeMessage(error), indent: 0)])
+                             entries: [MenuEntry(id: "top:unreadable", title: StatusFormat.storeMessage(error))])
             missesInARow = 0
             logRefresh(MenuLog.listUnreadable)
             return
