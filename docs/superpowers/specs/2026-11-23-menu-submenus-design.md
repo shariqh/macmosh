@@ -28,7 +28,7 @@ Check now
 Quit MacMosh
 ```
 
-`▸` marks a row that opens a submenu. With six desks the top level drops from 35 rows today (six open desks, section 3) to 11 (both counts leave out Quit and include the separator above Add a Mac…). While the menu is open it holds still: a background check never changes it under his pointer, and what the check found shows the next time he opens it.
+`▸` marks a row that opens a submenu. With six desks the top level drops from 35 rows today (six open desks, section 3) to 11 (both counts leave out Quit and include the separator above Add a Mac…). While the menu is open and shows submenus, it holds still: a background check never changes it under his pointer, and what the check found shows the next time he opens it.
 
 ## 2. Words used
 
@@ -65,7 +65,7 @@ And when he approved that proposal:
 
 > "build it and also update the menubar to show each tab in a session as a line item so i can click on it and it takes me to the right tab"
 
-Today the menu is one flat list (`Sources/MacMoshKit/Menu/MenuModel.swift`, `readyItems`). Each open desk takes four rows: its title, `New window in <name>`, `Rename <name>…` and `Remove <name>…`. With one workhorse and six open desks that is 35 rows: the headline, 24 desk rows, six workhorse rows (New desk…, Share screen, Restart…, the lid-closed switch, the summary line and the home-address line), Run the checklist…, a separator, Add a Mac… and Check now. A line per window would make it longer still.
+Today the menu shows one flat list (`Sources/MacMoshKit/Menu/MenuModel.swift`; `readyItems` at commit 2b9075b, built as a tree and flattened since step 1). Each open desk takes four rows: its title, `New window in <name>`, `Rename <name>…` and `Remove <name>…`. With one workhorse and six open desks that is 35 rows: the headline, 24 desk rows, six workhorse rows (New desk…, Share screen, Restart…, the lid-closed switch, the summary line and the home-address line), Run the checklist…, a separator, Add a Mac… and Check now. A line per window would make it longer still.
 
 ## 4. Constraints
 
@@ -83,25 +83,25 @@ Today the menu is one flat list (`Sources/MacMoshKit/Menu/MenuModel.swift`, `rea
 
 ### 4.2 What the code imposes
 
-Read from the repository at commit 2b9075b, and from pull request #106's branch where it says so.
+Read from the repository at commit 2b9075b, and from pull request #106's branch where it says so. Two pull requests merged after that reading: #106 (commit c52bb50) and main-window step 1, #109 (commit eb77d6c). Where they change a fact below, it says so; the line numbers given are those of eb77d6c.
 
-- **The menu model is flat.** `MenuItem` has a title, an action, an indent and a separator flag, and no children or id (`MenuModel.swift`). Step 1 of the main window (issue #108, being built) builds the menu as a tree and then flattens it, with no visible change. That tree is what this design draws as submenus.
+- **The menu model.** At 2b9075b it was flat: `MenuItem` has a title, an action, an indent and a separator flag, and no children or id (`MenuModel.swift`). Step 1 of the main window (issue #108, merged as pull request #109) now builds the menu as a tree of `MenuEntry` (an id, a title, an action, a separator flag and children) and flattens it into `MenuItem`s, with no visible change (`Sources/MacMoshKit/Menu/MenuLines.swift`). That tree is what this design draws as submenus.
 - **The view keys rows by position.** `MenuContent` draws `ForEach(items, id: \.offset)` (`Sources/MacMoshApp/MenuContent.swift:18`).
-- **The "menu opened" signal.** The app's label listens for `NSMenu.didBeginTrackingNotification` and calls `MenuRefresher.menuOpened()` each time (`Sources/MacMoshApp/MacMoshApp.swift:31`). There is no listener for the end of tracking.
+- **The "menu opened" signal.** The app's label listens for `NSMenu.didBeginTrackingNotification` and calls `MenuRefresher.menuOpened()` each time (`Sources/MacMoshApp/MacMoshApp.swift:33`). There is no listener for the end of tracking.
 - **CI counts lines.** The log line `menu refreshed: … lines=<n>` counts `menu.items` (`MenuLog.swift:31`). CI expects `menu refreshed: symbol=plus.circle workhorses=0 lines=2` (`.github/workflows/ci.yml:52`), and `MenuRefresherTests` expects `lines=6` for the waiting state (line 300).
 - **Every action argument is plain characters.** `TabCommand` requires every element to match `^[A-Za-z0-9@%+=:,./_-]+$` (`TabCommand.swift:10`). A window id such as `@3` and an 8-character hex label pass.
 - **Tabs open in the app's own process.** A `.tab` action opens a terminal tab through `osascript` from the app (`TerminalLauncher.swift:40`), the route that holds the Automation permission since sitting 1. A `.run` action runs the bundled helper in the background with a 30-second limit (`MenuActionRunner.swift:17`).
-- **Today's `New window`** runs `desk window` in the background, with no tab (`MenuModel.swift:198`), and the workhorse makes the new window the desk's current one, which is what took over his tab.
+- **Today's `New window`** runs `desk window` in the background, with no tab (`Sources/MacMoshKit/Board/ButtonRules.swift:76`, since step 1; `MenuModel.swift:198` at 2b9075b), and the workhorse makes the new window the desk's current one, which is what took over his tab.
 - **Connecting passes one argument.** The mosh line is `/bin/sh -c 'exec "$HOME/.macmosh/macmosh-host" attach "$1"' macmosh-host <desk>` (`ConnectPlanner.swift:61`). Tabs mode needs iTerm2 (`ConnectRunner.swift`, `TERM_PROGRAM != "iTerm.app"`).
 - **The report already carries a script version.** `HostStatus.scriptVersion` (`HostStatus.swift:79`). Unknown record types are skipped, so an older app ignores new ones.
 - **A parsed window has no id.** `HostStatus.Window` has only an index and a name.
 - **Tests can use a temporary folder.** `Paths.standard()` honours `MACMOSH_SUPPORT_DIR`.
 - **The script's version rule.** "any change to `host/macmosh-host` raises `MACMOSH_HOST_VERSION` and re-runs `scripts/embed-host-script.sh`" (v1 plan, "Every task", rule 8).
-- **Pull request #106 (not merged yet)** makes the script 0.7.0 with views: `attach [--cc] [--window @<id> | --new-window] [--dry-run] <desk>`, a view named `<desk>+<pid>` and tagged with the tmux option `@macmosh-view`, and two new report records after each desk's windows: `windowinfo` (desk, index, window id, whether the desk's own session shows it, how many tabs show it) and `view` (desk, view name, the window it shows, its tabs). An older script refuses an unknown option (`--*) mm_usage_error attach "unknown option $1"`).
+- **Pull request #106 (merged on 2026-11-23 as commit c52bb50)** made the script 0.7.0 with views: `attach [--cc] [--window @<id> | --new-window] [--dry-run] <desk>`, a view named `<desk>+<pid>` and tagged with the tmux option `@macmosh-view`, and two new report records after each desk's windows: `windowinfo` (desk, index, window id, whether the desk's own session shows it, how many tabs show it) and `view` (desk, view name, the window it shows, its tabs). An older script refuses an unknown option (`--*) mm_usage_error attach "unknown option $1"`).
 
 ### 4.3 What Apple's frameworks and the terminals document
 
-Apple's pages were read on 2026-11-23 through the data endpoint behind each page. The terminals' scripting dictionaries were read with `sdef`.
+Apple's pages were read on 2026-11-23 through the data endpoint behind each page. The terminals' scripting dictionaries were read with `sdef`, the macOS command that prints an app's scripting dictionary: the list of commands and properties the app accepts from AppleScript.
 
 | Fact | The exact words | Source |
 |---|---|---|
@@ -110,6 +110,8 @@ Apple's pages were read on 2026-11-23 through the data endpoint behind each page
 | A `Menu` can have a primary action | "The primary action will be performed when the user taps or clicks on the body of the control, and the menu presentation will happen on a secondary gesture, such as on long press or on click of the menu indicator." | [1] |
 | Apple does not promise the same look everywhere | "the system may display the menu differently depending on the device." | [2] |
 | The menu style of a menu-bar item | "A menu bar extra style that renders its contents as a menu that pulls down from the icon in the menu bar." | [4] |
+| The default style, as documented | "The default menu bar extra style." Nothing more: the page does not say it is the same as the menu style. | [4] |
+| A menu-bar item shows a menu | "Display a menu — not a popover — when people click your menu bar extra." | [6] |
 | Use submenus sparingly | "Use submenus sparingly. Each submenu adds complexity to the interface and hides the items it contains." | [5] |
 | One level, about five items | "it's generally best to restrict them to a single level. Also, if a submenu contains more than about five items, consider creating a new menu." | [5] |
 | Frequent items first; an ellipsis when more is needed | "Prefer listing important or frequently used menu items first. … Append an ellipsis to a menu item's label when the action requires more information before it can complete." | [5] |
@@ -135,9 +137,9 @@ Two things are not documented anywhere read for this design: that iTerm2's Apple
 
 ### 5.1 How it was run
 
-A throwaway menu-bar app (`SubmenuTrial`, on the branch `trial-submenus`, commit 949f02d, not merged and kept as evidence) ran on GitHub's macOS 15 runner (macOS 15.8.2, 24H232) and macOS 26 runner (macOS 26.7.2, 25G332), in five runs [16]. Nothing ran on Shariq's Macs.
+A throwaway menu-bar app (`SubmenuTrial`, on the branch `trial-submenus`, not merged and kept as evidence) ran on GitHub's macOS 15 runner (macOS 15.8.2, 24H232) and macOS 26 runner (macOS 26.7.2, 25G332), in five runs [16]. The five runs were made at commits 1bf410d, 43bdae6, 3e760b4, 8dd4fc7 and 949f02d, in that order; 949f02d is the branch's last commit. The trial app never ran on Shariq's Macs; only its build did.
 
-**No person touched it.** The pointer moves, clicks and key presses were posted by a tool (`trialtool`) as CGEvents at the system's event tap, and some key presses and the menu-bar click were sent through System Events (macOS's scripting route into other apps' controls). None of it was a person on a trackpad or a physical keyboard. The app logged every menu notification, every button and primary action, and every model change. A window list sampled every 50 ms showed when a submenu opened and closed. The runner's screen is 1024 × 768 at scale 1, and the screenshots do not draw the pointer.
+**No person touched it.** The pointer moves, clicks and key presses were posted by a tool (`trialtool`) as CGEvents (the low-level mouse and key events macOS delivers to apps) at the system's event tap. In the first phases, System Events (macOS's scripting route into other apps' controls) sent key codes and opened the menu with an accessibility press (AXPress) on the menu-bar item; from run 1's pointer section on, the menu was opened with a posted click. None of it was a person on a trackpad or a physical keyboard. The app logged every menu notification, every button and primary action, and every model change. A window list sampled every 50 ms showed when a submenu opened and closed. The runner's screen is 1024 × 768 at scale 1, and the screenshots do not draw the pointer.
 
 A second agent re-read the logs, the screenshots and the trial's code, and narrowed several of the first agent's conclusions. The tables below use the narrower wording wherever the two disagreed.
 
@@ -148,7 +150,7 @@ A second agent re-read the logs, the screenshots and the trial's code, and narro
 | macOS 15 | Yes. The row has a right chevron. It opens when the posted pointer rests on it, and about 0.25 s after the keyboard highlight reaches the row. The right arrow then moves the highlight into it; the left arrow closes it. The default style and `.menuBarExtraStyle(.menu)` gave the same 27-item tree. |
 | macOS 26 | The same. Rows are 24 px tall, against 22 px on macOS 15. |
 | How it was shown | Posted pointer moves, System Events key codes, the app's `NSMenuWillOpenNotification` and `NSMenuDidCloseNotification` lines, the window list, and screenshots (run 1). |
-| Not shown | The right arrow opening a submenu that was closed: in every keyboard sequence the submenu was already open. Whether the default style and `.menu` differ: they were not independent arms. Which side a submenu opens on: it opened to the left in run 1 and to the right in runs 4 and 5, and the cause was not shown. A real trackpad or keyboard. |
+| Not shown | The right arrow opening a submenu that was closed: in every keyboard sequence the submenu was already open. Whether the default style is the same configuration as `.menu`: both were run and behaved the same, but Apple documents the default only as "The default menu bar extra style." [4], so that is not documented. The daily-Mac tries use MacMosh's own style. Which side a submenu opens on: it opened to the left in run 1 and to the right in runs 4 and 5, and the cause was not shown. A real trackpad or keyboard. |
 
 ### 5.3 Can a row with a submenu also act on a click?
 
@@ -181,7 +183,7 @@ A second agent re-read the logs, the screenshots and the trial's code, and narro
 
 | | |
 |---|---|
-| macOS 15 | The top level redraws live: titles, added and removed rows, and the menu's height all change. Posted clicks on a changing top-level row 50, 400 and 1200 ms after a change ran the action of the row that was clicked (3 clicks per keying). Posted clicks inside an open submenu, at least 1.3 s after a change, also ran the right row. **An open submenu closes at every change, a changed title included.** It comes back about 0.25 s later only if the pointer rests on its parent row. With the pointer inside the submenu it stays closed, and a click where it was closes the whole menu and runs nothing (8 of 8 in run 2). A change also moved or cleared the keyboard highlight in three cases, seen once each, and Return pressed right after one of them ran the row the highlight had jumped to (run 5; in run 4, with Return about 0.6 s later, it ran nothing). In another case the highlight held through four changes, so the cause is not known. |
+| macOS 15 | The top level redraws live: titles, added and removed rows, and the menu's height all change. Posted clicks on a changing top-level row 50, 400 and 1200 ms after a change ran the action of the row that was clicked (3 clicks per keying). Posted clicks inside an open submenu, at least 1.3 s after a change, also ran the right row. **An open submenu closes at every change, a changed title included.** It comes back about 0.25 s later only if the pointer rests on its parent row. With the pointer inside the submenu it stays closed, and a click where it was closes the whole menu and runs nothing (8 of 8 in run 2). A change also moved or cleared the keyboard highlight in three cases, each seen once on each version, and Return pressed right after one of them ran the row the highlight had jumped to (run 5; in run 4, with Return about 0.6 s later, it ran nothing). In another case the highlight held through four changes, so the cause is not known. |
 | macOS 26 | The same, with two differences in the keyboard cases. Return after the highlight jumped ran the row it had jumped to in both runs 4 and 5. In 1 of 4 runs of the last keyboard case (run 5, macOS 26 only), a later Return ran a row nobody aimed at; in the other three, macOS 15's included, Return there ran nothing. |
 | How it was shown | A timer that added, removed or renamed a row every 2 s (6 s in runs 4 and 5), posted clicks timed against the app's "model change" line, the window list, a highlight sampler every 100 ms (run 5), and screenshots (runs 1 to 3). |
 | Not shown | A press within 50 ms of a change. Whether keying rows by id rather than by position makes a difference: all 26 recorded presses ran the row that was shown, but each keying met only one kind of change and too few clicks to tell them apart. A submenu opened by keyboard staying closed after a change: one clean sample per version (run 4). A real trackpad, at MacMosh's real refresh rate. |
@@ -320,10 +322,19 @@ In Tabs mode iTerm2 already shows each tmux window as its own tab, so today's `N
 #### (c) States that are not Ready: unchanged and flat
 
 ```
-Attic · Locked after a restart      Attic · Waiting for login           Attic · Can't reach it
-   <hint>                              <hint>                              <hint>
-   Unlock disk…                        Log in…                             Run the checklist…
-   Run the checklist…                  Run the checklist…
+Attic · Locked after a restart
+   <hint>
+   Unlock disk…  (you type the Mac's password)
+   Run the checklist…
+
+Attic · Waiting for login
+   <hint>
+   Log in…  (opens Screen Sharing)
+   Run the checklist…
+
+Attic · Can't reach it
+   <hint>
+   Run the checklist…
 ```
 
 Can't verify it, Needs setting up (with `Pair…` or `Finish setting up…`), Waiting for the desk server and Still checking… keep exactly today's lines. None of them has a submenu.
@@ -338,7 +349,7 @@ Attic · Ready                           ▸
 ─────
 Den · Locked after a restart
    <hint>
-   Unlock disk…
+   Unlock disk…  (you type the Mac's password)
    Run the checklist…
 ─────
 Add a Mac…
@@ -371,7 +382,7 @@ Terms used in the table:
 
 | Line | Click |
 |---|---|
-| A desk's row | Resting the pointer on it opens its submenu. A click (or Return) runs the same action as the submenu's first line, and the menu closes. The first line stays in the submenu too. |
+| A desk's row | Resting the pointer on it opens its submenu. A click runs the same action as the submenu's first line, and the menu closes. Return on the row is expected to do the same; the trial showed it only with the submenu closed (section 5.3). The first line stays in the submenu too. |
 | The workhorse's row (`Attic · Ready`) | Resting the pointer on it opens its submenu. It has no action of its own. |
 | `Open <desk>` (one window, no tab) | `.tab(["connect", id, desk, "--window", "@n"])` |
 | `Open <desk> in K tabs` (every window has no tab) | `.tabs`: one `connect … --window @n` per window, in window order |
@@ -385,7 +396,7 @@ Terms used in the table:
 | `New window` (0.8.0 or newer, mosh or ssh) | `.tab(["connect", id, desk, "--new-window"])`. Tabs that are already open keep what they show. |
 | `New window` (older script or Tabs mode) | Today's `.run(["desk", "window", id, desk])` |
 | `Open <desk>` (older script or Tabs mode) | Today's `.tab(["connect", id, desk])` |
-| Rename… and Remove… (Remove still with `--ask`), New desk…, Restart…, the lid-closed line, Run the checklist…, Fix…, Unlock disk…, Log in…, Pair…, Share screen, Add a Mac…, Check now | Unchanged |
+| Rename… and Remove… (Remove still with `--ask`), New desk…, Restart…, the lid-closed line, Run the checklist…, Fix…, Unlock disk…, Log in…, Pair…, Finish setting up…, Share screen, Add a Mac…, Check now | Unchanged |
 | Text lines | Nothing |
 
 `.tabs` and `.focus` are two new actions. Like `.tab`, they run in the app's own process (`MenuActionRunner`), the route that already holds the Automation permission, not through the 30-second background helper. What `.focus` does:
@@ -412,7 +423,7 @@ Terms used in the table:
 
 ### 6.4 The menu holds still while it is open
 
-The trial showed that every change to the menu's content, a changed title included, closes an open submenu. It comes back only if the pointer is resting on its parent row, and a click where it was closes the whole menu and runs nothing. A change also moved the keyboard highlight, and Return then ran a row he had not aimed at (section 5.6). So:
+The trial showed that every change to the menu's content, a changed title included, closes an open submenu. It comes back only if the pointer is resting on its parent row, and a click where it was closes the whole menu and runs nothing. A change sometimes moved the keyboard highlight, and Return right after it ran the row the highlight had jumped to (section 5.6). So:
 
 1. The refresher never publishes a menu equal to the one on screen.
 2. While the menu is open and the menu on screen has at least one submenu, a different menu waits. It is applied when the menu closes, at `didEndTracking`.
@@ -423,7 +434,7 @@ A changed title waits like any other change, because the trial showed that a tit
 
 This rule is pure and lives in MacMoshKit, with tests (section 9). The app adds a listener for `NSMenu.didEndTrackingNotification` beside today's listener for the beginning. The trial showed exactly one of each per opening and none for a submenu (section 5.5), so today's "menu opened" signal stays as it is, and the base design's gate on it (`MenuOpenGate`) is not built.
 
-Two timing details (agent's calls, section 12): the waiting menu is applied on the main actor's next turn after `didEndTracking`, because the trial showed the end of tracking arriving before the chosen line's action runs (section 5.7); and a `didBeginTracking` that arrives while the refresher still thinks the menu is open first applies any waiting menu, so a lost end notice could cost one stale opening, not a menu that never changes again.
+Two timing details (agent's calls, section 12): the waiting menu is applied on the main actor's next turn after `didEndTracking`, because the trial showed the end of tracking arriving before the chosen line's action runs (section 5.7); and a `didBeginTracking` that arrives while the refresher still thinks the menu is open first applies any waiting menu, so a lost end notice could cost one stale opening, not a menu that never changes again. That the next turn comes after the chosen line's action has been sent is expected, not shown, so the app writes a log line when it applies a waiting menu, and the log shows which came first.
 
 ### 6.5 What moves into the main window later
 
@@ -438,7 +449,7 @@ Once the main window's forms exist (its step 4 for desks and step 6 for Settings
 
 ## 7. The workhorse script's addition (0.8.0)
 
-Pull request #106 merges as reviewed, as script 0.7.0 with views. The labels are their own small pull request on top of it, as script 0.8.0:
+Pull request #106 merged as reviewed, as script 0.7.0 with views. The labels are their own small pull request on top of it, as script 0.8.0:
 
 1. **`attach --label <word>`.** The word must match `^[0-9a-f]{4,32}$`; anything else is a usage error.
    - With `--cc` (Tabs mode): a usage error.
@@ -507,7 +518,7 @@ Otherwise it uses shape (b).
 
 ### 8.4 The select scripts
 
-Two new launcher scripts, sent as today's are (`osascript -e <script> <tty>`, `TerminalLauncher.swift:40`). Each returns `ok` or `gone`. Neither has been run yet (section 11).
+Two new launcher scripts, sent as today's are, through `osascript`, the macOS command that runs AppleScript (`osascript -e <script> <tty>`, `TerminalLauncher.swift:40`). Each returns `ok` or `gone`. Neither has been run yet (section 11).
 
 iTerm2:
 
@@ -561,9 +572,9 @@ Every property these scripts use is in the dictionaries (section 4.3): iTerm2's 
 
 **The Automation permission.** Selecting a tab sends Apple events from the same app to the same terminal as opening one does, so the existing permission is expected to cover it. That is checked on the daily Mac.
 
-### 8.5 Terminal cannot open a new tab by script
+### 8.5 Terminal: no new tab from `do script`, so a window per tab
 
-Terminal's dictionary, printed on both runners (Terminal 2.14 on macOS 15 and 2.15 on macOS 26), defines `do script` as "Runs a UNIX shell script or command." Its only target parameter is `in`, "The tab in which to execute the command", which takes a tab or a window that already exists, and its result is "The tab the command was executed in." There is no "new tab" form in it [14]. So in Terminal, MacMosh keeps opening a new window for each tab, as the v1 design's section 7.7 and call 20 already say, and `.tabs` opens one Terminal window per tab. Bringing a Terminal window forward by its terminal device (section 8.4) still applies. The base design's attempt to open Terminal tabs is dropped.
+`do script` has no form that asks for a new tab, and the separate `do script in new tab` has not been tried, so MacMosh keeps a window per tab in Terminal. Terminal's dictionary, printed on both runners (Terminal 2.14 on macOS 15 and 2.15 on macOS 26), defines `do script` as "Runs a UNIX shell script or command." Its only target parameter is `in`, "The tab in which to execute the command", which takes a tab or a window that already exists, and its result is "The tab the command was executed in." There is no "new tab" form in it [14]. So in Terminal, MacMosh keeps opening a new window for each tab, as the v1 design's section 7.7 and call 20 already decide (section 7.7 now also notes the separate command), and `.tabs` opens one Terminal window per tab. Bringing a Terminal window forward by its terminal device (section 8.4) still applies. The base design's attempt to open Terminal tabs is dropped.
 
 What this rests on, exactly: the trial printed only lines 318 to 336 of each runner's dictionary. Issue #105 noted that Terminal 2.15's dictionary read on macOS 27.3 also lists a separate command, `do script in new tab` ("Runs a UNIX shell script or command in a new tab.") [14]. Whether the runners' dictionaries list it was not shown, and nobody has run it; sitting 1's attempt used a different form and stopped at a syntax error (-2741). This design does not use it. Trying it is a separate, later change.
 
@@ -571,10 +582,10 @@ What this rests on, exactly: the trial printed only lines 318 to 336 of each run
 
 ### 9.1 The model
 
-Step 1 of the main window (#108) builds the menu as a tree and flattens it. This design draws that tree. The names below are this design's; the builder of step 1 may have chosen others.
+Step 1 of the main window (#108) builds the menu as a tree and flattens it. This design draws that tree. The outline below was written before step 1 merged (pull request #109). The merged `MenuEntry` differs from it: it holds an id, a title, an action, a separator flag and children, and an entry with both an action and children is a desk's line. S1 follows the merged types and adds what the outline needs on top of them, such as a way to mark a grey text line.
 
 ```swift
-// MacMoshKit/Menu/MenuLines.swift (step 1 renames Menu to MenuLines)
+// MacMoshKit/Menu/MenuLines.swift (step 1 renamed Menu to MenuLines)
 public struct MenuLines: Sendable, Equatable {
   public var symbol: String
   public var entries: [MenuEntry]
@@ -588,7 +599,7 @@ public struct MenuEntry: Sendable, Equatable, Identifiable {
   public var id: String; public var title: String; public var kind: Kind
 }
 public enum MenuAction { case tab([String]), tabs([[String]]), focus(label: String, orOpen: [String]), run([String]), refresh, none }
-MenuModel.build(_ gathered: [Gathered], tabs: [TabRecord], waitingForDeskServer: Bool, now: Date) -> MenuLines
+MenuModel.build(_ gathered: [Gathered], tabs: [TabRecord], waitingForDeskServer: Set<String>, now: Date) -> MenuLines
 ```
 
 - **flatten** turns a submenu into one line at indent d, carrying its primary action or `.none`, with its children at indent d + 1. `lines=` counts the flattened items, so CI's `lines=2` and `MenuRefresherTests`' `lines=6` don't change: those states have no submenus.
@@ -633,9 +644,9 @@ CI's menu check clicks the menu-bar icon through System Events. The trial showed
 
 One issue and one pull request per step, tests first, with a build-log entry, as the plan requires.
 
-1. **Main window, step 1** (issue #108, being built): the tree behind the menu, with no visible change.
+1. **Main window, step 1** (issue #108, merged as pull request #109): the tree behind the menu, with no visible change.
 2. **This documents pull request**: this design, the dated amendments to the main-window design, and the v1 plan and design changes.
-3. **The labels in the workhorse script, 0.8.0** (section 7), after pull request #106 (views, 0.7.0) merges as reviewed. Its issue is filed when it starts.
+3. **The labels in the workhorse script, 0.8.0** (section 7), on top of pull request #106 (views, 0.7.0, merged). Issue #111.
 4. **S1: submenus for every script version** (issue #107). Shape (b) of section 6.1 for every Ready workhorse, with the workhorse's submenu, `New desk…` at the top level, the desk row's primary action, and the hold-still rule. The stored copies of Ready menus and the tests that pin positions change on purpose; blocks that are not Ready must still equal step 1's copies. Waits on step 1.
 5. **S2: a line per window, `New window` in a tab of its own, and going to the right tab** (issue #105, part 2): `HostStatus` reads `windowinfo` and `view`, the `connect` options, the tab records, `ProcessProbe`, the `.tabs` and `.focus` actions, the select scripts, and shape (a), behind the 0.8.0 gate. Waits on steps 3 and 4.
 6. **The lines of section 6.5 leave the menu**, once the main window's forms exist (its steps 4 and 6). Its issue is filed when it starts.
@@ -647,22 +658,23 @@ The main window's steps 2 to 6 go on beside steps 3 to 5 (main-window design, se
 | Unknown | Why it matters | How it is settled |
 |---|---|---|
 | A tap or press on a real trackpad on a desk's row, and a click that arrives before the submenu has opened | The row's click is how he opens a desk | Tried on the daily Mac, try 1 below |
+| Return on a desk's row while its submenu is open | The submenu opens about 0.25 s after the highlight reaches the row (section 5.2), so a person's Return usually lands while it is open; the trial showed Return only with it closed (section 5.3) | Try 1 below |
 | Whether the hold-still rule keeps an open submenu open when a background check lands | It is the reason for the rule | Try 2 below |
-| Whether applying a waiting menu between the end of tracking and the chosen line's action could change which action runs | The trial saw the end come first (section 5.7) | Avoided by applying on the next turn (section 6.4); watched in try 2 |
+| Whether applying a waiting menu between the end of tracking and the chosen line's action could change which action runs | The trial saw the end come first (section 5.7) | Expected to be avoided by applying on the next turn (section 6.4); not shown. A log line records the order of the menu change and the action, and try 2 watches it |
 | Whether iTerm2's select script brings the right tab forward with several windows, a minimized window, and a window on another Space, with no new permission prompt | "Takes me to the right tab" | Try 3 |
 | Whether `TERM_PROGRAM` is `iTerm.app` inside a tab MacMosh opened, and the tty the process reads equals the one iTerm2 reports | The record would point at the wrong tab | Try 4 |
 | Whether a real tab over mosh made with `--window` and with `--new-window` shows its own window, and closing it ends its view within seconds | Pull request #106 left this to a real Mac | Try 5 |
 | iTerm2's Tabs mode on a desk that is in a session group | Pull request #106 left this to a real Mac | Try 6 |
 | The menu's height with six desks on the daily Mac's screen | Scrolling would hide desks | Try 7 |
 | Terminal's select script with several windows, a minimized one and another Space | Decision 4 keeps it | Try 8 (agent's call, section 12) |
-| Whether locking or suspending a tmux client in a view tab closes the tab | Pull request #106 holds this for a decision. Once the labels make every tab the new app opens a view, it applies to every such tab, but only with a tmux lock setting or a deliberate lock or suspend | Decided on pull request #106's thread before S2 ships |
+| Locking or suspending a tmux client in a view tab closes the tab | Pull request #106 left this as it is on purpose and filed it as issue #110. Once the labels make every tab the new app opens a view, it applies to every such tab, but only with a tmux lock setting or a deliberate lock or suspend | Settled on issue #110 before S2 ships |
 | Whether Terminal's `do script in new tab` works | It would give Terminal real tabs | Not tried; a separate, later change (section 8.5) |
 
 ### 11.1 What is tried on the daily Mac before the rollout
 
 The agent builds a test copy of the app and reads the app's log over ssh itself. Shariq is asked only for his hands and eyes.
 
-1. **A tap and a press on a desk's row.** Shariq rests on one desk's row and taps it (tap-to-click), then rests on another and press-clicks it. Then he does both again, clicking as soon as the pointer reaches the row, before its submenu opens. Expect: every click opens (or goes to) that desk, and the menu closes.
+1. **A tap and a press on a desk's row.** Shariq rests on one desk's row and taps it (tap-to-click), then rests on another and press-clicks it. Then he does both again, clicking as soon as the pointer reaches the row, before its submenu opens. Last, he opens the menu, moves the highlight to a desk's row with the arrow keys, waits for its submenu to open, and presses Return. Expect: every click, and the Return, opens (or goes to) that desk, and the menu closes.
 2. **A background check with a submenu open.** Shariq opens the menu, rests on a desk so its submenu opens, moves into the submenu and waits there for a minute while the agent changes something the check will see (a scratch desk it makes and removes). Expect: the submenu stays open and unchanged; the next time he opens the menu, it shows the change.
 3. **iTerm2 brings the right tab forward.** With tabs on three windows of a scratch desk spread over two iTerm2 windows, one window minimized and one on another Space, Shariq clicks each window line. Expect: each click shows that tab, unminimizes or switches Space as needed, and no new permission prompt appears.
 4. **The tab's own record.** In a tab MacMosh opened, the agent reads the tab record. Expect: `terminal` is `iterm2`, and its `tty` equals the `tty` iTerm2 reports for that tab's session.
@@ -676,7 +688,7 @@ If something's off:
 - A click on a desk's row opens only its submenu: S1 ships with the desk's first line as the only way in (the row runs nothing), and the agent brings the choice to Shariq.
 - The submenu still closes when a check lands: the agent reads the app's log for a menu change while the menu was open, which would be a fault in the hold-still rule.
 - A window line brings the wrong tab forward, or a permission prompt appears: S2 is held, and the select script is changed before rollout.
-- A view tab does not end when closed: S2 is held, and the finding goes on pull request #106's follow-up.
+- A view tab does not end when closed: S2 is held, and the finding goes on issue #105 or a new issue.
 
 ## 12. Smaller calls the agent made, for Shariq to check
 
@@ -687,18 +699,20 @@ If something's off:
 5. **`do script in new tab` is recorded as "not used and not tried", not as "absent"**, because the trial printed only part of the dictionary and issue #105 found the command in another copy of it (section 8.5).
 6. **A closed permanent desk's row opens it on a click**, `Open garden`, like every other desk row's first line (section 6.2).
 7. **CI does not test the desk row's click**, because the trial showed that an accessibility press doesn't run a primary action; the model tests check that it equals the first line (section 9.2).
-8. **The view-lock question from pull request #106 is listed as a risk for S2**, because the labels make every tab the new app opens a view (section 11).
+8. **The view-lock question (issue #110, left as it is by pull request #106) is listed as a risk for S2**, because the labels make every tab the new app opens a view (section 11).
 9. **The hold-still type is called `MenuHold` here**; the builder may name it otherwise (section 9.1).
 10. **If a click on a desk's row fails on a real trackpad, S1 ships with the row running nothing** and the first line as the way in, and the choice goes to Shariq (section 11.1).
+11. **A log line when a waiting menu is applied**, because nothing has shown that the next turn comes after the chosen line's action; the log lets try 2 check it (section 6.4).
+12. **Return on a desk's row with its submenu open is part of try 1**, because the trial pressed Return only after closing the submenu (sections 5.3 and 11).
 
 ## 13. Sources
 
-Apple pages were read on 2026-11-23 through the data endpoint behind each page (`https://developer.apple.com/tutorials/data/documentation/<path>.json`).
+Apple pages were read on 2026-11-23 through the data endpoint behind each page: `https://developer.apple.com/tutorials/data/documentation/<path>.json` for the framework pages, and `https://developer.apple.com/tutorials/data/design/human-interface-guidelines/<page>.json` for the Human Interface Guidelines.
 
 1. SwiftUI `Menu`: https://developer.apple.com/documentation/swiftui/menu
 2. Populating SwiftUI menus with adaptive controls: https://developer.apple.com/documentation/swiftui/populating-swiftui-menus-with-adaptive-controls
 3. Menus and commands: https://developer.apple.com/documentation/swiftui/menus-and-commands
-4. `MenuBarExtraStyle.menu`: https://developer.apple.com/documentation/swiftui/menubarextrastyle/menu
+4. `MenuBarExtraStyle.menu`: https://developer.apple.com/documentation/swiftui/menubarextrastyle/menu ; `MenuBarExtraStyle.automatic`: https://developer.apple.com/documentation/swiftui/menubarextrastyle/automatic
 5. Human Interface Guidelines, Menus: https://developer.apple.com/design/human-interface-guidelines/menus
 6. Human Interface Guidelines, The menu bar: https://developer.apple.com/design/human-interface-guidelines/the-menu-bar
 7. `NSMenu.didBeginTrackingNotification`: https://developer.apple.com/documentation/appkit/nsmenu/didbegintrackingnotification
@@ -710,7 +724,7 @@ Apple pages were read on 2026-11-23 through the data endpoint behind each page (
 13. Terminal's scripting dictionary, `sdef /System/Applications/Utilities/Terminal.app` (Terminal 2.15 on macOS 27.3), read 2026-11-23: tab `tty` and `selected`, window `index` and `miniaturized`.
 14. Terminal's `do script`: printed on GitHub's runners in trial run 1 (Terminal 2.14 on macOS 15.8.2, Terminal 2.15 on macOS 26.7.2), dictionary lines 318 to 336; `do script in new tab`: the same `sdef` as [13], noted in issue #105; sitting 1's attempt: `docs/sittings/sitting-1-results.md`.
 15. Manual pages on macOS 27.3: `kill(2)`, `ttyname(3)`, `tmux(1)` (3.8, user options); `/etc/zshrc` and `/etc/zshrc_Apple_Terminal`.
-16. The trial: branch `trial-submenus`, commit 949f02d (`trials/submenu/`); runs https://github.com/shariqh/macmosh/actions/runs/45273165480 , https://github.com/shariqh/macmosh/actions/runs/45275259655 , https://github.com/shariqh/macmosh/actions/runs/45276114716 , https://github.com/shariqh/macmosh/actions/runs/45276981510 and https://github.com/shariqh/macmosh/actions/runs/45277783257 .
-17. Issues: #107 (submenus), #105 (a new window in a tab of its own, a line per window), #108 (main window, step 1), #94 (the main window). Pull request #106 (views, script 0.7.0).
+16. The trial: branch `trial-submenus` (`trials/submenu/`), last commit 949f02d. Runs 1 to 5, at commits 1bf410d, 43bdae6, 3e760b4, 8dd4fc7 and 949f02d: https://github.com/shariqh/macmosh/actions/runs/45273165480 , https://github.com/shariqh/macmosh/actions/runs/45275259655 , https://github.com/shariqh/macmosh/actions/runs/45276114716 , https://github.com/shariqh/macmosh/actions/runs/45276981510 and https://github.com/shariqh/macmosh/actions/runs/45277783257 .
+17. Issues: #107 (submenus), #105 (a new window in a tab of its own, a line per window), #108 (main window, step 1), #94 (the main window), #110 (locking or suspending a view tab closes it), #111 (the labels, script 0.8.0). Pull requests: #106 (views, script 0.7.0, merged as c52bb50), #109 (main window, step 1, merged as eb77d6c).
 18. The v1 design (sections 5.1, 7.3, 7.7, calls 20 and 35), the v1 plan ("Every task", the task table, Tasks 28 to 31), and the main-window design (sections 7.6, 7.7 and 8).
-19. Code read for this design, at commit 2b9075b: `Sources/MacMoshApp/MacMoshApp.swift`, `MenuContent.swift`; `Sources/MacMoshKit/Menu/` (`MenuModel`, `MenuActionRunner`, `MenuLog`, `MenuRefresher`); `Sources/MacMoshKit/Terminal/` (`TabCommand`, `TerminalLauncher`, `ITermLauncher`, `AppleTerminalLauncher`); `Sources/MacMoshKit/Connect/` (`ConnectPlanner`, `ConnectRunner`); `Sources/MacMoshKit/Host/HostStatus.swift`; `Paths.swift`; `.github/workflows/ci.yml`; `Tests/MacMoshKitTests/` (`MenuModelTests`, `MenuRefresherTests`); and `host/macmosh-host` on pull request #106's branch.
+19. Code read for this design, at commit 2b9075b, with the places that pull requests #106 and #109 changed read again at eb77d6c: `Sources/MacMoshApp/MacMoshApp.swift`, `MenuContent.swift`; `Sources/MacMoshKit/Menu/` (`MenuModel`, `MenuActionRunner`, `MenuLog`, `MenuRefresher`); `Sources/MacMoshKit/Terminal/` (`TabCommand`, `TerminalLauncher`, `ITermLauncher`, `AppleTerminalLauncher`); `Sources/MacMoshKit/Connect/` (`ConnectPlanner`, `ConnectRunner`); `Sources/MacMoshKit/Host/HostStatus.swift`; `Paths.swift`; `.github/workflows/ci.yml`; `Tests/MacMoshKitTests/` (`MenuModelTests`, `MenuRefresherTests`); `Sources/MacMoshKit/Menu/MenuLines.swift` and `Sources/MacMoshKit/Board/ButtonRules.swift` at eb77d6c; and `host/macmosh-host` on pull request #106's branch.
