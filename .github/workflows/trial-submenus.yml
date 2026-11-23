@@ -47,9 +47,9 @@ jobs:
         env:
           TRIAL_OUT: ${{ runner.temp }}/out
           # Run 1 (all phases) settled A, B and D and showed posted pointer events work on both
-          # runners; run 2 settled the top-level part of C. This run: live submenus (S) and the
-          # pointer on rows that do nothing (E).
-          TRIAL_PHASES: SE
+          # runners; run 2 settled the top-level part of C; run 3 settled E. This run: live
+          # submenus with a slower tick (S) and the keyboard while the model changes (K).
+          TRIAL_PHASES: SK
           TRIAL_POINTER: "1"
         run: |
           trials/submenu/drive.sh

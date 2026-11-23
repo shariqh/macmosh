@@ -7,6 +7,7 @@
 //   trialtool where                 where the pointer is now
 //   trialtool clickafter <log> <ms> <x> <y>   moves there, waits for the next "model change" line
 //                                   in the log, waits <ms> more, then clicks (all within 8 s)
+//   trialtool keys <code> <count> <gap ms>   posts that key <count> times (CGEvent key down/up)
 //   trialtool watch <seconds> <label>   samples the menu windows every 50 ms, prints each change
 import AppKit
 import ApplicationServices
@@ -148,6 +149,17 @@ case "subclick":
     out("subclick: on the target, menu windows \(menuWindows())")
     click(target)
     out("subclick: clicked \(target)")
+case "keys":
+    let code = CGKeyCode(args[2]) ?? 0
+    let count = Int(args[3]) ?? 1
+    let gap = UInt32(args[4]) ?? 150
+    for _ in 0..<count {
+        CGEvent(keyboardEventSource: source, virtualKey: code, keyDown: true)?.post(tap: .cghidEventTap)
+        usleep(30_000)
+        CGEvent(keyboardEventSource: source, virtualKey: code, keyDown: false)?.post(tap: .cghidEventTap)
+        usleep(gap * 1000)
+    }
+    out("keys: posted key \(code) \(count) times")
 case "watch":
     let seconds = Double(args[2]) ?? 5
     let label = args.count > 3 ? args[3] : ""

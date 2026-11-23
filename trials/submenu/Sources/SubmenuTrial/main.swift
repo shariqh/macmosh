@@ -3,7 +3,7 @@
 // Environment:
 //   TRIAL_LOG     file the app appends one line per event to
 //   TRIAL_STYLE   "plain" (no style modifier, the default) or "menu" (.menuBarExtraStyle(.menu))
-//   TRIAL_LIVE    "1" starts a task that changes the model every 2 seconds
+//   TRIAL_LIVE    "1" starts a task that changes the model every 2 seconds (TRIAL_TICK seconds if set)
 //   TRIAL_LAYOUT  "main" (default) or "eleven" (11 top-level rows, one a 12-row submenu)
 import AppKit
 import SwiftUI
@@ -115,7 +115,7 @@ final class LiveModel: ObservableObject {
     func start() {
         Task { @MainActor in
             while true {
-                try? await Task.sleep(for: .seconds(2))
+                try? await Task.sleep(for: .seconds(Double(env["TRIAL_TICK"] ?? "2") ?? 2))
                 step()
             }
         }

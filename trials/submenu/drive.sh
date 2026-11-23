@@ -439,13 +439,14 @@ fi
 
 ############################################################ S: live submenus, reworked after run 2
 if [[ "$PHASES" == *S* ]]; then
-start_app S-live TRIAL_STYLE=plain TRIAL_LIVE=1
+# A 6-second tick here, so a click can land inside the submenu with no change in between.
+start_app S-live TRIAL_STYLE=plain TRIAL_LIVE=1 TRIAL_TICK=6
 
 # S1: the pointer sits inside the open submenu (on its second row) while the model changes.
 open_menu
 read -r pidx px py <<< "$(find_xy top "Live submenu I")"
-read -r _ _ py2 <<< "$(ax posat top "$((pidx + 1))" | grep '^found' | tail -n 1 | awk '{print $2, $3, $4}')"
-rowh=$((py2 - py))
+read -r _ _ py2 <<< "$(ax posat top "$((pidx - 1))" | grep '^found' | tail -n 1 | awk '{print $2, $3, $4}')"
+rowh=$((py - py2))
 tool move "$px" "$py"
 sleep 0.8
 read -r _ sx _ <<< "$(ax posat "Live submenu I" 1 | grep '^found' | tail -n 1 | awk '{print $2, $3, $4}')"
@@ -453,7 +454,7 @@ say "S geometry: parent row centre $px,$py, row height $rowh, submenu centre x $
 mark "S1 pointer rests on the second row of the open Live submenu I; window samples for 5 s"
 tool move "$sx" "$py"
 tool move "$sx" "$((py + rowh))"
-tool watch 5 S1
+tool watch 8 S1
 shot S1-pointer-in-submenu
 close_all
 
@@ -468,24 +469,65 @@ for sub in P I P I; do
     close_all
 done
 
-# S3: keyboard. The pointer is parked outside before the menu opens (AXPress), so no row is
-# highlighted by the pointer.
+stop_app
+fi
+
+############################################################ K: keyboard while the model changes
+# Keys are posted by trialtool (fast); the menu is opened by AXPress with the pointer parked
+# outside, so only the keyboard moves the highlight. The app logs what is highlighted 50 ms and
+# 400 ms after every change.
+if [[ "$PHASES" == *K* ]]; then
+start_app K-live TRIAL_STYLE=plain TRIAL_LIVE=1
 tool move 300 400
 open_ax
-mark "S3 keyboard opens Live submenu P; window samples for 5 s"
-nav_to top "Live submenu P"
-key 124 right
-tool watch 5 S3
-shot S3-keyboard-submenu
+wait_change ""
+mark "K1 three down arrows right after a change (to Plain button), then no keys for 7 s"
+tool keys 125 3 120
+tool watch 7 K1
+ax selected top > /dev/null
+shot K1-after-idle
+close_all
+
+tool move 300 400
+open_ax
+wait_change ""
+mark "K2 two up arrows right after a change (to the last I row), then no keys for 7 s"
+tool keys 126 2 120
+tool watch 7 K2
+ax selected top > /dev/null
+shot K2-after-idle
+close_all
+
+tool move 300 400
+open_ax
+wait_change ""
+mark "K3 seven down arrows and a right arrow right after a change (into Live submenu P), then no keys for 7 s"
+tool keys 125 7 100
+tool keys 124 1 100
+tool watch 7 K3
+ax selected top > /dev/null
 ax selected "Live submenu P" > /dev/null
-mark "S3 down arrow, then return 100 ms after a change"
-key 125 down
-ax selected "Live submenu P" > /dev/null
+shot K3-after-idle
+mark "K4 down arrow, then return 100 ms after the next change"
+tool keys 125 1 100
 wait_change ""
 sleep 0.1
-key 36 return
+tool keys 36 1 100
 sleep 1
-wins S3-after
+wins K4-after
+close_all
+
+tool move 300 400
+open_ax
+wait_change ""
+mark "K5 seven down arrows and a right arrow right after a change, return 300 ms later (same tick)"
+tool keys 125 7 100
+tool keys 124 1 100
+tool keys 125 1 100
+sleep 0.3
+tool keys 36 1 100
+sleep 1
+wins K5-after
 close_all
 stop_app
 fi
