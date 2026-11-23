@@ -2,15 +2,15 @@ import Foundation
 import Testing
 @testable import MacMoshKit
 
-/// Every id in a tree, depth first.
-private func allIDs(_ entries: [MenuEntry]) -> [String] {
-    entries.flatMap { [$0.id] + allIDs($0.children) }
+/// Every id in a tree, depth first: an entry, its submenu, then the lines under it.
+func allIDs(_ entries: [MenuEntry]) -> [String] {
+    entries.flatMap { [$0.id] + allIDs($0.submenu) + allIDs($0.children) }
 }
 
-private func entry(_ entries: [MenuEntry], _ id: String) -> MenuEntry? {
+func entry(_ entries: [MenuEntry], _ id: String) -> MenuEntry? {
     for e in entries {
         if e.id == id { return e }
-        if let found = entry(e.children, id) { return found }
+        if let found = entry(e.submenu, id) ?? entry(e.children, id) { return found }
     }
     return nil
 }
@@ -54,6 +54,54 @@ private func twoWithTheSameDesk() -> MenuLines {
             MenuItem(title: "", action: .none, indent: 0, isSeparator: true),
             MenuItem(title: "E", action: .none, indent: 0, isSeparator: false),
         ])
+    }
+
+    /// A line that opens a submenu is one line, its submenu's lines come right after it one level in and
+    /// marked as inside a submenu, then the lines drawn under it in the same menu.
+    @Test func flatteningASubmenuMarksTheLineThatOpensItAndTheLinesInIt() {
+        let tree = [
+            MenuEntry(id: "h", title: "Head", submenu: [
+                MenuEntry(id: "h:a", title: "A", action: .refresh),
+                .separator(id: "h:sep1"),
+                MenuEntry(id: "h:t", title: "T"),
+            ], children: [
+                MenuEntry(id: "d", title: "Desk", action: .tab(["x"]), submenu: [
+                    MenuEntry(id: "d:o", title: "Open", action: .tab(["x"])),
+                ]),
+                MenuEntry(id: "n", title: "New", action: .tab(["n"])),
+            ]),
+        ]
+        #expect(MenuEntry.flatten(tree) == [
+            MenuItem(title: "Head", action: .none, indent: 0, isSeparator: false, opensSubmenu: true),
+            MenuItem(title: "A", action: .refresh, indent: 1, isSeparator: false, inSubmenu: true),
+            MenuItem(title: "", action: .none, indent: 1, isSeparator: true, inSubmenu: true),
+            MenuItem(title: "T", action: .none, indent: 1, isSeparator: false, inSubmenu: true),
+            MenuItem(title: "Desk", action: .tab(["x"]), indent: 1, isSeparator: false, opensSubmenu: true),
+            MenuItem(title: "Open", action: .tab(["x"]), indent: 2, isSeparator: false, inSubmenu: true),
+            MenuItem(title: "New", action: .tab(["n"]), indent: 1, isSeparator: false),
+        ])
+    }
+
+    @Test func aMenuSaysWhetherAnyLineOpensASubmenu() {
+        let flat = MenuLines(symbol: "x", entries: [
+            MenuEntry(id: "a", title: "A", children: [MenuEntry(id: "b", title: "B")]),
+        ])
+        #expect(!flat.hasSubmenu)
+        let deep = MenuLines(symbol: "x", entries: [
+            MenuEntry(id: "a", title: "A", children: [
+                MenuEntry(id: "b", title: "B", submenu: [MenuEntry(id: "c", title: "C")]),
+            ]),
+        ])
+        #expect(deep.hasSubmenu)
+        #expect(MenuEntry(id: "s", title: "S", submenu: [MenuEntry(id: "c", title: "C")]).opensSubmenu)
+        #expect(!MenuEntry(id: "s", title: "S", children: [MenuEntry(id: "c", title: "C")]).opensSubmenu)
+    }
+
+    @Test func idsInsideASubmenuAreNumberedToo() {
+        let lines = MenuLines(symbol: "x", entries: [
+            MenuEntry(id: "a", title: "A", submenu: [MenuEntry(id: "a", title: "B")], children: [MenuEntry(id: "a", title: "C")]),
+        ])
+        #expect(allIDs(lines.entries) == ["a", "a#2", "a#3"])
     }
 
     @Test func theLinesAreTheFlattenedTree() {

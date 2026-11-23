@@ -8,17 +8,25 @@ public enum MenuAction: Sendable, Equatable {
     case none
 }
 
+/// One line of the menu flattened (`MenuEntry.flatten`).
 public struct MenuItem: Sendable, Equatable {
     public var title: String
     public var action: MenuAction
     public var indent: Int
     public var isSeparator: Bool
+    /// This line is drawn as a row that opens a submenu; its action, if any, is the row's primary action.
+    public var opensSubmenu: Bool
+    /// This line is inside a submenu, not at the menu's top level.
+    public var inSubmenu: Bool
 
-    public init(title: String, action: MenuAction, indent: Int, isSeparator: Bool) {
+    public init(title: String, action: MenuAction, indent: Int, isSeparator: Bool,
+                opensSubmenu: Bool = false, inSubmenu: Bool = false) {
         self.title = title
         self.action = action
         self.indent = indent
         self.isSeparator = isSeparator
+        self.opensSubmenu = opensSubmenu
+        self.inSubmenu = inSubmenu
     }
 
     static func line(_ title: String, _ action: MenuAction = .none, indent: Int = 1) -> MenuItem {
