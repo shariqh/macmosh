@@ -1,0 +1,60 @@
+name: Trial - submenus in a MenuBarExtra
+
+# A throwaway trial on its own branch, never merged: see trials/submenu.
+on:
+  push:
+    branches: [trial-submenus]
+
+permissions:
+  contents: read
+
+jobs:
+  trial:
+    name: trial (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-26]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: About the runner
+        timeout-minutes: 2
+        run: |
+          sw_vers
+          xcodebuild -version | head -n 1
+          system_profiler SPDisplaysDataType | grep -E 'Resolution|Display Type|UI Looks like' || true
+
+      - name: Terminal's scripting dictionary (Q8)
+        timeout-minutes: 2
+        run: |
+          mkdir -p "$RUNNER_TEMP/out"
+          {
+            echo "Terminal version: $(defaults read /System/Applications/Utilities/Terminal.app/Contents/Info CFBundleShortVersionString)"
+            echo "--- sdef lines around do script"
+            sdef /System/Applications/Utilities/Terminal.app | grep -n -B 2 -A 16 'name="do script"'
+          } > "$RUNNER_TEMP/out/terminal-sdef.txt" 2>&1 || true
+          cat "$RUNNER_TEMP/out/terminal-sdef.txt"
+
+      - name: Build the trial app
+        timeout-minutes: 10
+        run: trials/submenu/make-app.sh
+
+      - name: Drive the menu
+        timeout-minutes: 15
+        env:
+          TRIAL_OUT: ${{ runner.temp }}/out
+        run: |
+          trials/submenu/drive.sh
+          echo "---- log ----"
+          cat "$TRIAL_OUT/trial.log"
+
+      - name: Upload the log and screenshots
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: trial-${{ matrix.os }}
+          path: ${{ runner.temp }}/out
+          retention-days: 7
