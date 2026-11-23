@@ -434,6 +434,7 @@ Each fact is marked: **Vendor** (the vendor's own current documentation), **Seen
 - **Vendor.** Before the unlock, only password sign-in works, because ssh's settings and `authorized_keys` are on the locked volume. After the unlock, "macOS will disconnect SSH briefly while it completes mounting the data volume," and then ssh is fully available [11].
 - **Vendor.** `fdesetup authrestart` "restarts the system, bypassing the initial unlock" [11]. "When FileVault is turned on, automatic login is disabled." [12]
 - **Not documented.** Apple doesn't say where the Mac ends up after an ssh unlock or an authrestart. **Seen** on the MacBook Pro (macOS 27.3 beta, 2026-11-16/17): it stops at the login window; the unlock worked over Wi-Fi; ssh showed no host-key warning; and Screen Sharing could log in at the login window [30].
+- **Seen** with MacMosh (sitting 2, 2026-11-22, macOS 27.3): after `sudo shutdown -r now`, the menu said `Locked after a restart` 25 seconds after the workhorse started. The unlock over ssh worked on Wi-Fi, and the workhorse then stopped at the login window. MacMosh's checks saw no key other than the pinned one. Screen Sharing logged in at the login window, and the login agent then made the desk marked "reopen" again. Not recorded: which sign-in methods each address offered before the unlock, and whether the `.local` name answered there.
 - **Reports** conflict on Wi-Fi before the unlock (some say Ethernet only, one says Wi-Fi works from macOS 26.5), and one says the host key can differ before the unlock. MacMosh therefore works out the state by checking, and treats a key mismatch as a reason to stop.
 - **Seen.** Until someone logs in, Tailscale is not running and the Mac is off the tailnet [30].
 
@@ -447,6 +448,7 @@ Each fact is marked: **Vendor** (the vendor's own current documentation), **Seen
 - **Vendor.** `pmset` settings: `sleep` (0 disables), `womp` ("Wake for network access"), `autorestart` ("automatic restart on power loss"); `-c` applies to wall power, `-a` to all; changing any needs root [15].
 - **Vendor, by absence.** `disablesleep` is not in the `pmset` manual on macOS 27.3, although the program accepts it [15].
 - **Reports.** Four of five write-ups say `pmset -a disablesleep 1` keeps an Apple-silicon MacBook running with the lid closed and no display, on macOS 26; one says it no longer does. They disagree on whether the screen stays lit and whether the setting survives a restart [16].
+- **Seen** (sitting 2, 2026-11-22, macOS 27.3, on power, no display): with `sudo pmset -a disablesleep 1`, the MacBook Pro stayed awake and reachable for 43 minutes with the lid closed. When the lid was opened the screen was lit and the Mac was "not much warmer", and `pmset -g therm` had recorded no warning. The setting shows as `SleepDisabled 1` in `pmset -g` and not at all in `pmset -g custom`. It was still on after a restart.
 - **Vendor.** `caffeinate -s` only applies on AC power, and its manual says nothing about the lid [15].
 - **Vendor.** Apple's lid-closed use needs an external display: "After you connect a display to your MacBook Pro, you can close the lid and continue to use it with connected accessories." For that case Apple also says to "make sure that the Mac is connected to power" and using an external keyboard and mouse [17]. Apple says nothing about dummy plugs.
 
@@ -496,6 +498,8 @@ These are the things no document settles. Each needs Shariq's go-ahead, and seve
 |---|---|---|
 | 6 | What does each check see at the FileVault screen, at the login window, and after login? Is the host key the same at all three? Does the `.local` name answer at the FileVault screen? | The three states in 5.2 can be told apart, and the key matches |
 | 7 | Does `sudo pmset -a disablesleep 1` keep the MacBook Pro reachable with the lid closed, on power, with no display? Does the screen stay lit, how hot does it get in 15 minutes, and does the setting survive a restart? | The desk stays reachable for 15 minutes with the lid closed |
+
+**Sitting 2 ran on 2026-11-22 and both passed.** The results are in `docs/sittings/sitting-2-results.md`. Part of question 6 was not recorded, because the recorder had stopped before the restart: what each address offered at the FileVault screen, and whether the `.local` name answers there. Two findings are open as issues. The menu says `Desk server is off` for half a minute after the login (#88). A desk made from the menu can't be marked to come back after a restart (#89).
 
 **Later, when there is something to test with:**
 

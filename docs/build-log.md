@@ -169,12 +169,28 @@ Design: `superpowers/specs/2026-11-18-macmosh-v1-design.md`. Plan: `superpowers/
 | 19:48 | MBP | agent | Made the menu look twice before it says `Can't reach it` (issue #83) | The first check that can't reach a workhorse is repeated five seconds later, and the menu keeps what it showed until then. A miss that follows a miss is shown at once. 677 tests pass. |
 | 19:56 | MBP | agent | Merged the second look (PR #85) and staged a newer signed build on the Air | Issue #83 is closed. The build on the Air waiting to be swapped in now has all three of today's fixes. The swap still only happens when the Air is idle with no MacMosh tab open. |
 | 19:58 | Air | agent | Wrote sitting 2's runbook and helpers, and tried the helpers without restarting anything | One recorder round on the Air shows all three addresses answering with the pinned key. The recorder starts and stops cleanly in a throwaway folder. The restart helper, given no answer, prints the desks that would close and stops at its question: "Nothing was restarted." |
+| 20:09 | MBP | agent | Merged sitting 2's runbook and helpers (PR #86) | The runbook is `docs/sittings/sitting-2.md`. The recorder and the two helpers are on the Air in `~/macmosh-sitting-2`. |
+| 21:58 | Air | agent | The staged build was still not swapped in, and the retries ended | The Air was asleep at both tries after the merge. The agent did not start another watch. |
+| 11-21 19:39 | MBP | Shariq | "i see that you have 3 subagents that say they are waiting on shells? anything stuck? they've been running since thursday" | Five wait loops left by three finished workers had run for one to two days. Some waited on `pgrep` and matched a sibling loop's own command line, and one had no deadline. The agent stopped them. From now on a worker's brief names the one wait it may use, and any other loop gets a deadline. |
+| 20:05 | Air | Shariq | "test rmosh tab is clsoed" | That was the last MacMosh tab open on the Air, and the swap waits for none to be open. |
+| 20:07 | Air | agent | Swapped the signed build of `2f6e5b7` into Applications on the Air | It has all three fixes from the first run. The earlier build is in the Air's Trash, the pairing is untouched, and the menu said `Ready` afterwards. |
+| 20:10 | MBP | agent | Filed issue #87: a desk whose shell has exited leaves the menu but keeps its name | Seen in a read-only check after the swap. The workhorse still had the definition of the desk `test`, and the menu had no line for it. |
+| 11-22 09:53 | MBP | Shariq | "ok i think all the chats on the mbp are stopped for now what do i need to do", then "can you do most /all of it? and i jsut do that parts that acutlaly need me." | Sitting 2 starts. The agent does everything that needs no password and no hands. |
+| 10:00 | Air | agent | Started the recorder and made the desk `sitting-2`, over ssh | `start.sh` would have made the desk without opening it, so Shariq opened it from the menu. |
+| 10:02 | MBP | Shariq | `sudo pmset -a disablesleep 1`, typed in the desk | `pmset -g` gained a line, `SleepDisabled 1`. MacMosh's report still said `disablesleep=-`. |
+| 10:05 | MBP | Shariq | Closed the lid: "lid is closed..." | The agent's session on the MacBook Pro kept answering him. He asked whether a remote session alone might be keeping the Mac awake. The only holds were idle-sleep ones, and Apple's header says those don't stop a sleep for a lid close. |
+| 10:48 | MBP | Shariq | Opened the lid after 43 minutes: "not much warmer no but we can keep a check on the temps as i think that will be my default mode for now. screen was on ye" | The power log has no sleep, and the Air's recorder reached the MacBook Pro on every round. The lid test passed. |
+| 11:59 | Air | recorder | Ended by itself at its two-hour limit | The restart had not happened yet, so the record has none of it. |
+| 17:48 | Air | Shariq | Ran `restart.sh`, then clicked `Unlock disk…` and `Log in…` in the menu | `Locked after a restart` at 17:50:04, `Waiting for login` at 17:51:12, `Ready` at 17:53:04, which is 4 minutes 21 seconds after the command. The login agent made the desk `sitting-2` again, and the lid setting was still on. The restart test passed. |
+| 18:01 | MBP | Shariq | "everything genearlly worked but it killed off all my rmosh sessions and i had to start a new one" | A restart ends every session. MacMosh makes a desk again only when it is marked to come back, and `New desk…` in the menu can't mark one (issue #89). He looked for `sitting-2` with a plain `tmux ls` and didn't see it, because desks are on MacMosh's own tmux server. A little later: "i guess restarting the mac killing all my mosh sessoins makes sense now. i brainfarted i guess". |
+| 18:10 | MBP | agent | Read both Macs and wrote the results | `docs/sittings/sitting-2-results.md`. One more finding: for half a minute after the login the menu said `Desk server is off` (issue #88). `start.sh` now opens the desk it makes. 677 tests pass. |
 
 ## Shot list (video)
 
 - The two-day cheat sheet of commands on one side, one menu-bar icon on the other.
 - "I almost called it MacInMosh": the trademark rule and Apple's "Jackintosh" example.
-- The lid-closed test on the MacBook Pro (to come).
+- The lid-closed test on the MacBook Pro: planned for 15 minutes, it ran 43 because Shariq walked away, and the Mac never slept.
+- "it killed off all my rmosh sessions": the restart test passed, and what it really showed was which desks come back afterwards and which don't.
 - "this is pretty cumbersome": a 25-question helper for a test the agent could have run itself, and the first real desk opened on the MacBook Pro anyway, in twelve minutes.
 - Two bugs that only showed somewhere else: the keep race (CI's shell was faster than this Mac's) and `MacMosh` versus `macmosh` (one name on a case-insensitive disk).
 - "what swiftbar?": an approved plan, an hour of work on a prototype, and one line from Shariq that removed a dependency.

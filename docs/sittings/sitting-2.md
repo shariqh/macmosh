@@ -9,6 +9,8 @@ You do the things that need hands, eyes or a password. A recorder on the Air wri
 
 It takes about 45 minutes. Most of it is waiting.
 
+**This sitting ran on 2026-11-22 and both parts passed.** The results are in `sitting-2-results.md`.
+
 ## Before you start
 
 Check these five things. If one is not true, wait until it is.
@@ -60,6 +62,8 @@ The helpers are copies of the files in `scripts/sitting-2/` of this repository. 
 
 ## Part 2: the restart (about 20 minutes)
 
+The recorder stops two hours after step 1. If more time than that has passed, start it again before step 5: `bash ~/macmosh-sitting-2/record.sh`
+
 5. **On the Air, open a new iTerm tab and run:**
 
    ```
@@ -81,6 +85,8 @@ The helpers are copies of the files in `scripts/sitting-2/` of this repository. 
    ```
    sudo pmset -a disablesleep 0
    ```
+
+   Leave it on if you mean to keep using the MacBook Pro with its lid closed. While it is on, the Mac also stays awake with the lid closed on battery, in a bag included.
 
 10. **Start the build agent again** on the MacBook Pro, in `~/Development/macmosh`, and tell it: sitting 2 is done. Tell it the two things from step 4 as well. It reads the record from the Air by itself.
 
@@ -119,7 +125,7 @@ The record holds real names, addresses and key fingerprints, so it stays on the 
 
 ## Afterwards
 
-- **The lid setting.** Step 9 turns it off. The record has what `pmset` printed before and after, and the build agent checks from it that the setting is off again and tells you if it isn't.
+- **The lid setting.** Step 9 turns it off, unless you chose to leave it on. The build agent reads `pmset -g` on the MacBook Pro afterwards and tells you which it is.
 - **The recorder** ends by itself after two hours. To end it sooner: `bash ~/macmosh-sitting-2/record.sh --stop`
 - **The desk `sitting-2`** stays until you remove it. On the Air:
 
