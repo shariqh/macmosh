@@ -335,6 +335,14 @@ extension HostScriptTests {
         #expect(taggedViews(h).isEmpty)
         let labels = h.tmux(["list-sessions", "-F", "#{@macmosh-label}"]).stdout
         #expect(labels.split(separator: "\n").allSatisfy { $0.isEmpty }, "\(labels)")
+
+        // Like any dry run, it makes a closed permanent desk again, and no view on it.
+        #expect(h.run(["desk-new", "notes", h.home.path, "--permanent"]).exitCode == 0)
+        typeExit(h, "=notes:")
+        try wait(h) { lookup(h, "notes") == nil }
+        #expect(h.run(["attach", "--dry-run", "--label", "abcd", "notes"]).stdout == "ok\n")
+        #expect(lookup(h, "notes") != nil)
+        #expect(taggedViews(h).isEmpty)
     }
 
     // MARK: - The removal rule, with labelled views there
