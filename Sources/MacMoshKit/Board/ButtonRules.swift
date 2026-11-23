@@ -44,8 +44,9 @@ public enum ButtonRules {
     }
 
     /// A Ready workhorse's buttons after its desks: New desk…, Share screen, Restart…, and on a laptop
-    /// the lid-closed switch, which offers the opposite of how the setting is now.
+    /// the lid-closed switch, which offers the opposite of how the setting is now. None in any other state.
     public static func forReady(_ r: CheckResult) -> [ActionButton] {
+        guard case .ready = r.state else { return [] }
         let id = r.workhorse.id
         var buttons = [
             ActionButton(key: "newDesk", title: "New desk…", action: .tab(["desk", "new", id])),

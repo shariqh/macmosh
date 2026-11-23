@@ -43,6 +43,12 @@ import Testing
         ])
     }
 
+    @Test func aWorkhorseThatIsNotReadyGetsNoReadyButtons() {
+        for state in [WorkhorseState.waitingForLogin, .locked, .cantReach(.nothingAnswers), .notSetUp(.notPaired)] {
+            #expect(ButtonRules.forReady(.sample(state, status: .sampleWithDesk)).isEmpty, "\(state)")
+        }
+    }
+
     @Test func aLaptopAlsoGetsItsLidSwitch() {
         for (lid, title, word) in [(1, "Turn off lid-closed mode…", "off"), (0, "Turn on lid-closed mode…", "on")] as [(Int?, String, String)] {
             var status = HostStatus.sampleWithDesk
