@@ -114,6 +114,28 @@ extension HostScriptTests {
         #expect(group("web") == "macmosh+g" + (try sid(h, "web")).dropFirst())
     }
 
+    /// tmux before 3.3 has no #{next_session_id} and prints nothing for it. The group then gets a name
+    /// of the script's own, which must differ for each desk a start reopens, though one process makes
+    /// them all within a second.
+    @Test func desksReopenedTogetherEachGetAGroupWhenTmuxHasNoNextSessionID() throws {
+        let h = try HostHarness(); defer { h.cleanUp() }
+        let real = h.shell("command -v tmux").stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        try #require(real.hasPrefix("/") && !real.hasPrefix(h.stubFolder.path), "tmux: \(real)")
+        try h.stub("tmux", script: """
+            for a in "$@"; do
+                if [ "$a" = '#{next_session_id}' ]; then echo; exit 0; fi
+            done
+            exec '\(real)' "$@"
+            """)
+        try writeDesksFile(h, ["website", "notes", "api"].map { "\($0)\t1\t0\t0\t\(h.home.path)\t\n" }.joined())
+        #expect(h.run(["start"]).exitCode == 0)
+        #expect(h.sessionNames() == ["api", "notes", "website"])
+        let groups = ["website", "notes", "api"].map { h.sessionFormat(lookup(h, $0) ?? "", "#{session_group}") ?? "" }
+        #expect(groups.allSatisfy { $0.hasPrefix("macmosh+g") }, "\(groups)")
+        #expect(Set(groups).count == 3, "\(groups)")
+        #expect(!hostLog(h).contains("could not reopen"))
+    }
+
     // MARK: - attach --window and --new-window
 
     @Test func attachWindowOpensATabOnThatWindowAndTheTabTakesItsViewAway() throws {
@@ -147,7 +169,7 @@ extension HostScriptTests {
         #expect(h.sessionNames().filter { !$0.contains("+") } == ["website"])
         try proveTheHookHasRun(h)
         #expect(defined(h, "website"))
-        #expect(hostLog(h).contains("desk-closed\tignored: not a desk name"))
+        #expect(hostLog(h).contains("desk-closed\tignored: a view"))
     }
 
     @Test func attachNewWindowAddsAWindowAndOpensATabOnIt() throws {
@@ -238,6 +260,78 @@ extension HostScriptTests {
         #expect(windowIDs(h, notes) == notesWindows)
         #expect(windowIDs(h, website) == ids)
         #expect(views(h, of: notes).isEmpty)
+
+        // More tabs on "web", whose group is still called "website", the name of the other desk now.
+        // They join web's own group, and the other desk keeps its windows and stays out of it. (The
+        // attach itself fails here, with no terminal; the view and the window are made before it.)
+        _ = h.run(["attach", "--new-window", "web"])
+        _ = h.run(["attach", "--window", ids[0], "web"])
+        #expect(h.sessionFormat(notes, "#{session_grouped}") == "0")
+        #expect(windowIDs(h, notes) == notesWindows)
+        let grown = windowIDs(h, website)
+        #expect(grown.count == ids.count + 1 && Array(grown.prefix(ids.count)) == ids)
+        #expect(views(h, of: website).count == 3)
+        for view in views(h, of: website) {
+            let vid = String(view.split(separator: "|")[0])
+            #expect(h.sessionFormat(vid, "#{session_group}") == "website")
+        }
+    }
+
+    /// tmux finds the session of a command that names none through the pane it is run from
+    /// (TMUX_PANE). A tab made from a shell inside another desk tags its own view, and that desk stays
+    /// a desk.
+    @Test func aTabMadeFromInsideAnotherDesksPaneTagsOnlyItsOwnView() throws {
+        let h = try HostHarness(); defer { h.cleanUp() }
+        _ = h.run(["start"])
+        let (api, _) = try deskWithWindows(h, "api", 1)
+        let (web, webIDs) = try deskWithWindows(h, "website", 1)
+        let pane = h.tmux(["display-message", "-p", "-t", api + ":", "#{pane_id}"]).stdout
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        #expect(pane.hasPrefix("%"))
+        h.setEnvironment("TMUX_PANE", pane)
+        _ = h.run(["attach", "--new-window", "website"])
+        _ = h.run(["attach", "--window", webIDs[0], "website"])
+        h.setEnvironment("TMUX_PANE", "")
+        #expect(h.sessionFormat(api, "#{@macmosh-view}") == "")
+        #expect(views(h, of: web).count == 2)
+        #expect(views(h, of: api).isEmpty)
+        let out = h.run(["status"]).stdout
+        #expect(out.contains("\ndesk\tapi\t1\t0\n"), "\(out)")
+        #expect(out.split(separator: "\n").filter { $0.hasPrefix("view\twebsite\t") }.count == 2, "\(out)")
+    }
+
+    /// tmux's own rename (prefix and $) renames the session a tab shows, which is its view. A view
+    /// given a desk's name by hand is still no desk: today's calls don't act on it, and its closing
+    /// doesn't remove the definition of the desk whose name it took.
+    @Test func aViewRenamedByHandIsStillNoDesk() throws {
+        let h = try HostHarness(); defer { h.cleanUp() }
+        _ = h.run(["start"])
+        let (web, ids) = try deskWithWindows(h, "website", 2)
+        // "api" ended with an older server and was made not to come back; "notes" is permanent and closed.
+        try writeDesksFile(h, desksFile(h) + "api\t0\t0\t0\t\(h.home.path)\t\nnotes\t1\t0\t1\t\(h.home.path)\t\n")
+        // Two views with no tab (the attach fails here, with no terminal), then renamed by hand.
+        _ = h.run(["attach", "--window", ids[0], "website"])
+        _ = h.run(["attach", "--window", ids[1], "website"])
+        let made = views(h, of: web).map { String($0.split(separator: "|")[0]) }
+        #expect(made.count == 2)
+        #expect(h.tmux(["rename-session", "-t", made[0], "notes"]).exitCode == 0)
+        #expect(h.tmux(["rename-session", "-t", made[1], "api"]).exitCode == 0)
+
+        let tagged = { h.tmux(["list-sessions", "-F", "#{@macmosh-view}"]).stdout.split(separator: "\n").count }
+        #expect(h.run(["window-new", "notes"]).exitCode == 4)
+        #expect(h.run(["attach", "--dry-run", "notes"]).exitCode == 1)
+        _ = h.run(["attach", "--window", ids[0], "notes"])
+        #expect(h.run(["desk-rename", "api", "fresh"]).exitCode == 4)
+        #expect(windowIDs(h, web) == ids)
+        #expect(views(h, of: web).count == 2)
+        #expect(tagged() == 2)
+        #expect(h.sessionFormat(made[1], "#{session_name}") == "api")
+
+        // The view called "api" closes: api's definition stays.
+        #expect(h.tmux(["kill-session", "-t", made[1]]).exitCode == 0)
+        try wait(h) { hostLog(h).contains("desk-closed\tremoved api") || hostLog(h).contains("desk-closed\tignored: a view") }
+        #expect(defined(h, "api"))
+        #expect(!hostLog(h).contains("desk-closed\tremoved api"))
     }
 
     // MARK: - The report
@@ -275,41 +369,80 @@ extension HostScriptTests {
 
     // MARK: - Sweeping
 
+    /// A view made by hand as the script makes one: joined by the desk's id, tagged by its own id.
+    private func makeView(_ h: HostHarness, desk: String, _ name: String) -> String {
+        let vid = h.tmux(["new-session", "-d", "-t", desk, "-s", name, "-P", "-F", "#{session_id}"]).stdout
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        _ = h.tmux(["set-option", "-t", vid, "@macmosh-view", desk])
+        return vid
+    }
+
     @Test func statusSweepsOldViewsWithNoTabAndNothingElse() throws {
         let h = try HostHarness(); defer { h.cleanUp() }
         _ = h.run(["start"])
         let (desk, ids) = try deskWithWindows(h, "website", 2)
         let group = h.sessionFormat(desk, "#{session_group}") ?? ""
-        let make = { (name: String) -> String in
-            h.tmux(["new-session", "-d", "-t", group, "-s", name, "-P", "-F", "#{session_id}",
-                    ";", "set-option", "@macmosh-view", desk]).stdout.trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-        let stray = make("website+101")
-        // A view with a tab, a session of your own with a + in its name, and a view whose desk was
-        // killed by hand (the last of its group: it holds the windows, so it stays).
+        let stray = makeView(h, desk: desk, "website+101")
+        // A view with a tab, a session of your own with a + in its name, and two views with no tab
+        // whose desk was killed by hand. Those two hold the desk's windows, which the kill would have
+        // closed before views existed, so they go with their windows.
         try openTab(h, "one", ["--window", ids[1], "website"])
         try wait(h) { h.clients().count == 1 }
         _ = h.tmux(["new-session", "-d", "-t", group, "-s", "mine+1"])
-        let (lonely, _) = try deskWithWindows(h, "notes", 1)
-        let lonelyGroup = h.sessionFormat(lonely, "#{session_group}") ?? ""
-        let lone = h.tmux(["new-session", "-d", "-t", lonelyGroup, "-s", "notes+5", "-P", "-F", "#{session_id}",
-                           ";", "set-option", "@macmosh-view", lonely]).stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        let (lonely, lonelyWindows) = try deskWithWindows(h, "notes", 2)
+        let lone = makeView(h, desk: lonely, "notes+5")
+        let lone2 = makeView(h, desk: lonely, "notes+6")
         _ = h.tmux(["kill-session", "-t", lonely])
+        #expect(windowIDs(h, lone) == lonelyWindows)
 
         // Younger than a minute: kept.
         #expect(h.run(["status"]).exitCode == 0)
         #expect(h.sessionFormat(stray, "#{session_name}") == "website+101")
+        #expect(h.sessionFormat(lone, "#{session_name}") == "notes+5")
 
-        // Older than the age (shortened for the test): swept, and only it.
+        // Older than the age (shortened for the test): swept, and only they.
         h.setEnvironment("MACMOSH_VIEW_SWEEP_AGE", "1")
         Thread.sleep(forTimeInterval: 2.2)
         #expect(h.run(["status"]).exitCode == 0)
         #expect(h.sessionFormat(stray, "#{session_name}") == nil)
         #expect(views(h, of: desk).count == 1)
         #expect(h.sessionNames().contains("mine+1"))
-        #expect(h.sessionFormat(lone, "#{session_name}") == "notes+5")
+        #expect(h.sessionFormat(lone, "#{session_name}") == nil)
+        #expect(h.sessionFormat(lone2, "#{session_name}") == nil)
         #expect(windowIDs(h, desk) == ids)
-        #expect(hostLog(h).contains("status\tremoved 1 view with no tab"))
+        let left = h.tmux(["list-windows", "-a", "-F", "#{window_id}"]).stdout.split(separator: "\n").map(String.init)
+        #expect(lonelyWindows.allSatisfy { !left.contains($0) }, "\(left)")
+        #expect(hostLog(h).contains("status\tremoved 3 views with no tab"))
+    }
+
+    /// The desk's own session killed by hand while tabs show its windows: the tabs keep them while
+    /// they are open. When the last one closes, its view is the only session left in the group, so
+    /// tmux keeps it; the next status removes it, and the windows with it.
+    @Test func aViewWhoseDeskWasKilledByHandGoesWhenItsLastTabCloses() throws {
+        let h = try HostHarness(); defer { h.cleanUp() }
+        _ = h.run(["start"])
+        let (desk, ids) = try deskWithWindows(h, "website", 2)
+        try openTab(h, "one", ["--window", ids[0], "website"])
+        try openTab(h, "two", ["--window", ids[1], "website"])
+        try wait(h) { h.clients().count == 2 && views(h, of: desk).count == 2 }
+        try wait(h) { views(h, of: desk).allSatisfy { h.sessionFormat(String($0.split(separator: "|")[0]), "#{destroy-unattached}") == "keep-last" } }
+        let made = views(h, of: desk).map { String($0.split(separator: "|")[0]) }
+        #expect(h.tmux(["kill-session", "-t", desk]).exitCode == 0)
+
+        h.setEnvironment("MACMOSH_VIEW_SWEEP_AGE", "0")
+        Thread.sleep(forTimeInterval: 1.2)
+        #expect(h.run(["status"]).exitCode == 0)
+        #expect(views(h, of: desk).count == 2)
+
+        try h.hangUp(clientOf: made[0])
+        try wait(h) { h.sessionFormat(made[0], "#{session_name}") == nil }
+        try h.hangUp(clientOf: made[1])
+        try wait(h) { h.clients().isEmpty }
+        #expect(h.sessionFormat(made[1], "#{session_attached}") == "0")
+        #expect(windowIDs(h, made[1]) == ids)
+
+        #expect(h.run(["status"]).exitCode == 0)
+        try wait(h) { h.sessionNames().isEmpty }
     }
 
     // MARK: - Every other path, with views there
@@ -337,14 +470,16 @@ extension HostScriptTests {
         let (desk, ids) = try deskWithWindows(h, "website", 2)
         try openTab(h, "one", ["--window", ids[1], "website"])
         try wait(h) { h.clients().count == 1 }
-        let stray = h.tmux(["new-session", "-d", "-t", h.sessionFormat(desk, "#{session_group}") ?? "", "-s", "website+7",
-                            "-P", "-F", "#{session_id}", ";", "set-option", "@macmosh-view", desk]).stdout
+        let stray = makeView(h, desk: desk, "website+7")
         #expect(!stray.isEmpty)
         for id in ids { typeExit(h, id) }
         try wait(h) { !defined(h, "website") }
         #expect(h.sessionNames().isEmpty)
         #expect(hostLog(h).contains("desk-closed\tremoved website: its last shell exited"))
-        #expect(hostLog(h).contains("desk-closed\tignored: not a desk name"))
+        // The tab's view was made by the script, and is known by its id; the one made here by hand is
+        // known by its name.
+        try wait(h) { hostLog(h).contains("desk-closed\tignored: a view") }
+        try wait(h) { hostLog(h).contains("desk-closed\tignored: not a desk name") }
     }
 
     @Test func aRestartWithTabsOpenBringsBackOnlyTheDesks() throws {
@@ -383,12 +518,19 @@ extension HostScriptTests {
         #expect(windowIDs(h, fresh).count == 2)
         #expect(windowIDs(h, desk) == ids)
         #expect(views(h, of: desk).count == 1)
-        // Names with a + are never desks.
-        #expect(h.run(["desk-new", "website+1", h.home.path]).exitCode == 6)
-        #expect(h.run(["attach", "website+1"]).exitCode == 4)
-        #expect(h.run(["window-new", "website+1"]).exitCode == 4)
-        #expect(h.run(["desk-remove", "website+1", "--kill"]).exitCode == 4)
-        #expect(h.run(["desk-rename", "website+1", "fresh"]).exitCode == 2)
+        // A view's name is never a desk's: each call refuses it and leaves the view as it was.
+        let view = String(views(h, of: desk)[0].split(separator: "|")[1])
+        #expect(view.hasPrefix("website+"))
+        #expect(h.run(["desk-new", view, h.home.path]).exitCode == 6)
+        #expect(h.run(["attach", view]).exitCode == 4)
+        #expect(h.run(["attach", "--window", ids[0], view]).exitCode == 4)
+        #expect(h.run(["window-new", view]).exitCode == 4)
+        #expect(h.run(["desk-remove", view, "--kill"]).exitCode == 4)
+        #expect(h.run(["desk-rename", view, "fresh"]).exitCode == 2)
+        #expect(views(h, of: desk).count == 1)
+        #expect(views(h, of: desk)[0].contains("|" + view + "|"))
+        #expect(windowIDs(h, desk) == ids)
+        #expect(h.clients().count == 2)
     }
 
     /// keep finds its desk through the session its pane is in, and tmux names the view for a pane that
@@ -399,7 +541,7 @@ extension HostScriptTests {
         try writeDesksFile(h, "api2\t1\t1\t0\t\(h.home.path)\techo run >> runs.txt; sleep 4343\n")
         let made = h.tmux(["new-session", "-d", "-P", "-F", "#{session_id}", "-s", "api2", "-t", "macmosh+gx", "-c", h.home.path])
         let desk = made.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
-        _ = h.tmux(["new-session", "-d", "-t", "macmosh+gx", "-s", "api2+1", ";", "set-option", "@macmosh-view", desk])
+        _ = makeView(h, desk: desk, "api2+1")
         // The premise: asked about the desk's pane, tmux names the view.
         let pane = h.tmux(["display-message", "-p", "-t", desk + ":", "#{pane_id}"]).stdout
             .trimmingCharacters(in: .whitespacesAndNewlines)

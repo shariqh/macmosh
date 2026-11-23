@@ -26,12 +26,14 @@ extension HostScriptTests {
 
     private func group(_ h: HostHarness, _ sid: String) -> String { h.sessionFormat(sid, "#{session_group}") ?? "?" }
 
-    /// A view joined to the group by the group's name, tagged as MacMosh tags it.
+    /// A view made as the script makes one: joined to the group through the desk's session id, then
+    /// tagged by its own id.
     private func makeView(_ h: HostHarness, desk sid: String, _ name: String) throws -> String {
-        let made = h.tmux(["new-session", "-d", "-t", group(h, sid), "-s", name, "-P", "-F", "#{session_id}",
-                           ";", "set-option", "@macmosh-view", sid])
+        let made = h.tmux(["new-session", "-d", "-t", sid, "-s", name, "-P", "-F", "#{session_id}"])
         let vid = made.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
         try #require(made.exitCode == 0 && vid.hasPrefix("$"), "no view \(name): \(made)")
+        #expect(group(h, vid) == group(h, sid))
+        _ = h.tmux(["set-option", "-t", vid, "@macmosh-view", sid])
         return vid
     }
 
@@ -60,7 +62,7 @@ extension HostScriptTests {
         let vid = try makeView(h, desk: sid, "website+1")
         #expect(windowIDs(h, vid) == ids)
         // Joining starts no shell of its own (a report on the 3.6 source said it starts one and drops it).
-        Thread.sleep(forTimeInterval: 0.5)
+        Thread.sleep(forTimeInterval: 2)
         #expect(count() == 3)
         // A new view starts on the group's lowest window, whatever the desk shows.
         _ = h.tmux(["select-window", "-t", sid + ":" + ids[1]])
@@ -140,11 +142,20 @@ extension HostScriptTests {
         #expect(h.tmux(["rename-session", "-t", old, "web"]).exitCode == 0)
         #expect(group(h, old) == "work")
 
-        // The hazard: a new session called "work" and a view joined by that name land in the old
-        // group, so the view shows the other desk's three windows. The new session is pulled into the
-        // old group too.
         let fresh = h.tmux(["new-session", "-d", "-P", "-F", "#{session_id}", "-s", "work"]).stdout
             .trimmingCharacters(in: .whitespacesAndNewlines)
+        // Joined through the renamed session's id, a view lands in that session's own group, though
+        // the group is called "work" and so is another session now; that session stays out of it.
+        let right = h.tmux(["new-session", "-d", "-t", old, "-P", "-F", "#{session_id}"]).stdout
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        #expect(group(h, right) == "work")
+        #expect(windowIDs(h, right) == windowIDs(h, old))
+        #expect(h.sessionFormat(fresh, "#{session_grouped}|#{session_group}") == "0|")
+        #expect(windowIDs(h, fresh).count == 1)
+        _ = h.tmux(["kill-session", "-t", right])
+
+        // The hazard: joined by the name "work", a view lands in the old group, so it shows the other
+        // desk's three windows, and the new session called "work" is pulled into the old group too.
         let wrong = h.tmux(["new-session", "-d", "-t", "work", "-P", "-F", "#{session_id}"]).stdout
             .trimmingCharacters(in: .whitespacesAndNewlines)
         #expect(group(h, wrong) == "work")
@@ -281,13 +292,15 @@ extension HostScriptTests {
     @Test func todaysWindowNewAndAttachBehaveAsBeforeWithViewsThere() throws {
         let h = try HostHarness(); defer { h.cleanUp() }
         _ = h.run(["start"])
-        #expect(h.run(["desk-new", "website", h.home.path]).exitCode == 0)
-        let sid = try #require(h.tmux(["list-sessions", "-F", "#{session_id}"]).stdout
-            .split(separator: "\n").first.map(String.init))
+        // A desk as the script before 0.7.0 made it, with no group, as every desk on a workhorse is
+        // until its desk server restarts.
+        let sid = h.tmux(["new-session", "-d", "-P", "-F", "#{session_id}", "-s", "website", "-c", h.home.path]).stdout
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        try #require(sid.hasPrefix("$"))
+        #expect(h.sessionFormat(sid, "#{session_grouped}") == "0")
         _ = h.tmux(["new-window", "-d", "-t", sid + ":"])
         let ids = windowIDs(h, sid)
-        // A view made by hand: the script before 0.7.0 makes desks with no group, so the view joins
-        // the desk by its name.
+        // A view made by hand, joining the desk by its name.
         let made = h.tmux(["new-session", "-d", "-t", "website", "-s", "website+1", "-P", "-F", "#{session_id}"])
         let vid = made.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
         _ = h.tmux(["select-window", "-t", vid + ":" + ids[1]])
