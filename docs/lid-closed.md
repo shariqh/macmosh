@@ -97,7 +97,7 @@ MacMosh reads the same `SleepDisabled` line. A Mac where the setting was never t
 3. **Look at the menu.**
    The summary line includes `Lid-closed mode off`, and the button reads `Turn on lid-closed mode…` again.
 
-If you are at the workhorse without the daily Mac, you can type `sudo pmset -a disablesleep 0` in Terminal there instead. Type your password when sudo asks for it. To check, run `pmset -g` and look at the `SleepDisabled` line; what it shows after the setting is turned off was not recorded in this project's test.
+If you are at the workhorse without the daily Mac, you can type `sudo pmset -a disablesleep 0` in Terminal there instead. Type your password when sudo asks for it. To check, run `pmset -g` and look at the `SleepDisabled` line.
 
 What `pmset -g` prints after the setting is turned off was not recorded in this project's test. MacMosh treats a `0` and a missing line both as off.
 
@@ -117,16 +117,15 @@ If you take MacMosh off the workhorse with `macmosh remove`, it doesn't turn lid
 
 ## Use an external display (Apple's way)
 
-Apple documents a closed lid only with a display connected. These steps follow the order on Apple's page for M3 MacBook Air and MacBook Pro with two displays. This project has not tried them with MacMosh, and Apple's pages don't say whether the Mac stays awake when nobody is using it.
+Apple documents a closed lid only with a display connected. These steps follow the order on Apple's page for M3 MacBook Air and MacBook Pro with two displays. This project has not tried them with MacMosh, and Apple's pages don't say whether the Mac stays awake when nobody is using it. Apple's page gives the order of the steps; it doesn't say what you should see at each of the first three.
 
 1. **Connect an external keyboard and mouse or trackpad.**
-   Apple's page doesn't say what you see at this step.
 
 2. **Connect the workhorse to power.**
-   If the display provides power to the Mac, Apple says a separate power adapter isn't needed. Apple's page doesn't say what you see at this step.
+   If the display provides power to the Mac, Apple says a separate power adapter isn't needed.
 
 3. **Connect the display.**
-   If the display needs power, plug it in to an outlet first. You may also need to turn it on. Apple's page doesn't say what you see at this step.
+   If the display needs power, plug it in to an outlet first. You may also need to turn it on.
 
 4. **Close the lid.**
    You should be able to keep working on the display with the keyboard and mouse. Apple's words: "After you connect a display to your MacBook Pro, you can close the lid and continue to use it with connected accessories."
@@ -153,7 +152,7 @@ Before you put the workhorse in a bag:
 3. **Close the lid and pack it.**
    MacMosh's off text says `The Mac sleeps again when its lid closes.`, so the menu should soon show `Can't reach it`. This project has not watched that happen. If you need to be sure, shut the Mac down from the Apple menu instead.
 
-A workhorse that stays plugged in spends a lot of time on power. Apple has two features for a Mac that spends long stretches on power. Apple says Optimized Battery Charging reduces wear on the battery by reducing the time the Mac spends fully charged; Charge Limit lets you cap the charge. Its page about them doesn't mention a closed lid.
+A workhorse that stays plugged in spends long stretches on power, and Apple has two features for that. Apple says Optimized Battery Charging reduces wear on the battery by reducing the time the Mac spends fully charged; Charge Limit lets you cap the charge. Its page about them doesn't mention a closed lid.
 
 - **Optimized Battery Charging** (macOS Big Sur 11 or later) learns your daily charging routine and can delay charging past 80% when it predicts the Mac will be on power for a long time.
 - **Charge Limit** (macOS Tahoe 26.4 or later, on a Mac with Apple silicon) lets you set a limit between 80% and 100%. The Mac stops charging a few points short of it. With either feature, the Mac will still charge to 100% now and then.
