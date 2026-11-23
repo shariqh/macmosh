@@ -267,6 +267,44 @@ private func menu(_ state: WorkhorseState, workhorse: Workhorse = .sample(), sta
         }
     }
 
+    // MARK: the wait after a login (issue #88)
+
+    @Test func aWorkhorseWaitingForItsDeskServerShowsNoFix() {
+        let r = CheckResult.sample(.notSetUp(.deskServerDown), status: .sampleReady)
+        let m = MenuModel.build([.checked(r)], waitingForDeskServer: ["mbp"])
+        #expect(titles(m) == ["MacBook Pro · Waiting for the desk server", MenuModel.waitingForDeskServerHint,
+                              "Run the checklist…", "", "Add a Mac…", "Check now"])
+        #expect(m.items[0].indent == 0)
+        #expect(m.items[0].action == .none)
+        #expect(item(m, "Finish setting up…") == nil)
+        let actions = m.items.map(\.action).filter { if case .tab = $0 { return true }; if case .run = $0 { return true }; return false }
+        #expect(actions == [.tab(["prepare", "mbp", "--pause"]), .tab(["pair"])])
+        #expect(m.symbol == "ellipsis.circle")
+    }
+
+    @Test func theHintIsTheTwoTrueSentences() {
+        #expect(MenuModel.waitingForDeskServerHint == "Someone has logged in and the desk server isn't running yet. MacMosh's login agent starts it after a login; if it still isn't running in a minute, this menu says so.")
+    }
+
+    @Test func theWaitOnlyChangesDeskServerDown() {
+        let states: [WorkhorseState] = [.ready(signIns: true), .notSetUp(.notPaired), .waitingForLogin]
+        for state in states {
+            let r = CheckResult.sample(state, status: .sampleWithDesk, homeReachable: true)
+            #expect(MenuModel.build([.checked(r)], waitingForDeskServer: ["mbp"]) == MenuModel.build([.checked(r)]), "\(state)")
+        }
+    }
+
+    @Test func aWaitingWorkhorseDoesNotPickTheIcon() {
+        let a = CheckResult.sampleReady(id: "a", name: "A")
+        let b = CheckResult.sample(.notSetUp(.deskServerDown), workhorse: .sample(id: "b", name: "B"), status: .sampleReady)
+        let m = MenuModel.build([.checked(a), .checked(b)], waitingForDeskServer: ["b"])
+        #expect(m.symbol == "checkmark.circle")
+        let t = titles(m)
+        let ready = t.firstIndex(of: "A · Ready")
+        let waiting = t.firstIndex(of: "B · Waiting for the desk server")
+        #expect(ready != nil && waiting != nil && ready! < waiting!)
+    }
+
     // MARK: the whole menu
 
     @Test func noWorkhorsesOffersAddAMac() {

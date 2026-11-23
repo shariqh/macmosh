@@ -97,8 +97,11 @@ public enum MenuModel {
         }
     }
 
-    /// `now` and `timeZone` shape the time in "Last seen 14:02"; a test fixes them.
-    public static func build(_ gathered: [Gathered], now: Date = Date(), timeZone: TimeZone = .current) -> Menu {
+    /// `waitingForDeskServer` names the workhorses that have just been logged in to: one of them
+    /// whose desk server is down shows the wait instead of the fix, and adds nothing to the icon,
+    /// as "Still checking…" adds nothing. `now` and `timeZone` shape the time in "Last seen 14:02"; a test fixes them.
+    public static func build(_ gathered: [Gathered], waitingForDeskServer: Set<String> = [],
+                             now: Date = Date(), timeZone: TimeZone = .current) -> Menu {
         if gathered.isEmpty {
             return Menu(symbol: noWorkhorsesSymbol, items: [
                 .line("No workhorses yet", indent: 0),
@@ -112,8 +115,12 @@ public enum MenuModel {
             if i > 0 { items.append(.separator) }
             switch entry {
             case .checked(let result):
-                states.append(result.state)
-                items += block(for: result, now: now, timeZone: timeZone)
+                if waitingForDeskServer.contains(result.workhorse.id), result.state == .notSetUp(.deskServerDown) {
+                    items += deskServerWaitBlock(result)
+                } else {
+                    states.append(result.state)
+                    items += block(for: result, now: now, timeZone: timeZone)
+                }
             case .stillChecking(let w):
                 items.append(.line("\(w.name) · Still checking…", indent: 0))
                 items.append(checklist(w))
@@ -128,8 +135,18 @@ public enum MenuModel {
 
     // MARK: One workhorse
 
+    /// Under "Waiting for the desk server". Every clause is true when it is shown (issue #88).
+    static let waitingForDeskServerHint = "Someone has logged in and the desk server isn't running yet. MacMosh's login agent starts it after a login; if it still isn't running in a minute, this menu says so."
+
     private static func checklist(_ w: Workhorse) -> MenuItem {
         .line("Run the checklist…", .tab(["prepare", w.id, "--pause"]))
+    }
+
+    /// A headline, the hint, and the checklist. No "Finish setting up…": the login agent is about to do it.
+    private static func deskServerWaitBlock(_ r: CheckResult) -> [MenuItem] {
+        [.line("\(r.workhorse.name) · Waiting for the desk server", indent: 0),
+         .line(waitingForDeskServerHint),
+         checklist(r.workhorse)]
     }
 
     private static func block(for r: CheckResult, now: Date, timeZone: TimeZone) -> [MenuItem] {

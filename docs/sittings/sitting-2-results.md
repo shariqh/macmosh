@@ -73,7 +73,7 @@ Every user name, host name, address and key in this file is a placeholder: `alex
 **Not shown by this run.**
 
 - What each of the three addresses offered at the disk-unlock screen, which host key each one showed in each state, and whether the `.local` name answers before the unlock. The recorder would have written these down, and it had stopped. The next time the workhorse is restarted for some other reason, the recorder can be started first with `bash ~/macmosh-sitting-2/record.sh`. Nobody restarts it only for this.
-- Whether the workhorse's lid was open or closed during the restart.
+- A restart with the lid closed. Shariq said afterwards that the lid was open during this one.
 - A desk with a startup command coming back. `sitting-2` had no command.
 - The menu's own `Restart…`, which skips the unlock. This run used `--full` so that `Unlock disk…` was tried.
 
