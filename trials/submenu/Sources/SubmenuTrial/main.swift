@@ -64,6 +64,29 @@ final class MenuWatcher {
         log(text)
     }
 
+    private var lastHighlight = ""
+
+    /// Logs the highlighted row of the top menu and of each live submenu whenever it changes
+    /// (sampled every 100 ms on the main queue, which also runs while the menu is open).
+    func watchHighlight() {
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(deadline: .now() + 1, repeating: .milliseconds(100))
+        timer.setEventHandler { [weak self] in
+            guard let self, let top = self.firstTracked else { return }
+            var text = "top=\"\(top.highlightedItem?.title ?? "none")\""
+            for item in top.items where item.title.hasPrefix("Live submenu") {
+                text += " \(item.title.suffix(1))=\"\(item.submenu?.highlightedItem?.title ?? "none")\""
+            }
+            if text != self.lastHighlight {
+                self.lastHighlight = text
+                log("highlight now \(text)")
+            }
+        }
+        timer.resume()
+        highlightTimer = timer
+    }
+    private var highlightTimer: DispatchSourceTimer?
+
     private func label(_ menu: NSMenu) -> String {
         if let index = menus.firstIndex(where: { $0 === menu }) { return "m\(index + 1)" }
         menus.append(menu)
@@ -271,6 +294,7 @@ func startUp() -> LiveModel {
     MenuWatcher.shared.start()
     log("started style=\(env["TRIAL_STYLE"] ?? "plain") live=\(env["TRIAL_LIVE"] ?? "0") layout=\(env["TRIAL_LAYOUT"] ?? "main") os=\(ProcessInfo.processInfo.operatingSystemVersionString)")
     if env["TRIAL_LIVE"] == "1" { model.start() }
+    MenuWatcher.shared.watchHighlight()
     return model
 }
 

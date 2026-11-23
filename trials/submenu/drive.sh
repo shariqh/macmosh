@@ -463,7 +463,7 @@ for sub in P I P I; do
     open_menu
     read -r pidx px py <<< "$(find_xy top "Live submenu $sub")"
     mark "S2 Live submenu $sub: after a change, rest on its row, move in, click the submenu's second row"
-    tool subclick "$LOG" "$px" "$py" "$sx" "$((py + rowh))"
+    tool subclick "$LOG" "$px" "$py" "$rowh"
     sleep 1
     wins "S2-$sub-after"
     close_all
@@ -481,8 +481,9 @@ start_app K-live TRIAL_STYLE=plain TRIAL_LIVE=1
 tool move 300 400
 open_ax
 wait_change ""
-mark "K1 three down arrows right after a change (to Plain button), then no keys for 7 s"
-tool keys 125 3 120
+sleep 0.5
+mark "K1 three down arrows 0.5 s after a change (to Plain button), then no keys for 7 s"
+tool keys 125 3 250
 tool watch 7 K1
 ax selected top > /dev/null
 shot K1-after-idle
@@ -491,8 +492,9 @@ close_all
 tool move 300 400
 open_ax
 wait_change ""
-mark "K2 two up arrows right after a change (to the last I row), then no keys for 7 s"
-tool keys 126 2 120
+sleep 0.5
+mark "K2 two up arrows 0.5 s after a change (to the last I row), then no keys for 7 s"
+tool keys 126 2 250
 tool watch 7 K2
 ax selected top > /dev/null
 shot K2-after-idle
@@ -501,7 +503,8 @@ close_all
 tool move 300 400
 open_ax
 wait_change ""
-mark "K3 seven down arrows and a right arrow right after a change (into Live submenu P), then no keys for 7 s"
+sleep 0.3
+mark "K3 seven down arrows and a right arrow 0.3 s after a change (into Live submenu P), then no keys for 7 s"
 tool keys 125 7 100
 tool keys 124 1 100
 tool watch 7 K3

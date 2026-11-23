@@ -115,11 +115,11 @@ case "clickafter":
     click(target)
     out("clickafter: saw [\(seen)] at \(seenAt), clicked \(target) \(delay) ms later; menu windows just before the click: \(before)")
 case "subclick":
-    // subclick <log> <px> <py> <sx> <sy>: after the next model change, rest on the parent row,
-    // move into the submenu and click (sx, sy), all inside one 2-second tick.
+    // subclick <log> <px> <py> <dy>: after the next model change, rest on the parent row, find the
+    // submenu window that opened, move into it and click the row <dy> points below the parent row.
     let path = args[2]
     let parent = point(3)
-    let target = point(5)
+    let dy = Double(args[5]) ?? 22
     guard let handle = FileHandle(forReadingAtPath: path) else {
         out("subclick: cannot read the log")
         exit(1)
@@ -142,7 +142,16 @@ case "subclick":
     usleep(200_000)
     moveTo(parent)
     usleep(500_000)
+    let rects = menuWindows().compactMap { text -> CGRect? in
+        let n = text.split(separator: ",").compactMap { Double($0) }
+        return n.count == 4 ? CGRect(x: n[0], y: n[1], width: n[2], height: n[3]) : nil
+    }
     out("subclick: resting on the parent row, menu windows \(menuWindows())")
+    guard let sub = rects.first(where: { !$0.contains(parent) }) else {
+        out("subclick: no submenu window, no click")
+        exit(1)
+    }
+    let target = CGPoint(x: sub.midX, y: parent.y + dy)
     moveTo(CGPoint(x: target.x, y: parent.y))
     moveTo(target)
     usleep(150_000)

@@ -48,7 +48,7 @@ jobs:
           TRIAL_OUT: ${{ runner.temp }}/out
           # Run 1 (all phases) settled A, B and D and showed posted pointer events work on both
           # runners; run 2 settled the top-level part of C; run 3 settled E. This run: live
-          # submenus with a slower tick (S) and the keyboard while the model changes (K).
+          # submenus with a slower tick (S) and the keyboard while the model changes (K), run 5.
           TRIAL_PHASES: SK
           TRIAL_POINTER: "1"
         run: |
