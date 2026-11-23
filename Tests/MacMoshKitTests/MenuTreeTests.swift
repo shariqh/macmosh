@@ -118,8 +118,7 @@ private func twoWithTheSameDesk() -> MenuLines {
 
     // MARK: the ids
 
-    /// Every state at once, each workhorse with an id of its own. (The last case of `everySampleMenu()`
-    /// gives all eight the id `mbp`, which the saved list never holds twice, so it is left out below.)
+    /// Every state at once, each workhorse with an id of its own.
     private func everyStateWithItsOwnID() -> MenuLines {
         let able = Workhorse.sample(id: "w3", osVersion: "27.3", arch: "arm64")
         return MenuModel.build([
@@ -136,11 +135,54 @@ private func twoWithTheSameDesk() -> MenuLines {
     }
 
     @Test func idsAreUniqueAcrossTheWholeTree() {
-        let samples = Array(everySampleMenu().dropLast()) + moreSampleMenus()
-        for menu in samples + [twoWithTheSameDesk(), everyStateWithItsOwnID()] {
+        // The last case of `everySampleMenu()` gives all eight workhorses the id `mbp`; it is in too.
+        for menu in everySampleMenu() + moreSampleMenus() + [twoWithTheSameDesk(), everyStateWithItsOwnID()] {
             let ids = allIDs(menu.entries)
             #expect(Set(ids).count == ids.count, "\(ids)")
         }
+    }
+
+    // MARK: ids unique for any input (issue #107)
+
+    /// A saved list edited by hand can hold one workhorse id twice; nothing checks that when it is loaded.
+    @Test func aRepeatedWorkhorseIDStillGivesUniqueIDs() {
+        let build = {
+            MenuModel.build([
+                .checked(.sampleReady(id: "mbp")),
+                .checked(.sampleReady(id: "mbp")),
+                .checked(.sample(.locked, workhorse: .sample(id: "mbp"))),
+                .stillChecking(.sample(id: "mbp")),
+            ])
+        }
+        let ids = allIDs(build().entries)
+        #expect(Set(ids).count == ids.count, "\(ids)")
+        #expect(ids == allIDs(build().entries))
+        // The first of each keeps its id; a repeat gets a number.
+        #expect(ids.first == "wh:mbp")
+        #expect(ids.contains("wh:mbp#2") && ids.contains("wh:mbp#3") && ids.contains("wh:mbp#4"))
+    }
+
+    /// A report that lists one desk twice.
+    @Test func aDeskListedTwiceStillGivesUniqueIDs() {
+        var status = HostStatus.sampleWithDesk
+        status.desks += status.desks
+        let build = {
+            MenuModel.build([.checked(.sample(.ready(signIns: true), status: status, homeReachable: true))])
+        }
+        let ids = allIDs(build().entries)
+        #expect(Set(ids).count == ids.count, "\(ids)")
+        #expect(ids == allIDs(build().entries))
+        #expect(ids.contains("desk:mbp:website") && ids.contains("desk:mbp:website#2"))
+    }
+
+    /// An id made with a number can't meet one that already looks like that.
+    @Test func aNumberedIDNeverMeetsANaturalOne() {
+        let lines = MenuLines(symbol: "x", entries: [
+            MenuEntry(id: "a", title: "A"), MenuEntry(id: "a", title: "A"), MenuEntry(id: "a#2", title: "B"),
+            MenuEntry(id: "c", title: "C", children: [MenuEntry(id: "a", title: "D")]),
+        ])
+        let ids = allIDs(lines.entries)
+        #expect(ids == ["a", "a#2", "a#2#2", "c", "a#3"])
     }
 
     @Test func twoWorkhorsesWithADeskOfTheSameNameGiveTwoIDs() {

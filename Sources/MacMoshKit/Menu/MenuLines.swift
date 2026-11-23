@@ -7,9 +7,9 @@ import Foundation
 /// under it. `id` is unique across the whole tree and the same every time the tree is built from the
 /// same input: `wh:<workhorse id>`, `wh:<workhorse id>:hint`, `desk:<workhorse id>:<desk name>`,
 /// `desk:<workhorse id>:<desk name>:rename`, `top:add`, and `<parent id>:sep<n>` for separators.
-/// No two are the same when workhorse ids hold no `:` and are all different (as `Workhorse.makeID`
-/// makes them) and a report names each desk once (as the host script writes it). Nothing checks this
-/// when the saved list is loaded, so a hand-edited list can repeat ids; today nothing reads them.
+/// The ids are SwiftUI's identity for the menu's rows, so `MenuLines` makes them unique for any
+/// input: a saved list edited by hand can repeat a workhorse id, and a report can name a desk twice.
+/// An id seen before gets `#2`, `#3`, … (the first number not used yet), in the order the tree is read.
 public struct MenuEntry: Sendable, Equatable, Identifiable {
     public var id: String
     public var title: String
@@ -54,9 +54,30 @@ public struct MenuLines: Sendable, Equatable {
     /// `entries` flattened, worked out once.
     public let items: [MenuItem]
 
+    /// `entries` with every repeated id numbered, so no two are the same.
     public init(symbol: String, entries: [MenuEntry]) {
+        var seen: Set<String> = []
+        let unique = MenuEntry.numberingRepeats(entries, seen: &seen)
         self.symbol = symbol
-        self.entries = entries
-        self.items = MenuEntry.flatten(entries)
+        self.entries = unique
+        self.items = MenuEntry.flatten(unique)
+    }
+}
+
+extension MenuEntry {
+    /// Depth first, each entry before its children: an id already in `seen` becomes `<id>#n` with the
+    /// smallest n from 2 up that is not in `seen` either. The same input gives the same ids every time.
+    static func numberingRepeats(_ entries: [MenuEntry], seen: inout Set<String>) -> [MenuEntry] {
+        entries.map { entry in
+            var entry = entry
+            if seen.contains(entry.id) {
+                var n = 2
+                while seen.contains("\(entry.id)#\(n)") { n += 1 }
+                entry.id = "\(entry.id)#\(n)"
+            }
+            seen.insert(entry.id)
+            entry.children = numberingRepeats(entry.children, seen: &seen)
+            return entry
+        }
     }
 }
