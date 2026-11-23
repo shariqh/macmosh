@@ -225,7 +225,8 @@ public enum MenuModel {
 
     /// The lines under every desk in the menu, open or closed: each opens a tab that asks first.
     private static func deskActions(_ id: String, _ name: String) -> [MenuItem] {
-        [.line("Rename \(name)…", .tab(["desk", "rename", id, name]), indent: 2)]
+        [.line("Rename \(name)…", .tab(["desk", "rename", id, name]), indent: 2),
+         .line("Remove \(name)…", .tab(["desk", "remove", id, name, "--ask"]), indent: 2)]
     }
 
     /// `website (2 windows: zsh, vim, kept running, permanent, open in 1 tab)`

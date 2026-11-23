@@ -122,6 +122,32 @@ public struct DeskFlow: Sendable {
         }
     }
 
+    static let removeQuestion = "Type yes to remove it: "
+    static let yes = "yes"
+
+    /// `desk remove --ask`, what the menu's `Remove <name>…` runs: names the desk and the windows that
+    /// will close, from the check's report, and asks once. Only `yes` removes it, and then its windows
+    /// close too, with whatever runs in them. A desk the report doesn't have is not asked about.
+    public func removeDeskAsking(_ check: CheckResult, name: String, ui: Interaction) async -> DeskResult {
+        await onDesk(check, name: name) { w, address, desk in
+            let open = check.status?.desks.first { $0.name == desk }
+            if let open {
+                let count = open.windowCount == 1 ? "1 window" : "\(open.windowCount) windows"
+                let names = open.windows.map(\.name).filter { !$0.isEmpty }
+                let list = names.isEmpty ? "" : " (" + names.joined(separator: ", ") + ")"
+                ui.say("This removes the desk \(desk.value) and closes its \(count)\(list), with whatever is running in them.")
+            } else if check.status?.definitions.contains(where: { $0.name == desk }) == true {
+                ui.say("This removes the desk \(desk.value). It has no open windows.")
+            } else {
+                throw HostCommandError.noSuchDesk
+            }
+            let answer = ui.ask(Self.removeQuestion).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard answer == Self.yes else { throw DeskResult.failure("Nothing was removed.") }
+            try await commands.removeDesk(on: w, address: address, name: desk, kill: true)
+            ui.say(open == nil ? "Removed the desk \(desk.value)." : "Removed the desk \(desk.value) and closed its windows.")
+        }
+    }
+
     /// With `new` nil it asks for the new name: that is the form the menu's `Rename <name>…` runs.
     /// An empty answer changes nothing.
     public func renameDesk(_ check: CheckResult, from old: String, to new: String?, ui: Interaction) async -> DeskResult {

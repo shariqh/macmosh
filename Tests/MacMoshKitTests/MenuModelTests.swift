@@ -17,7 +17,7 @@ private func menu(_ state: WorkhorseState, workhorse: Workhorse = .sample(), sta
         let menu = MenuModel.build([.checked(.sampleReady(id: "mbp", name: "MacBook Pro"))])
         let expected: [String] = [
             "MacBook Pro · Ready", "website (2 windows: zsh, vim, open in 1 tab)", "New window in website",
-            "Rename website…",
+            "Rename website…", "Remove website…",
             "New desk…", "Share screen", "Restart…", "Turn on lid-closed mode…",
             "Sign-ins working · Awake on power · Lid-closed mode off · On power, 82%",
             "Home address reachable from here: yes",
@@ -135,7 +135,7 @@ private func menu(_ state: WorkhorseState, workhorse: Workhorse = .sample(), sta
         // After the open desks and before New desk…, with no New window line: there is no desk to add one to.
         let at = titles(m).firstIndex(of: "notes (closed)")
         #expect(at != nil && titles(m)[at! + 1] == "Rename notes…")
-        #expect(at != nil && titles(m)[at! - 1] == "Rename website…")
+        #expect(at != nil && titles(m)[at! - 1] == "Remove website…")
         #expect(!titles(m).contains("New window in notes"))
     }
 
@@ -148,6 +148,35 @@ private func menu(_ state: WorkhorseState, workhorse: Workhorse = .sample(), sta
         let rename = item(m, "Rename website…")
         #expect(rename?.action == .tab(["desk", "rename", "mbp", "website"]))
         #expect(rename?.indent == 2)
+    }
+
+    @Test func anOpenDeskHasARemoveLineAfterItsRenameLine() {
+        let m = MenuModel.build([.checked(.sampleReady(id: "mbp"))])
+        let at = titles(m).firstIndex(of: "Rename website…")
+        #expect(at.map { titles(m)[$0 + 1] } == "Remove website…")
+        #expect(at.map { titles(m)[$0 + 2] } == "New desk…")
+        let remove = item(m, "Remove website…")
+        #expect(remove?.action == .tab(["desk", "remove", "mbp", "website", "--ask"]))
+        #expect(remove?.indent == 2)
+    }
+
+    /// The order the design draws: each desk, then its own lines, then New desk….
+    @Test func theLinesUnderEachDeskComeInTheDesignsOrder() {
+        var status = HostStatus.sampleWithDesk
+        status.definitions = [
+            .init(name: DeskName("notes")!, reopen: false, keep: false, folder: "/Users/alex/notes", command: "",
+                  permanent: true),
+        ]
+        let m = menu(.ready(signIns: true), workhorse: .sample(id: "mbp"), status: status)
+        let from = titles(m).firstIndex { $0.hasPrefix("website (") }
+        let lines = from.map { Array(titles(m)[$0..<($0 + 7)]) }
+        #expect(lines == [
+            "website (2 windows: zsh, vim, open in 1 tab)", "New window in website", "Rename website…", "Remove website…",
+            "notes (closed)", "Rename notes…", "Remove notes…",
+        ])
+        #expect(from.map { titles(m)[$0 + 7] } == "New desk…")
+        #expect(from.map { m.items[$0..<($0 + 7)].map(\.indent) } == [1, 2, 2, 2, 1, 2, 2])
+        #expect(item(m, "Remove notes…")?.action == .tab(["desk", "remove", "mbp", "notes", "--ask"]))
     }
 
     @Test func aClosedPermanentDeskHasARenameLine() {

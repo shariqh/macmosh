@@ -235,6 +235,7 @@ private func desksListing(_ names: [String]) -> FakeRunner {
                 await f.newWindow(check, desk: "web", ui: ui),
                 await f.renameDesk(check, from: "web", to: "notes", ui: ui),
                 await f.renameDesk(check, from: "web", to: nil, ui: ui),
+                await f.removeDeskAsking(check, name: "web", ui: ui),
                 await f.folders(check),
             ]
             for result in results {
@@ -534,6 +535,85 @@ private func desksListing(_ names: [String]) -> FakeRunner {
         #expect(taken.reason == DeskFormat.message(.alreadyExists, workhorse: .sample()))
         let missing = await flow(scriptEnds(4)).renameDesk(checked(), from: "web", to: "notes", ui: ScriptedInteraction())
         #expect(missing.reason == DeskFormat.message(.noSuchDesk, workhorse: .sample()))
+    }
+
+    // MARK: remove --ask
+
+    /// A Ready check whose report has `website` open with two windows and `notes` closed and permanent.
+    private func checkedWithDesks() -> CheckResult {
+        var status = HostStatus.sampleWithDesk
+        status.definitions = [
+            .init(name: DeskName("website")!, reopen: true, keep: false, folder: "/Users/alex/site", command: ""),
+            .init(name: DeskName("notes")!, reopen: false, keep: false, folder: "/Users/alex/notes", command: "",
+                  permanent: true),
+        ]
+        return .sample(.ready(signIns: true), workhorse: .sample(), status: status, answeredAt: "workhorse")
+    }
+
+    static let removeQuestion = "Type yes to remove it: "
+
+    @Test func removingAnOpenDeskNamesItsWindowsAndClosesThemOnYes() async {
+        let runner = FakeRunner { _ in FakeRunner.ok() }
+        let ui = ScriptedInteraction(answers: [" yes "])
+        let result = await flow(runner).removeDeskAsking(checkedWithDesks(), name: "website", ui: ui)
+        #expect(result.code == 0)
+        #expect(ui.said == [
+            "This removes the desk website and closes its 2 windows (zsh, vim), with whatever is running in them.",
+            "Removed the desk website and closed its windows.",
+        ])
+        #expect(ui.asked == [Self.removeQuestion])
+        #expect(remote(runner) == "~/.macmosh/macmosh-host desk-remove website --kill")
+    }
+
+    @Test func removingAClosedDeskSaysItHasNoOpenWindows() async {
+        let runner = FakeRunner { _ in FakeRunner.ok() }
+        let ui = ScriptedInteraction(answers: ["yes"])
+        let result = await flow(runner).removeDeskAsking(checkedWithDesks(), name: "notes", ui: ui)
+        #expect(result.code == 0)
+        #expect(ui.said == ["This removes the desk notes. It has no open windows.", "Removed the desk notes."])
+        #expect(ui.asked == [Self.removeQuestion])
+        #expect(remote(runner) == "~/.macmosh/macmosh-host desk-remove notes --kill")
+    }
+
+    @Test(arguments: ["website", "notes"])
+    func noOrEnterRemovesNothing(desk: String) async {
+        for answer in ["no", "", "y", "YES please"] {
+            let runner = FakeRunner { _ in FakeRunner.ok() }
+            let ui = ScriptedInteraction(answers: [answer])
+            let result = await flow(runner).removeDeskAsking(checkedWithDesks(), name: desk, ui: ui)
+            #expect(result.code == 1, "\(answer)")
+            #expect(result.reason == "Nothing was removed.", "\(answer)")
+            #expect(ui.asked == [Self.removeQuestion])
+            #expect(runner.calls.isEmpty, "\(answer)")
+        }
+    }
+
+    @Test func oneWindowIsOneWindow() async {
+        var status = HostStatus.sampleReady
+        status.desks = [.init(name: DeskName("solo")!, windows: [.init(index: 0, name: "zsh")], windowCount: 1, attached: 0)]
+        let check = CheckResult.sample(.ready(signIns: true), status: status, answeredAt: "workhorse")
+        let ui = ScriptedInteraction()
+        _ = await flow(FakeRunner { _ in FakeRunner.ok() }).removeDeskAsking(check, name: "solo", ui: ui)
+        #expect(ui.said.first == "This removes the desk solo and closes its 1 window (zsh), with whatever is running in them.")
+    }
+
+    @Test func aDeskTheReportDoesntHaveIsNotAskedAbout() async {
+        let runner = FakeRunner { _ in FakeRunner.ok() }
+        let ui = ScriptedInteraction(answers: ["yes"])
+        let result = await flow(runner).removeDeskAsking(checkedWithDesks(), name: "journal", ui: ui)
+        #expect(result.code == 1)
+        #expect(result.reason == DeskFormat.message(.noSuchDesk, workhorse: .sample()))
+        #expect(ui.asked.isEmpty)
+        #expect(runner.calls.isEmpty)
+    }
+
+    @Test func removeWithoutAskIsAsBefore() async {
+        let runner = FakeRunner { _ in FakeRunner.ok() }
+        let ui = ScriptedInteraction(answers: ["no"])
+        let result = await flow(runner).removeDesk(checkedWithDesks(), name: "website", kill: false, ui: ui)
+        #expect(result.code == 0)
+        #expect(ui.asked.isEmpty)
+        #expect(remote(runner) == "~/.macmosh/macmosh-host desk-remove website")
     }
 
     // MARK: the end of a tab

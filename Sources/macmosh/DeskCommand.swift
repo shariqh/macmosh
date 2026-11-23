@@ -115,12 +115,22 @@ struct DeskCommand: AsyncParsableCommand {
         @Flag(help: "Also close the desk's windows and whatever runs in them.")
         var kill = false
 
+        @Flag(help: "Say what will close and ask first. On yes the desk's windows close too, as with --kill. This is what the menu's Remove runs.")
+        var ask = false
+
         func run() async throws {
+            let ui = TerminalInteraction()
+            var outcome: DeskResult
             switch await checkedForDesk(workhorse) {
-            case .failure(let failed): try failed.finishPlainly()
+            case .failure(let failed): outcome = failed
             case .success(let check):
-                try await deskFlow().removeDesk(check, name: desk, kill: kill, ui: TerminalInteraction()).finishPlainly()
+                outcome = ask ? await deskFlow().removeDeskAsking(check, name: desk, ui: ui)
+                              : await deskFlow().removeDesk(check, name: desk, kill: kill, ui: ui)
             }
+            guard ask else { return try outcome.finishPlainly() }
+            // It runs in a tab from the menu: it stays open until a key is pressed.
+            outcome.code = ui.finishTab(outcome.code, reason: outcome.reason)
+            if outcome.code != 0 { throw ExitCode(outcome.code) }
         }
     }
 
