@@ -112,7 +112,8 @@ private func crlf(_ s: String) -> String { s.replacingOccurrences(of: "\n", with
     @Test func row7RefusedSignInIsAuthDenied() throws {
         #expect(SSHProbe.classify(try failed(fixture: "ssh/auth-denied.txt"))
                 == .authDenied(methods: ["publickey", "password", "keyboard-interactive"]))
-        // The locked screen's assumed answer: no publickey on offer.
+        // The locked screen's assumed answer: no publickey on offer. Sitting 2 did not record it, so this
+        // stays assumed until a restart is recorded.
         #expect(SSHProbe.classify(try failed(fixture: "ssh/auth-denied-password-only.assumed.txt"))
                 == .authDenied(methods: ["password", "keyboard-interactive"]))
     }

@@ -242,4 +242,165 @@ private final class Saved: @unchecked Sendable {
         await r.perform(.line("Check now", .refresh), using: actions)
         #expect(r.notice == nil)
     }
+
+    // MARK: the wait after a login (issue #88)
+
+    private static let t0 = Date(timeIntervalSince1970: 1_800_000_000)
+
+    private static func found(_ state: WorkhorseState, id: String = "mbp", agent: Bool = true,
+                              at offset: TimeInterval) -> Gathered {
+        var status = HostStatus.sampleReady
+        status.agentInstalled = agent
+        status.serverUp = state != .notSetUp(.deskServerDown)
+        return .checked(.sample(state, workhorse: .sample(id: id, name: "MacBook Pro"), status: status,
+                                checkedAt: t0.addingTimeInterval(offset)))
+    }
+
+    private static func down(id: String = "mbp", agent: Bool = true, at offset: TimeInterval) -> Gathered {
+        found(.notSetUp(.deskServerDown), id: id, agent: agent, at: offset)
+    }
+
+    /// Gives one scripted answer per refresh.
+    private final class Script: @unchecked Sendable {
+        private let lock = NSLock()
+        private var steps: [[Gathered]]
+        init(_ steps: [[Gathered]]) { self.steps = steps }
+        func next() -> [Gathered] { lock.withLock { steps.isEmpty ? [] : steps.removeFirst() } }
+    }
+
+    private func scripted(_ steps: [Gathered]) -> MenuRefresher {
+        let script = Script(steps.map { [$0] })
+        return MenuRefresher(load: { [.sample(id: "mbp", name: "MacBook Pro")] },
+                             gather: { _ in script.next() }, save: { _ in })
+    }
+
+    @Test func theSitting2LoginGoesFromWaitingForLoginToReady() async {
+        let r = scripted([Self.found(.waitingForLogin, at: 0),
+                          Self.down(at: 83),
+                          Self.found(.ready(signIns: true), at: 112)])
+        await r.refresh()
+        #expect(r.menu.items.first?.title == "MacBook Pro · Waiting for login")
+        await r.refresh()
+        #expect(r.menu.items.first?.title == "MacBook Pro · Waiting for the desk server")
+        #expect(r.menu.symbol == "ellipsis.circle")
+        #expect(!r.menu.items.contains { $0.title == "Finish setting up…" })
+        #expect(!r.menu.items.contains { $0.title.hasPrefix("Run: macmosh prepare") })
+        #expect(r.menu.items.contains { $0.title == "Run the checklist…" })
+        await r.refresh()
+        #expect(r.menu.items.first?.title == "MacBook Pro · Ready")
+    }
+
+    @Test func theLogLineTellsTheWaitApartFromTheOldWrongMenu() async {
+        let lines = LockedLines()
+        let script = Script([[Self.found(.waitingForLogin, at: 0)], [Self.down(at: 83)]])
+        let r = MenuRefresher(load: { [.sample(id: "mbp", name: "MacBook Pro")] },
+                              gather: { _ in script.next() }, save: { _ in }, log: { lines.add($0) })
+        await r.refresh()
+        await r.refresh()
+        #expect(lines.all.last == "menu refreshed: symbol=ellipsis.circle workhorses=1 lines=6")
+    }
+
+    private final class LockedLines: @unchecked Sendable {
+        private let lock = NSLock()
+        private var lines: [String] = []
+        func add(_ line: String) { lock.withLock { lines.append(line) } }
+        var all: [String] { lock.withLock { lines } }
+    }
+
+    @Test func aDeskServerThatStaysDownShowsTheFixAfterAMinute() async {
+        var wait = DeskServerWait()
+        #expect(wait.update([Self.found(.waitingForLogin, at: -30)]) == [])
+        #expect(wait.update([Self.down(at: 0)]) == ["mbp"])
+        #expect(wait.update([Self.down(at: 30)]) == ["mbp"])
+        #expect(wait.update([Self.down(at: 60)]) == [])
+        #expect(wait.update([Self.down(at: 90)]) == [])   // the wait does not start again
+
+        let r = scripted([Self.found(.waitingForLogin, at: -30), Self.down(at: 0), Self.down(at: 30), Self.down(at: 60)])
+        for _ in 0..<3 { await r.refresh() }
+        #expect(r.menu.items.first?.title == "MacBook Pro · Waiting for the desk server")
+        await r.refresh()
+        #expect(r.menu.items.first?.title == "MacBook Pro · Desk server is off")
+        #expect(r.menu.items.contains { $0.title == "Finish setting up…" })
+    }
+
+    @Test func aServerThatStopsWhileReadyShowsTheFixAtOnce() async {
+        var wait = DeskServerWait()
+        #expect(wait.update([Self.found(.ready(signIns: true), at: 0)]) == [])
+        #expect(wait.update([Self.down(at: 30)]) == [])
+        let r = scripted([Self.found(.ready(signIns: true), at: 0), Self.down(at: 30)])
+        await r.refresh()
+        await r.refresh()
+        #expect(r.menu.items.first?.title == "MacBook Pro · Desk server is off")
+        #expect(r.menu.items.contains { $0.title == "Finish setting up…" })
+    }
+
+    @Test func noLoginAgentMeansNoWait() async {
+        var wait = DeskServerWait()
+        #expect(wait.update([Self.found(.waitingForLogin, at: 0)]) == [])
+        #expect(wait.update([Self.down(agent: false, at: 30)]) == [])
+        let r = scripted([Self.found(.waitingForLogin, at: 0), Self.down(agent: false, at: 30)])
+        await r.refresh()
+        await r.refresh()
+        #expect(r.menu.items.first?.title == "MacBook Pro · Desk server is off")
+    }
+
+    @Test func aFirstCheckWithTheServerDownWaitsAMinute() {
+        var wait = DeskServerWait()
+        #expect(wait.update([Self.down(at: 0)]) == ["mbp"])
+        #expect(wait.update([Self.down(at: DeskServerWait.limit - 1)]) == ["mbp"])
+        #expect(wait.update([Self.down(at: DeskServerWait.limit)]) == [])
+    }
+
+    @Test func aWaitThatAnotherStateClearsDoesNotComeBack() {
+        // Ready ends a running wait, so a server that stops later shows the fix at once.
+        var wait = DeskServerWait()
+        _ = wait.update([Self.found(.waitingForLogin, at: -30)])
+        #expect(wait.update([Self.down(at: 0)]) == ["mbp"])
+        #expect(wait.update([Self.found(.ready(signIns: true), at: 30)]) == [])
+        #expect(wait.update([Self.down(at: 45)]) == [])
+        // So does a check that finds no login agent.
+        var noAgent = DeskServerWait()
+        #expect(noAgent.update([Self.down(at: 0)]) == ["mbp"])
+        #expect(noAgent.update([Self.down(agent: false, at: 20)]) == [])
+        #expect(noAgent.update([Self.down(at: 40)]) == [])
+    }
+
+    @Test func aClockSetBackDoesNotKeepTheWaitUp() {
+        var wait = DeskServerWait()
+        #expect(wait.update([Self.down(at: 0)]) == ["mbp"])
+        #expect(wait.update([Self.down(at: -300)]) == [])
+    }
+
+    @Test func aLockedOrUnreachableWorkhorseThatComesBackLoggedInWaits() {
+        var locked = DeskServerWait()
+        _ = locked.update([Self.found(.locked, at: 0)])
+        #expect(locked.update([Self.down(at: 30)]) == ["mbp"])
+
+        var unreachable = DeskServerWait()
+        _ = unreachable.update([Self.found(.cantReach(.nothingAnswers), at: 0)])
+        #expect(unreachable.update([Self.down(at: 30)]) == ["mbp"])
+
+        var broken = DeskServerWait()
+        _ = broken.update([Self.found(.notSetUp(.hostScriptMissing), at: 0)])
+        #expect(broken.update([Self.down(at: 30)]) == [])
+    }
+
+    @Test func stillCheckingNeitherStartsNorEndsTheWait() {
+        var wait = DeskServerWait()
+        _ = wait.update([Self.found(.waitingForLogin, at: -30)])
+        #expect(wait.update([Self.down(at: 0)]) == ["mbp"])
+        #expect(wait.update([.stillChecking(.sample(id: "mbp"))]) == [])
+        #expect(wait.update([Self.down(at: 45)]) == ["mbp"])
+
+        var afterReady = DeskServerWait()
+        _ = afterReady.update([Self.found(.ready(signIns: true), at: 0)])
+        _ = afterReady.update([.stillChecking(.sample(id: "mbp"))])
+        #expect(afterReady.update([Self.down(at: 60)]) == [])
+    }
+
+    @Test func eachWorkhorseWaitsOnItsOwn() {
+        var wait = DeskServerWait()
+        _ = wait.update([Self.found(.waitingForLogin, id: "a", at: 0), Self.found(.ready(signIns: true), id: "b", at: 0)])
+        #expect(wait.update([Self.down(id: "a", at: 30), Self.down(id: "b", at: 30)]) == ["a"])
+    }
 }
