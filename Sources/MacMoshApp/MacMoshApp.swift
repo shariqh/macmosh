@@ -27,8 +27,11 @@ struct MacMoshApp: App {
                 // AppKit says when a menu starts being tracked, which is when a person opens it.
                 // The app has one menu, this one. (The menu content's `onAppear` runs once, when
                 // the app starts, so it can't tell.) Once the app has windows of its own, a popup
-                // button in one would count too, and this needs to tell them apart.
-                .onReceive(NotificationCenter.default.publisher(for: NSMenu.didBeginTrackingNotification)) { _ in
+                // button in one would count too, and this needs to tell them apart: the tracking
+                // line logs which object came. Only the main menu bar is recognised yet; the
+                // menu-bar item's own menu is read on a real Mac in a later step.
+                .onReceive(NotificationCenter.default.publisher(for: NSMenu.didBeginTrackingNotification)) { note in
+                    MenuLog.write(MenuLog.tracking(.of(note.object as AnyObject?, mainMenu: NSApp.mainMenu)))
                     Task { await refresher.menuOpened() }
                 }
         }

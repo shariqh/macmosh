@@ -25,17 +25,6 @@ public struct MenuItem: Sendable, Equatable {
         MenuItem(title: title, action: action, indent: indent, isSeparator: false)
     }
 
-    static let separator = MenuItem(title: "", action: .none, indent: 0, isSeparator: true)
-}
-
-public struct Menu: Sendable, Equatable {
-    public var symbol: String
-    public var items: [MenuItem]
-
-    public init(symbol: String, items: [MenuItem]) {
-        self.symbol = symbol
-        self.items = items
-    }
 }
 
 /// One workhorse's answer, or the news that it hadn't answered when the time ran out.
@@ -54,8 +43,8 @@ public enum PlainWords {
     }
 }
 
-/// The menu as a list of lines, from what the checks found. Built for the native
-/// menu-bar app. Wording that exists already comes from `StatusFormat`.
+/// The menu as a tree of entries, and the lines it flattens to, from what the checks found. Built
+/// for the native menu-bar app. Wording that exists already comes from `StatusFormat`.
 public enum MenuModel {
     /// The icon for one state. A different shape for each (design 5.1), so it reads in a monochrome menu bar.
     public static func symbol(for state: WorkhorseState) -> String {
@@ -101,36 +90,42 @@ public enum MenuModel {
     /// whose desk server is down shows the wait instead of the fix, and adds nothing to the icon,
     /// as "Still checking…" adds nothing. `now` and `timeZone` shape the time in "Last seen 14:02"; a test fixes them.
     public static func build(_ gathered: [Gathered], waitingForDeskServer: Set<String> = [],
-                             now: Date = Date(), timeZone: TimeZone = .current) -> Menu {
+                             now: Date = Date(), timeZone: TimeZone = .current) -> MenuLines {
         if gathered.isEmpty {
-            return Menu(symbol: noWorkhorsesSymbol, items: [
-                .line("No workhorses yet", indent: 0),
-                .line("Add a Mac…", .tab(["pair"]), indent: 0),
+            return MenuLines(symbol: noWorkhorsesSymbol, entries: [
+                MenuEntry(id: "top:none", title: "No workhorses yet"),
+                .button(ButtonRules.addAMac, under: "top"),
             ])
         }
 
-        var items: [MenuItem] = []
+        var entries: [MenuEntry] = []
         var states: [WorkhorseState] = []
+        var separators = 0
+        func separator() {
+            separators += 1
+            entries.append(.separator(id: "top:sep\(separators)"))
+        }
         for (i, entry) in gathered.enumerated() {
-            if i > 0 { items.append(.separator) }
+            if i > 0 { separator() }
             switch entry {
             case .checked(let result):
                 if waitingForDeskServer.contains(result.workhorse.id), result.state == .notSetUp(.deskServerDown) {
-                    items += deskServerWaitBlock(result)
+                    entries.append(deskServerWaitBlock(result))
                 } else {
                     states.append(result.state)
-                    items += block(for: result, now: now, timeZone: timeZone)
+                    entries.append(block(for: result, now: now, timeZone: timeZone))
                 }
             case .stillChecking(let w):
-                items.append(.line("\(w.name) · Still checking…", indent: 0))
-                items.append(checklist(w))
+                let id = workhorseID(w)
+                entries.append(MenuEntry(id: id, title: "\(w.name) · Still checking…",
+                                         children: [.button(ButtonRules.checklist(w.id), under: id)]))
             }
         }
-        items.append(.separator)
-        items.append(.line("Add a Mac…", .tab(["pair"]), indent: 0))
-        items.append(.line("Check now", .refresh, indent: 0))
+        separator()
+        entries.append(.button(ButtonRules.addAMac, under: "top"))
+        entries.append(.button(ButtonRules.checkNow, under: "top"))
         let symbol = mostUrgent(states).map(symbol(for:)) ?? stillCheckingSymbol
-        return Menu(symbol: symbol, items: items)
+        return MenuLines(symbol: symbol, entries: entries)
     }
 
     // MARK: One workhorse
@@ -138,95 +133,68 @@ public enum MenuModel {
     /// Under "Waiting for the desk server". Every clause is true when it is shown (issue #88).
     static let waitingForDeskServerHint = "Someone has logged in and the desk server isn't running yet. MacMosh's login agent starts it after a login; if it still isn't running in a minute, this menu says so."
 
-    private static func checklist(_ w: Workhorse) -> MenuItem {
-        .line("Run the checklist…", .tab(["prepare", w.id, "--pause"]))
-    }
+    private static func workhorseID(_ w: Workhorse) -> String { "wh:\(w.id)" }
 
     /// A headline, the hint, and the checklist. No "Finish setting up…": the login agent is about to do it.
-    private static func deskServerWaitBlock(_ r: CheckResult) -> [MenuItem] {
-        [.line("\(r.workhorse.name) · Waiting for the desk server", indent: 0),
-         .line(waitingForDeskServerHint),
-         checklist(r.workhorse)]
+    private static func deskServerWaitBlock(_ r: CheckResult) -> MenuEntry {
+        let id = workhorseID(r.workhorse)
+        return MenuEntry(id: id, title: "\(r.workhorse.name) · Waiting for the desk server", children: [
+            MenuEntry(id: "\(id):hint", title: waitingForDeskServerHint),
+            .button(ButtonRules.checklist(r.workhorse.id), under: id),
+        ])
     }
 
-    private static func block(for r: CheckResult, now: Date, timeZone: TimeZone) -> [MenuItem] {
-        let id = r.workhorse.id
-        var items: [MenuItem] = [.line(StatusFormat.headline(r), indent: 0)]
-        let hint = StatusFormat.hint(r, now: now, timeZone: timeZone)
-
-        switch r.state {
-        case .ready(let signIns):
-            if !signIns {
-                if let hint { items.append(.line(hint)) }
-                items.append(.line("Fix…", .tab(["prepare", id, "--restart-desk-server", "--pause"])))
-            }
-            items += readyItems(r)
-        case .waitingForLogin:
-            if let hint { items.append(.line(hint)) }
-            items.append(.line("Log in…  (opens Screen Sharing)", .run(["screen", id])))
-        case .locked:
-            if let hint { items.append(.line(hint)) }
-            if r.workhorse.canUnlockOverSSH {
-                items.append(.line("Unlock disk…  (you type the Mac's password)", .tab(["unlock", id])))
-            }
-        case .cantVerify, .cantReach:
-            if let hint { items.append(.line(hint)) }
-        case .notSetUp(let problem):
-            if let hint { items.append(.line(hint)) }
-            if problem == .notPaired {
-                items.append(.line("Pair…", .tab(["pair", id])))
-            } else {
-                items.append(.line("Finish setting up…", .tab(["prepare", id, "--fix", "--pause"])))
-            }
+    /// The headline, and under it: the hint (a Ready workhorse with sign-ins working has none), the
+    /// state's own button, a Ready workhorse's desks and buttons, and the checklist.
+    private static func block(for r: CheckResult, now: Date, timeZone: TimeZone) -> MenuEntry {
+        let id = workhorseID(r.workhorse)
+        var children: [MenuEntry] = []
+        if let hint = StatusFormat.hint(r, now: now, timeZone: timeZone) {
+            children.append(MenuEntry(id: "\(id):hint", title: hint))
         }
-        items.append(checklist(r.workhorse))
-        return items
+        children += ButtonRules.forState(r).map { .button($0, under: id) }
+        if case .ready = r.state { children += readyEntries(r, under: id) }
+        children.append(.button(ButtonRules.checklist(r.workhorse.id), under: id))
+        return MenuEntry(id: id, title: StatusFormat.headline(r), children: children)
     }
 
     /// Desks, the buttons (a laptop's lid-closed switch among them), the summary line and the home-address light.
-    private static func readyItems(_ r: CheckResult) -> [MenuItem] {
+    private static func readyEntries(_ r: CheckResult, under parent: String) -> [MenuEntry] {
         let id = r.workhorse.id
-        var items: [MenuItem] = []
+        var entries: [MenuEntry] = []
         let definitions = r.status?.definitions ?? []
         let desks = r.status?.desks ?? []
         let kept = Set(definitions.filter(\.keep).map(\.name.value))
         let permanent = Set(definitions.filter(\.permanent).map(\.name.value))
         for desk in desks {
             let name = desk.name.value
-            items.append(.line(deskTitle(desk, kept: kept.contains(name), permanent: permanent.contains(name)),
-                               .tab(["connect", id, name])))
-            items.append(.line("New window in \(name)", .run(["desk", "window", id, name]), indent: 2))
-            items += deskActions(id, name)
+            entries.append(deskEntry(workhorse: id, desk: name, isOpen: true,
+                                     title: deskTitle(desk, kept: kept.contains(name), permanent: permanent.contains(name))))
         }
         // A permanent desk whose last shell exited stays, closed; connect makes it again. Any other
         // definition with no desk is a leftover the workhorse clears up, so it gets no line.
         let open = Set(desks.map(\.name.value))
         for definition in definitions where definition.permanent && !open.contains(definition.name.value) {
             let name = definition.name.value
-            items.append(.line("\(name) (closed)", .tab(["connect", id, name])))
-            items += deskActions(id, name)
+            entries.append(deskEntry(workhorse: id, desk: name, isOpen: false, title: "\(name) (closed)"))
         }
-        items.append(.line("New desk…", .tab(["desk", "new", id])))
-        items.append(.line("Share screen", .run(["screen", id])))
-        items.append(.line("Restart…", .tab(["restart", id])))
-        if let status = r.status, status.isLaptop {
-            if status.power.disableSleep == 1 {
-                items.append(.line("Turn off lid-closed mode…", .tab(["power", id, "lid", "off"])))
-            } else {
-                items.append(.line("Turn on lid-closed mode…", .tab(["power", id, "lid", "on"])))
-            }
+        entries += ButtonRules.forReady(r).map { .button($0, under: parent) }
+        if let status = r.status {
+            entries.append(MenuEntry(id: "\(parent):summary", title: StatusFormat.summaryLine(status)))
         }
-        if let status = r.status { items.append(.line(StatusFormat.summaryLine(status))) }
         if let reachable = r.homeReachable {
-            items.append(.line("Home address reachable from here: \(reachable ? "yes" : "no")"))
+            entries.append(MenuEntry(id: "\(parent):home",
+                                     title: "Home address reachable from here: \(reachable ? "yes" : "no")"))
         }
-        return items
+        return entries
     }
 
-    /// The lines under every desk in the menu, open or closed: each opens a tab that asks first.
-    private static func deskActions(_ id: String, _ name: String) -> [MenuItem] {
-        [.line("Rename \(name)…", .tab(["desk", "rename", id, name]), indent: 2),
-         .line("Remove \(name)…", .tab(["desk", "remove", id, name, "--ask"]), indent: 2)]
+    /// A desk's line opens it; its actions are the lines under it.
+    private static func deskEntry(workhorse id: String, desk name: String, isOpen: Bool, title: String) -> MenuEntry {
+        let deskID = "desk:\(id):\(name)"
+        return MenuEntry(id: deskID, title: title, action: ButtonRules.connect(workhorse: id, desk: name),
+                         children: ButtonRules.forDesk(workhorse: id, desk: name, isOpen: isOpen)
+                             .map { .button($0, under: deskID) })
     }
 
     /// `website (2 windows: zsh, vim, kept running, permanent, open in 1 tab)`

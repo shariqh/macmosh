@@ -4,9 +4,26 @@ import Foundation
 /// Holds the menu the app shows and refreshes it. All logic the app needs that can be tested lives here, not in a view.
 @MainActor
 public final class MenuRefresher: ObservableObject {
-    @Published public private(set) var menu: Menu
+    @Published public private(set) var menu: MenuLines
     /// The last sentence from an action, shown as the menu's first line until the next action.
     @Published public private(set) var notice: String?
+
+    // What the checks found, kept for the window (main window design, section 7.2). The menu reads
+    // none of it: it is built from each check's own results, as before.
+
+    /// The last real result for each workhorse on the list, by id. A check that comes back still
+    /// running leaves the one before in place.
+    @Published public private(set) var latest: [String: CheckResult] = [:]
+    /// The last Ready result for each workhorse on the list, by id, kept while it is in another state.
+    @Published public private(set) var lastReady: [String: CheckResult] = [:]
+    /// The workhorses being checked. A check asks every one at once, so every id goes in when a check
+    /// starts; each leaves when it answers, and one still being checked when the time is up stays in.
+    @Published public private(set) var checking: Set<String> = []
+    /// True from the start of a refresh until it ends, the one run after it included.
+    @Published public private(set) var isRefreshing = false
+    /// The workhorses shown as "Waiting for the desk server" (issue #88). Like `latest` and
+    /// `lastReady`, it is left as it was when the saved list can't be read.
+    @Published public private(set) var waitingForDeskServer: Set<String> = []
 
     private let load: @Sendable () throws -> [Workhorse]
     private let gather: @Sendable ([Workhorse]) async -> [Gathered]
@@ -15,7 +32,6 @@ public final class MenuRefresher: ObservableObject {
     private let pause: @Sendable (Duration) async -> Void
     /// The last "menu refreshed" line written, so that a check that changes nothing writes nothing.
     private var lastRefreshLine: String?
-    private var refreshing = false
     private var refreshAgain = false
     /// How many checks in a row found a workhorse that can't be reached; sets the wait in `runInBackground`.
     private var missesInARow = 0
@@ -39,8 +55,8 @@ public final class MenuRefresher: ObservableObject {
         self.save = save
         self.log = log
         self.pause = pause
-        self.menu = Menu(symbol: MenuModel.stillCheckingSymbol,
-                         items: [.line("Checking…", indent: 0)])
+        self.menu = MenuLines(symbol: MenuModel.stillCheckingSymbol,
+                              entries: [MenuEntry(id: "top:checking", title: "Checking…")])
     }
 
     /// Loads the list, checks every workhorse, saves what the reports changed and builds the menu.
@@ -49,12 +65,12 @@ public final class MenuRefresher: ObservableObject {
     /// remembered, and exactly one more refresh runs right after the current one, however many were
     /// asked for. That keeps the check that follows an action from being lost to one already in flight.
     public func refresh() async {
-        if refreshing {
+        if isRefreshing {
             refreshAgain = true
             return
         }
-        refreshing = true
-        defer { refreshing = false }
+        isRefreshing = true
+        defer { isRefreshing = false }
         repeat {
             refreshAgain = false
             await refreshOnce()
@@ -67,13 +83,18 @@ public final class MenuRefresher: ObservableObject {
         do {
             list = try await Task.detached { try load() }.value
         } catch {
-            menu = Menu(symbol: "exclamationmark.triangle",
-                        items: [.line(StatusFormat.storeMessage(error), indent: 0)])
+            if !checking.isEmpty { checking = [] }
+            menu = MenuLines(symbol: "exclamationmark.triangle",
+                             entries: [MenuEntry(id: "top:unreadable", title: StatusFormat.storeMessage(error))])
             missesInARow = 0
             logRefresh(MenuLog.listUnreadable)
             return
         }
 
+        // Written only when it changes. That saves a redraw only when nothing changed: in the usual
+        // run `checking` goes from empty to every id here and back to empty in `keep`.
+        let all = Set(list.map(\.id))
+        if checking != all { checking = all }
         var gathered = await gather(list)
         // One check that can't reach a workhorse is not news yet: a Mac that has just woken has no
         // network for a moment (issue #83). So the first miss gets a second look a few seconds
@@ -91,9 +112,29 @@ public final class MenuRefresher: ObservableObject {
         }
         // The saved list is written under a file lock, so it is done off the main thread.
         await Task.detached { for result in checked { save(result) } }.value
+        keep(gathered, list: list)
         let waiting = deskServerWait.update(gathered)
+        if waitingForDeskServer != waiting { waitingForDeskServer = waiting }
         menu = MenuModel.build(gathered, waitingForDeskServer: waiting)
         logRefresh(MenuLog.refreshed(menu, workhorses: list.count))
+    }
+
+    /// Takes in one check's results: each answer replaces that workhorse's `latest` (and its
+    /// `lastReady`, when Ready) and takes it out of `checking`. A workhorse no longer on the list is forgotten.
+    private func keep(_ gathered: [Gathered], list: [Workhorse]) {
+        let ids = Set(list.map(\.id))
+        var latest = self.latest.filter { ids.contains($0.key) }
+        var lastReady = self.lastReady.filter { ids.contains($0.key) }
+        var checking = self.checking
+        for case .checked(let result) in gathered {
+            let id = result.workhorse.id
+            latest[id] = result
+            if case .ready = result.state { lastReady[id] = result }
+            checking.remove(id)
+        }
+        if self.latest != latest { self.latest = latest }
+        if self.lastReady != lastReady { self.lastReady = lastReady }
+        if self.checking != checking { self.checking = checking }
     }
 
     /// The checks repeat every 30 seconds or so; only a change is worth a line.
