@@ -42,7 +42,7 @@ extension CheckResult {
 }
 
 /// One menu for every state the design names, and one with no workhorses, for tests that look at all of them.
-func everySampleMenu() -> [Menu] {
+func everySampleMenu() -> [MenuLines] {
     let able = Workhorse.sample(osVersion: "27.3", arch: "arm64")
     let readyOff = CheckResult.sample(.ready(signIns: false), status: .sampleWithDesk, homeReachable: false)
     let results: [CheckResult] = [

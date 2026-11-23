@@ -3,12 +3,12 @@ import Foundation
 import Testing
 @testable import MacMoshKit
 
-private func titles(_ menu: Menu) -> [String] { menu.items.map(\.title) }
+private func titles(_ menu: MenuLines) -> [String] { menu.items.map(\.title) }
 
-private func item(_ menu: Menu, _ title: String) -> MenuItem? { menu.items.first { $0.title == title } }
+private func item(_ menu: MenuLines, _ title: String) -> MenuItem? { menu.items.first { $0.title == title } }
 
 private func menu(_ state: WorkhorseState, workhorse: Workhorse = .sample(), status: HostStatus? = nil,
-                  homeReachable: Bool? = nil) -> Menu {
+                  homeReachable: Bool? = nil) -> MenuLines {
     MenuModel.build([.checked(.sample(state, workhorse: workhorse, status: status, homeReachable: homeReachable))])
 }
 
@@ -41,7 +41,7 @@ private func menu(_ state: WorkhorseState, workhorse: Workhorse = .sample(), sta
 
     // MARK: the lid-closed switch
 
-    private func lidMenu(lid: Int?, laptop: Bool = true) -> Menu {
+    private func lidMenu(lid: Int?, laptop: Bool = true) -> MenuLines {
         var status = HostStatus.sampleWithDesk
         status.power.disableSleep = lid
         if !laptop { status.battery = .init(present: false, onAC: nil, percent: nil) }
