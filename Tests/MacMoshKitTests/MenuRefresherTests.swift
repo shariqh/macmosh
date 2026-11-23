@@ -24,7 +24,7 @@ private final class Saved: @unchecked Sendable {
     @Test func theMenuStartsAsStillLoading() {
         let r = MenuRefresher(load: { [] }, gather: { _ in [] }, save: { _ in })
         #expect(r.menu.symbol == "ellipsis.circle")
-        #expect(r.menu.items.map(\.title) == ["Checking…"])
+        #expect(r.menu.items == [MenuItem(title: "Checking…", action: .none, indent: 0, isSeparator: false)])
     }
 
     @Test func aDamagedListShowsAPlainMessageNotACrash() async {
@@ -33,8 +33,8 @@ private final class Saved: @unchecked Sendable {
                               save: { _ in Issue.record("save must not run") })
         await r.refresh()
         #expect(r.menu.symbol == "exclamationmark.triangle")
-        #expect(r.menu.items.count == 1)
-        #expect(r.menu.items.first?.title == "Can't read MacMosh's saved settings: workhorses.json: not JSON")
+        #expect(r.menu.items == [MenuItem(title: "Can't read MacMosh's saved settings: workhorses.json: not JSON",
+                                          action: .none, indent: 0, isSeparator: false)])
     }
 
     @Test func refreshSavesOnlyCheckedResults() async {

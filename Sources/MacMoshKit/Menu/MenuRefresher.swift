@@ -21,7 +21,8 @@ public final class MenuRefresher: ObservableObject {
     @Published public private(set) var checking: Set<String> = []
     /// True from the start of a refresh until it ends, the one run after it included.
     @Published public private(set) var isRefreshing = false
-    /// The workhorses shown as "Waiting for the desk server" (issue #88).
+    /// The workhorses shown as "Waiting for the desk server" (issue #88). Like `latest` and
+    /// `lastReady`, it is left as it was when the saved list can't be read.
     @Published public private(set) var waitingForDeskServer: Set<String> = []
 
     private let load: @Sendable () throws -> [Workhorse]
@@ -90,7 +91,8 @@ public final class MenuRefresher: ObservableObject {
             return
         }
 
-        // Written only when it changes, so the menu isn't asked to redraw for nothing.
+        // Written only when it changes. That saves a redraw only when nothing changed: in the usual
+        // run `checking` goes from empty to every id here and back to empty in `keep`.
         let all = Set(list.map(\.id))
         if checking != all { checking = all }
         var gathered = await gather(list)

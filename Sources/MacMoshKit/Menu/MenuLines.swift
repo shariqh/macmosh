@@ -7,7 +7,9 @@ import Foundation
 /// under it. `id` is unique across the whole tree and the same every time the tree is built from the
 /// same input: `wh:<workhorse id>`, `wh:<workhorse id>:hint`, `desk:<workhorse id>:<desk name>`,
 /// `desk:<workhorse id>:<desk name>:rename`, `top:add`, and `<parent id>:sep<n>` for separators.
-/// Workhorse ids and desk names hold no `:`, so no two of these can be the same.
+/// No two are the same when workhorse ids hold no `:` and are all different (as `Workhorse.makeID`
+/// makes them) and a report names each desk once (as the host script writes it). Nothing checks this
+/// when the saved list is loaded, so a hand-edited list can repeat ids; today nothing reads them.
 public struct MenuEntry: Sendable, Equatable, Identifiable {
     public var id: String
     public var title: String

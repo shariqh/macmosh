@@ -73,8 +73,9 @@ public enum MenuLog {
     }
 }
 
-/// The menu a `NSMenu.didBeginTrackingNotification` was sent for, in four fixed words. The app picks
-/// one from the object's class and whether it is `NSApp.mainMenu`, never from a title. Apple says the
+/// The menu a `NSMenu.didBeginTrackingNotification` was sent for, in four fixed words, never a title.
+/// Today only sameness with `NSApp.mainMenu` is used; `statusMenu` and `popUp` are picked once a real
+/// Mac has shown how to tell them apart (main window design, step 3). Apple says the
 /// object is "the main menu bar (`[NSApp mainMenu]`) or the root menu of a popup button"; how the
 /// menu-bar item's own menu shows up is read on a real Mac later, and until then it is `other`.
 public enum MenuTrackingObject: String, Sendable, CaseIterable {
