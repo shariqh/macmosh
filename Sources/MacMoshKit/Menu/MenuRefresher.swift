@@ -4,7 +4,7 @@ import Foundation
 /// Holds the menu the app shows and refreshes it. All logic the app needs that can be tested lives here, not in a view.
 @MainActor
 public final class MenuRefresher: ObservableObject {
-    @Published public private(set) var menu: Menu
+    @Published public private(set) var menu: MenuLines
     /// The last sentence from an action, shown as the menu's first line until the next action.
     @Published public private(set) var notice: String?
 
@@ -39,7 +39,7 @@ public final class MenuRefresher: ObservableObject {
         self.save = save
         self.log = log
         self.pause = pause
-        self.menu = Menu(symbol: MenuModel.stillCheckingSymbol,
+        self.menu = MenuLines(symbol: MenuModel.stillCheckingSymbol,
                          items: [.line("Checking…", indent: 0)])
     }
 
@@ -67,7 +67,7 @@ public final class MenuRefresher: ObservableObject {
         do {
             list = try await Task.detached { try load() }.value
         } catch {
-            menu = Menu(symbol: "exclamationmark.triangle",
+            menu = MenuLines(symbol: "exclamationmark.triangle",
                         items: [.line(StatusFormat.storeMessage(error), indent: 0)])
             missesInARow = 0
             logRefresh(MenuLog.listUnreadable)

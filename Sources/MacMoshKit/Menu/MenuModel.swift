@@ -28,16 +28,6 @@ public struct MenuItem: Sendable, Equatable {
     static let separator = MenuItem(title: "", action: .none, indent: 0, isSeparator: true)
 }
 
-public struct Menu: Sendable, Equatable {
-    public var symbol: String
-    public var items: [MenuItem]
-
-    public init(symbol: String, items: [MenuItem]) {
-        self.symbol = symbol
-        self.items = items
-    }
-}
-
 /// One workhorse's answer, or the news that it hadn't answered when the time ran out.
 public enum Gathered: Sendable, Equatable {
     case checked(CheckResult)
@@ -101,9 +91,9 @@ public enum MenuModel {
     /// whose desk server is down shows the wait instead of the fix, and adds nothing to the icon,
     /// as "Still checking…" adds nothing. `now` and `timeZone` shape the time in "Last seen 14:02"; a test fixes them.
     public static func build(_ gathered: [Gathered], waitingForDeskServer: Set<String> = [],
-                             now: Date = Date(), timeZone: TimeZone = .current) -> Menu {
+                             now: Date = Date(), timeZone: TimeZone = .current) -> MenuLines {
         if gathered.isEmpty {
-            return Menu(symbol: noWorkhorsesSymbol, items: [
+            return MenuLines(symbol: noWorkhorsesSymbol, items: [
                 .line("No workhorses yet", indent: 0),
                 .line("Add a Mac…", .tab(["pair"]), indent: 0),
             ])
@@ -130,7 +120,7 @@ public enum MenuModel {
         items.append(.line("Add a Mac…", .tab(["pair"]), indent: 0))
         items.append(.line("Check now", .refresh, indent: 0))
         let symbol = mostUrgent(states).map(symbol(for:)) ?? stillCheckingSymbol
-        return Menu(symbol: symbol, items: items)
+        return MenuLines(symbol: symbol, items: items)
     }
 
     // MARK: One workhorse

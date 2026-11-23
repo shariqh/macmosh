@@ -35,7 +35,7 @@ import Testing
 /// Menus `everySampleMenu()` doesn't reach: the wait for the desk server, open, kept, permanent,
 /// closed and leftover desks, a laptop with lid-closed mode on, no home-address light, a time in a
 /// hint, an older Mac that can't be unlocked over ssh, and two workhorses with a desk of the same name.
-func moreSampleMenus() -> [Menu] {
+func moreSampleMenus() -> [MenuLines] {
     var desks = HostStatus.sampleWithDesk
     desks.power.disableSleep = 1
     desks.desks.append(.init(name: DeskName("notes")!, windows: [.init(index: 0, name: "zsh")],

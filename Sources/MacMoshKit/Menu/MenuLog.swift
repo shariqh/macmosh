@@ -27,7 +27,7 @@ public enum MenuLog {
     }
 
     /// `menu refreshed: symbol=plus.circle workhorses=0 lines=2`
-    static func refreshed(_ menu: Menu, workhorses: Int) -> String {
+    static func refreshed(_ menu: MenuLines, workhorses: Int) -> String {
         "menu refreshed: symbol=\(menu.symbol) workhorses=\(workhorses) lines=\(menu.items.count)"
     }
 
