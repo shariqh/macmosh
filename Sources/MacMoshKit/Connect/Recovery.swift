@@ -10,9 +10,10 @@ extension StatusChecker: WorkhorseChecking {}
 
 /// Restart recovery (design 5.5, 7.8): `unlock` after a restart, `restart`, and Screen Sharing.
 ///
-/// Built from Apple's documentation and what the hand-built setup saw on one restart; MacMosh's own
-/// restart test (Task 24) has not proven it yet. Every decision comes from a fresh check, never a
-/// saved state. Passwords are typed by the person into ssh or `sudo`, which own the terminal at that
+/// Built from Apple's documentation and what the hand-built setup saw on one restart. Sitting 2
+/// (2026-11-22) ran `restart --full`, `unlock` and `screen` on a real restart and they worked. The
+/// `fdesetup authrestart` path (restart without the unlock) has not been run on a real Mac. Every
+/// decision comes from a fresh check, never a saved state. Passwords are typed by the person into ssh or `sudo`, which own the terminal at that
 /// moment; nothing here reads, stores or sees one.
 public struct Recovery: Sendable {
     /// How often `unlock` checks again after the ssh ends, and for how long.
