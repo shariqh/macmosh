@@ -169,7 +169,7 @@ extension HostScriptTests {
                 for desk in ["website", "notes"] {
                     let r = h.run(["attach"] + form + ["--label", label, desk])
                     #expect(r.exitCode == 2, "\(form) \(label) \(desk): \(r.stderr)")
-                    #expect(r.stderr.contains("--label"), "\(r.stderr)")
+                    #expect(r.stderr.contains("4 to 32 characters"), "\(r.stderr)")
                     #expect(r.stdout.isEmpty)
                 }
             }
@@ -183,7 +183,8 @@ extension HostScriptTests {
         for arguments in usage {
             let r = h.run(["attach"] + arguments)
             #expect(r.exitCode == 2, "\(arguments): \(r.stderr)")
-            #expect(!r.stderr.isEmpty)
+            let rule = arguments.contains("--cc") ? "can't be used with --label" : "4 to 32 characters"
+            #expect(r.stderr.contains(rule), "\(arguments): \(r.stderr)")
         }
         #expect(h.sessionNames() == before)
         #expect(windowIDs(h, desk) == ids)
@@ -380,7 +381,7 @@ extension HostScriptTests {
         for id in webIDs + notesIDs { typeExit(h, id) }
         try wait(h) { !defined(h, "website") }
         try wait(h) { h.sessionNames().isEmpty }
-        #expect(hostLog(h).contains("desk-closed\tremoved website: its last shell exited"))
+        try wait(h) { hostLog(h).contains("desk-closed\tremoved website: its last shell exited") }
         try wait(h) { hostLog(h).contains("desk-closed\tkept notes: permanent") }
         try proveTheHookHasRun(h)
         #expect(defined(h, "notes"))
