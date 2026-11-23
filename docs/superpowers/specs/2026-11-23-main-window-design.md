@@ -19,7 +19,7 @@ The rest sits in the same window: the menu's buttons for the rarer states (Locke
 
 The window runs no checks of its own. It shows what the menu's checks already found, so the workhorse does no extra work and the window always agrees with the menu. Anything that needs a password still opens a terminal tab or Screen Sharing. Desk actions that use only MacMosh's key (new desk, rename, remove, start again) run inside the window as forms, with no questions typed into a terminal.
 
-The menu stays as it is, plus one line. Nothing new is installed on the workhorse. One optional later step changes the existing workhorse script, and only if Shariq says yes (section 10, decision 3).
+The menu stays as it is, plus one line. Nothing new is installed on the workhorse. Two optional later steps change the existing workhorse script, and only if Shariq says yes (section 10, decisions 3 and 5).
 
 ## 2. Words used
 
@@ -117,6 +117,14 @@ Read from the repository at the commit this document starts from.
 - **No test target for the app.** Logic lives in MacMoshKit and is tested there with swift-testing. Views stay thin.
 - **The helper path.** Tab and run buttons need `dist/MacMosh.app` built by `scripts/build-app.sh`, in a folder with no space in its path. They fail under `swift run`.
 - **No default workhorse.** Nothing in the code or the v1 design is called a default workhorse or a target.
+- **Which script version each desk control needs.** The report's header gives the script's version (`HostStatus.scriptVersion`). `desk-rename` first appears in script 0.6.0 (commit f71fe3a, #100). The permanent field and `--permanent` first appear in 0.5.0 (commit c954f29, #96). `--command` is older than both. The current script is 0.6.0 (`host/macmosh-host`, `MACMOSH_HOST_VERSION`).
+- **A newer script with the same protocol leaves a workhorse Ready.** `StateResolver` gives "Needs setting up" (`.notSetUp(.hostScriptOutdated)`) only when the report's protocol number differs (rule 4, `.unsupportedProtocol`). Only the checklist compares script versions (`Checklist.swift` through `WorkhorseChecks`, which calls `HostInstaller.decide`). Decision 6 in section 10 is about this.
+- **The report carries no home folder.** `HostStatus.home` is the workhorse's home network address (address, prefix and local name), not a folder, and `cmd_status` prints no `$HOME`. Definitions store full paths, because `cmd_desk_new` expands a leading `~` (`mm_expand_tilde`) before saving.
+- **What the script counts as a taken desk name.** `cmd_desk_new` refuses a name only when a session with that name is open, or a permanent definition holds it; any other leftover line with that name is replaced. `cmd_desk_rename` uses the same rule while the desk server is up.
+- **When a definition goes.** After a desk's last shell exits, the `desk-closed` hook waits `MM_HOOK_DELAY` (60 seconds by default) before removing a non-permanent definition. When the whole server goes away, as at a restart, `cmd_start` drops no lines, so a desk without reopen keeps its line and gets no session.
+- **The menu's notice can't be set from outside.** `MenuRefresher` declares `public private(set) var notice`, and only `perform(_:using:)` sets it, clearing it first.
+- **A check reports every workhorse at once.** `MenuData.gather` returns nothing until every workhorse has answered or its 20-second budget has run out.
+- **The background save touches only report fields.** `WorkhorseStore.absorb` (`StatusChecker.swift`) updates, under the store's lock, only the seven fields a report fills: home address, home prefix, local name, macOS version, chip, last seen and last key accepted. Name, connection, typing prediction, projects folder and ssh key file are left alone.
 
 ### 5.3 What Apple's frameworks impose
 
@@ -136,6 +144,8 @@ Read on developer.apple.com (through its documentation data endpoint) for this d
 | The menu-tracking signal names no menu-bar-item object | "Posted when menu tracking begins." … "The notification object is the main menu bar … or the root menu of a popup button." | [9] |
 | A toolbar can grow its own menu | "If not all items fit in the available space, an overflow menu may be created" | [10] |
 | A view's task stops when the view goes | "If the task doesn't finish before SwiftUI removes the view or the view changes identity, SwiftUI cancels the task." | [11] |
+
+**The app's minimum macOS is 15.0**: `Package.swift` sets `platforms: [.macOS(.v15)]`, `App/Info.plist` sets `LSMinimumSystemVersion` to 15.0, and `AppBundleTests` checks it. Every API this design names is available there. `defaultLaunchBehavior(_:)` with `.suppressed` and `restorationBehavior(_:)` came in macOS 15.0 [4], and `NSApplication.activate()` in macOS 14.0 [6] (availability re-read on Apple's data endpoint for this revision).
 
 Two consequences follow. A Settings scene would have no menu to open it from, because the app has no menu bar, so settings belong in the window. And because the menu-tracking signal can't yet tell the menu-bar menu from a menu in the window, the window must not contain one (section 7.2).
 
@@ -170,7 +180,7 @@ Three designs were drawn up and judged against the code and Apple's pages.
 
 Taken from the smallest design:
 
-- The first PR splits `MenuModel.build` into a structured model and a step that flattens it back into the menu, with a test that the menu is unchanged for every sample state and the 44 existing `MenuModelTests` passing unchanged.
+- The first PR splits `MenuModel.build` into a structured model and a step that flattens it back into the menu, with a test that the menu is unchanged for every sample state and the 44 existing `MenuModelTests` passing with their bodies unchanged (section 8, step 1, says how).
 - Quit when the icon is removed, as today: the `isInserted` binding's setter calls `terminate`.
 - No polling of its own: one check when the window opens, then the menu's schedule.
 - A strict list of controls: no pop-up button, context menu, SwiftUI `Menu` or toolbar.
@@ -227,10 +237,11 @@ The menu gets one new line, **Open MacMosh**, just above **Quit MacMosh**. He cl
 └───────────────────┴─────────────────────────────────────────────────────────────┘
 ```
 
-- **The sidebar** lists each workhorse with its state symbol (the same symbol as the menu icon uses for that state), then "Add a Mac…", then "Settings". The first workhorse is selected.
+- **The sidebar** lists each workhorse with its state symbol (the same symbol as the menu icon uses for that state), then "Add a Mac…", then "Settings". The first workhorse is selected. With no workhorses saved, the Add a Mac page is selected (agent's call, section 12).
 - **The header** is the menu's headline (`Attic · Ready`), the menu's summary line, "Checked 14:02" and **Check now**.
 - **Each desk row** shows the name, its window names (usually the program in each window), "In 1 tab", "In 2 tabs" or "No tab", and **Open**. The second line shows the folder, plus "Kept when it exits" for a permanent desk or "Doesn't come back after a restart" for the rare desk without reopen. The usual case is left unsaid, so rows stay short. Rows are in name order, with closed desks among them.
-- **Clicking a row** (not its button) opens a detail strip under it with the folder, "Starts with", "After a restart", "When its last shell exits", and **New window**, **Rename…** and **Remove…**. One row is open at a time.
+- **Clicking a row** (not its button) opens a detail strip under it with the folder, "Starts with", "After a restart", "When its last shell exits", "Keeps its command running" for a desk with the keep flag (the menu's ", kept running"), and **New window**, **Rename…** and **Remove…**. One row is open at a time.
+- **Folders** are shown with `~` when they start with `/Users/<the workhorse's saved user>/`, and in full otherwise. The report has no home folder (section 5.2), so this needs no script change (agent's call, section 12).
 - **A permanent desk with no session** shows "(closed)" and **Open**, which starts it again, exactly like the menu's `notes (closed)` line.
 - **A desk not made with MacMosh** (no saved definition) shows "Not made with MacMosh: folder and restart not known" on its second line and the same buttons the menu gives it.
 - **"Open the 2 not in a tab"** opens a tab on every running desk with no tab attached, one after another. It is hidden when every desk has a tab. In Apple's Terminal each one is a new terminal window (v1 design, call 20).
@@ -287,13 +298,15 @@ He quits the agent and the shell in recipes, an ordinary desk. The workhorse rem
 │            [Start again]  [Start again and keep it]  [Forget]│
 ```
 
-- **Start again** makes the same desk (same name, folder, command and "comes back" choice) and opens a tab on it.
+A desk counts as ended as soon as its session is gone, if it was open and not permanent in the previous Ready report. The window does not wait the minute until the script removes its definition (section 5.2). Rows already hide a non-permanent definition with no session, as the menu's `readyItems` does, so the desk moves from the list to Ended at one check. A desk without reopen that a workhorse restart closed also shows under Ended, which is useful; **Forget** clears it. (Agent's call, section 12.)
+
+- **Start again** makes the same desk (same name, folder, command, "comes back" and "keep running" flags) and opens a tab on it. The script replaces a leftover line with the same name, so this works even before the definition is removed. It is off, with a one-line reason, when the name is taken by the script's rule (section 7.5).
 - **Start again and keep it** does the same and marks it permanent, so the next exit leaves it closed instead of removing it. This is his "decide if the desk is ephemeral or permanent after exits", with no change on the workhorse.
 - **Forget** takes the line away.
 
 A permanent desk that exits stays in the list as "(closed)" with **Open**, as today. Changing a running desk between "removed" and "kept" before it exits needs a workhorse script change; that is decision 3 in section 10.
 
-The Ended group lives in the app's memory only. It starts empty when MacMosh starts, so a desk that ended while MacMosh was not running is not listed. Desks he removes or renames from the window never show as ended.
+The Ended group lives in the app's memory only. It starts empty when MacMosh starts, so a desk that ended while MacMosh was not running is not listed. Desks he removes or renames from the window never show as ended. A desk removed with the menu's **Remove…** does show as ended: that line opens a terminal tab, and the app never learns whether he typed `yes`. The same is true of `macmosh desk remove` typed on the command line. Both false entries are accepted, **Forget** clears them, and section 11 watches for them (agent's call, section 12).
 
 #### D. The workhorse locked after a restart
 
@@ -313,7 +326,9 @@ The Ended group lives in the app's memory only. It starts empty when MacMosh sta
 └───────────────────┴─────────────────────────────────────────────────────────────┘
 ```
 
-The hint is the menu's. When the Mac can't be unlocked over ssh, **Unlock disk…** is left out and the hint ends "Unlock it at the Mac.", as in the menu. Under "Can't verify it" there is no unlock button and no password line. The greyed list comes from the last check that found Attic Ready, held in memory; with none since MacMosh started, the list is left out. After the unlock, the page moves through "Waiting for login" (with **Log in…**, which opens Screen Sharing) and "Waiting for the desk server" to Ready by itself, as the menu does.
+The hint is the menu's. When the Mac can't be unlocked over ssh, **Unlock disk…** is left out and the hint ends "Unlock it at the Mac.", as in the menu. Under "Can't verify it" there is no unlock button and no password line. The greyed list comes from the last check that found Attic Ready, held in memory; with none since MacMosh started, the list is left out.
+
+The greyed list shows under every state other than Ready, whenever such a check exists (agent's call, section 12). Its heading fits the state. Under Locked it is the one drawn above. Under Waiting for login it reads "Desks before the restart (checked hh:mm)" and "These come back once someone logs in:". Under every other state it reads "Desks at the last good check (hh:mm)", with no promise about coming back. After the unlock, the page moves through "Waiting for login" (with **Log in…**, which opens Screen Sharing) and "Waiting for the desk server" to Ready by itself, as the menu does.
 
 #### E. Adding a second workhorse
 
@@ -339,7 +354,7 @@ He clicks **Add a Mac…** in the sidebar. The page says what to switch on at th
 │            │   [Run the checklist…]  [Remove MacMosh from this workhorse…] │
 ```
 
-Each change is saved when he leaves the field, through the same checks as `macmosh set`, with a grey line under it ("Saved. Used by the next New desk.") or a plain sentence saying what is wrong. Nothing here uses ssh. "Advanced" holds a different ssh key file. Under each connection choice is one line from the v1 design's "which one do I use?" table (section 5.4 there). **Run the checklist…** and **Remove MacMosh from this workhorse…** open the same terminal tabs as today (`prepare <id> --pause` and `remove <id>`), which list what they do and ask first.
+Each change is saved when he leaves the field, through the same checks as `macmosh set`, with a grey line under it ("Saved. Used by the next New desk.") or a plain sentence saying what is wrong. Nothing here uses ssh. A save can't be lost to a background check that finishes at the same moment. Both go through `WorkhorseStore.update` under the store's lock, and the check's `absorb` writes only the seven report fields (section 5.2), never a setting from this page or `lastDeskCommand`. "Advanced" holds a different ssh key file. Under each connection choice is one line from the v1 design's "which one do I use?" table (section 5.4 there). **Run the checklist…** and **Remove MacMosh from this workhorse…** open the same terminal tabs as today (`prepare <id> --pause` and `remove <id>`), which list what they do and ask first.
 
 ### 7.2 Structure
 
@@ -349,7 +364,7 @@ Each change is saved when he leaves the field, through the same checks as `macmo
 2. **A new `Window("MacMosh", id: "main")`**, second, with `.defaultLaunchBehavior(.suppressed)` [4], `.restorationBehavior(.disabled)`, `.defaultSize` and `.windowResizability(.contentMinSize)`. It never appears at launch or login, only when asked for.
 3. **No `Settings` scene and no `WindowGroup`.** No change to `LSUIElement`, the entitlements or the plist.
 
-The **Open MacMosh** line in `MenuContent` is a plain SwiftUI `Button`, like Quit, not a `MenuItem`. It calls `openWindow(id: "main")` and then `NSApp.activate()` [6]. Because it is not a `MenuItem`, the CI log line `menu refreshed: symbol=plus.circle workhorses=0 lines=2` does not change.
+The **Open MacMosh** line in `MenuContent` is a plain SwiftUI `Button`, like Quit, not a `MenuItem`. It calls `openWindow(id: "main")` and then `NSApp.activate()` [6]. Because it is not a `MenuItem`, the CI log line `menu refreshed: symbol=plus.circle workhorses=0 lines=2` does not change: `MenuLog.refreshed` counts only `menu.items`, and Quit is not one of them either.
 
 #### Controls allowed
 
@@ -361,7 +376,7 @@ Button, Text, TextField, Toggle, radio-group or segmented `Picker`, and `List`. 
 |---|---|
 | `MainWindow` | Sidebar plus the page for the selection (a workhorse id, Add a Mac, or Settings). The selection is remembered per viewer as a convenience; a lost value is harmless. |
 | `Sidebar` | `Board.workhorses` (name and symbol), "Add a Mac…", "Settings". |
-| `WorkhorsePage` | `StateHeader`, `DeskList`, `EndedDesks`, `StaleDesks` when not Ready, and `MoreButtons` (the rarer buttons, in the menu's order). |
+| `WorkhorsePage` | `StateHeader`, `DeskList`, `EndedDesks`, `StaleDesks` when not Ready and a last Ready result exists (headings in section 7.1 D), and `MoreButtons` (the rarer buttons, in the menu's order). |
 | `StateHeader` | Headline, hint, summary line, "Checked hh:mm", "Checking…", Check now, and the last action's result line for this workhorse. |
 | `DeskRow`, `DeskDetail` | The short row and the detail strip. |
 | `NewDeskSheet`, `RenameSheet` | The two forms. |
@@ -376,12 +391,13 @@ Button, Text, TextField, Toggle, radio-group or segmented `Picker`, and `List`. 
 
 - `Board { workhorses: [BoardWorkhorse], symbol }`.
 - `BoardWorkhorse { id, name, symbol, headline, hint, checkedAt, isChecking, summary, homeReachable, desks: [BoardDesk], ended: [EndedDesk], lastReadyDesks: [BoardDesk]?, lastReadyAt, buttons: [BoardButton], result: String? }`.
-- `BoardDesk { name, isOpen, windowNames, windowCount, tabsOpen, folder?, command?, reopen?, permanent?, madeByMacMosh, buttons }`. Folder and flags come from `HostStatus.Definition`; a desk with none gets nil and `madeByMacMosh` false. The folder is shortened with `~` using the report's home folder.
+- `BoardDesk { name, isOpen, windowNames, windowCount, tabsOpen, folder?, command?, reopen?, keep?, permanent?, madeByMacMosh, buttons }`. Folder and flags come from `HostStatus.Definition`; a desk with none gets nil and `madeByMacMosh` false. The report has no home folder, so a folder that starts with `/Users/<Workhorse.user>/` is shown with `~/` in its place, and any other folder in full.
+- `EndedDesk { name, folder, command?, reopen, keep, endedAt }`, so Start again can pass every flag back.
 - `BoardButton { title, note?, action: BoardAction }`, where `BoardAction` is `.menu(MenuItem)` for anything the menu does (the menu's item, so it runs through `MenuRefresher.perform` exactly as the menu's does) or `.window(WindowAction)` for `newDesk`, `rename`, `remove`, `startAgain(keep:)`, `forget` and `openAllWithoutTab`.
 - `ButtonRules`: the "which buttons for which state" rules moved out of `MenuModel.block` and `readyItems`. `MenuModel` and `BoardModel` both read them, so the menu and the window can't drift apart.
 - `BoardModel.build(latest:, lastReady:, checking:, order:, waitingForDeskServer:, ended:, results:, now:, timeZone:) -> Board`. Pure, built from the same `CheckResult` the menu uses.
-- `EndedDeskTracker`: compares a workhorse's previous Ready check with the new one. A desk that was open, had a definition that was not permanent, and is now gone, is ended. It keeps the name, folder, command, reopen and the time it was first missed. It leaves out desks the window itself removed or renamed, and treats a new desk with the same folder and command as a rename made elsewhere. Memory only.
-- `NewDeskForm`: the folder list with "(has a desk)" marks, the name made from the folder, `DeskName` validation, the duplicate check against current desks and definitions, the defaults, and the `NewDeskRequest` it produces.
+- `EndedDeskTracker`: compares a workhorse's previous Ready check with the new one. A desk whose session was open, whose definition was not permanent in the previous report, and whose session is now gone, is ended, whether or not its definition is still there (section 7.1 C). It keeps the name, folder, command, reopen, keep and the time it was first missed. It leaves out desks the window itself removed or renamed, and treats a new desk with the same folder and command as a rename made elsewhere. Memory only.
+- `NewDeskForm`: the folder list with "(has a desk)" marks, the name made from the folder, `DeskName` validation, the taken-name check by the script's rule (section 7.5), the defaults, and the `NewDeskRequest` it produces.
 
 #### Where the data comes from, and how often
 
@@ -389,7 +405,7 @@ There is still one `MenuRefresher` (the `@StateObject` in `MacMoshApp`), one sch
 
 - `@Published latest: [String: CheckResult]`: the last real result per workhorse id, not replaced when a check comes back `.stillChecking`;
 - `@Published lastReady: [String: CheckResult]`: the last Ready result per id, for the greyed list under Locked;
-- `@Published checking: Set<String>` and `@Published isRefreshing`;
+- `@Published checking: Set<String>` and `@Published isRefreshing`. `MenuData.gather` reports every workhorse at once (section 5.2), so every id goes into `checking` when a refresh starts. A workhorse leaves the set when it comes back `.checked`; one that comes back `.stillChecking` stays in it (agent's call, section 12);
 - `@Published waitingForDeskServer: Set<String>`, read from today's private `DeskServerWait`;
 - `@Published board: Board`, built beside the menu after each check.
 
@@ -400,10 +416,14 @@ The schedule stays the menu's: every 30 seconds while every workhorse answers; t
 A new `WindowActionRunner` in MacMoshKit runs the `.window` actions. It calls `DeskFlow` with a `QuietInteraction` (collects what `say` prints, answers every `ask` with nothing, ignores `waitForKey`), so nothing can wait on a question. Each action is one key-only, BatchMode ssh with stdin closed and a 15-second limit, to the address that last answered. While it runs, the button reads "Making…", "Renaming…" or "Removing…". When it ends, the runner:
 
 1. writes one fixed-words log line;
-2. sets that workhorse's result line (for example "Created the desk garden-planner on Attic.") and the menu's `notice`, so the menu shows it too if the window was closed meanwhile;
+2. calls a new refresher method, `finishWindowAction(id:result:)`, which sets that workhorse's result line (for example "Created the desk garden-planner on Attic.") and the menu's `notice`, so the menu shows it too if the window was closed meanwhile. `notice` stays `private(set)`; this method is the only other place that sets it (agent's call, section 12);
 3. asks the refresher to check, and marks the row "Updating…" until that check lands.
 
 The runner and the refresher belong to the App, not the window, so an action started just before the window closes still finishes.
+
+**One action per desk at a time.** While a desk's action runs, that desk's buttons are off; other desks stay usable. One New desk runs per workhorse at a time, which the sheet already enforces. Actions on different desks may run together; each is its own key-only ssh call with a 15-second limit (agent's call, section 12).
+
+**Controls that need a newer workhorse script** are hidden until the report's `scriptVersion` is new enough: **Rename…** needs 0.6.0, and "Keep it, closed" and **Start again and keep it** need 0.5.0 (section 5.2). The startup command needs no newer script.
 
 #### When the window is closed
 
@@ -411,7 +431,7 @@ SwiftUI removes the views and cancels their task. Nothing else changes: the menu
 
 ### 7.3 What is reused and what is new
 
-**Reused unchanged:** `StatusChecker`, `CheckResult`, `MenuData.gather` and its 20-second budget, `PollSchedule`, `StateResolver`, `WorkhorseState`, `HostStatus` (desks, windows, definitions, power, battery), `StatusFormat.headline`, `hint` and `summaryLine`, `MenuModel.symbol(for:)` and `mostUrgent`, `Workhorse.canUnlockOverSSH`, the `MenuAction` and `MenuItem` vocabulary, `MenuActionRunner`, `AppTabs`, `TabOpener` and `TabCommand` with the iTerm2, Terminal and `.command`-file paths, `MenuRefresher.perform`, `HostCommands`, `DeskFlow` (`newDesk`, `renameDesk`, `removeDesk`, `newWindow`, `folders`), `NewDeskRequest`, `DeskName`, `DeskFormat`, `WorkhorseStore` (`update` under its lock, `loadSettings`, `saveSettings`), `WorkhorseSetting.apply` and `applyTerminal`, `AppSettings`, `MenuLog` and its fixed-words rule, and the test stand-ins `FakeRunner`, `RecordingTabs`, `ScriptedInteraction`, `CheckResult.sampleReady`, `HostStatus.sampleWithDesk` and `everySampleMenu()`. On the workhorse: nothing changes.
+**Reused unchanged:** `StatusChecker`, `CheckResult`, `MenuData.gather` and its 20-second budget, `PollSchedule`, `StateResolver`, `WorkhorseState`, `HostStatus` (desks, windows, definitions, power, battery), `StatusFormat.headline`, `hint` and `summaryLine`, `MenuModel.symbol(for:)` and `mostUrgent`, `Workhorse.canUnlockOverSSH`, the `MenuAction` and `MenuItem` vocabulary, `MenuActionRunner`, `AppTabs`, `TabOpener` and `TabCommand` with the iTerm2, Terminal and `.command`-file paths, `MenuRefresher.perform`, `HostCommands`, `DeskFlow` (`newDesk`, `renameDesk`, `removeDesk`, `newWindow`, `folders`), `NewDeskRequest`, `DeskName`, `WorkhorseStore` (`update` under its lock, `loadSettings`, `saveSettings`), `WorkhorseSetting.apply` and `applyTerminal`, `AppSettings`, `MenuLog` and its fixed-words rule, and the test stand-ins `FakeRunner`, `RecordingTabs`, `ScriptedInteraction`, `CheckResult.sampleReady()`, `HostStatus.sampleWithDesk` and `everySampleMenu()` (whose return type follows the rename to `MenuLines`). On the workhorse: nothing changes.
 
 **New in MacMoshKit (tested with swift-testing):**
 
@@ -424,14 +444,19 @@ SwiftUI removes the views and cancels their task. Nothing else changes: the menu
 | `Board/NewDeskForm.swift` | The New desk form's rules |
 | `Board/WindowActionRunner.swift` | In-window desk actions and settings writes |
 | `Run/QuietInteraction.swift` | An `Interaction` that never waits |
-| Changes to `Menu/MenuRefresher.swift` | `latest`, `lastReady`, `checking`, `isRefreshing`, `waitingForDeskServer`, `board` |
+| Changes to `Menu/MenuRefresher.swift` | `latest`, `lastReady`, `checking`, `isRefreshing`, `waitingForDeskServer`, `board`, and `finishWindowAction(id:result:)` |
 | Changes to `Format/DeskFormat.swift` | Window wording without the `macmosh` command (for example "Pick another name." instead of "…remove it with: macmosh desk remove…"), and the Remove sentence moved out of `removeDeskAsking` so both use one function |
-| Changes to `Model/Workhorse.swift` | `lastDeskCommand: String?`, optional, so older files still load. Set after each New desk and used as the next default. Never logged. |
-| Changes to `Menu/MenuLog.swift` | `window opened`; `window action: <newDesk|rename|remove|startAgain|setting|openAll> <ok|failed>`; `menu tracking: object=<kind>` (a fixed word for the kind of object, never a title) |
+| Changes to `Model/Workhorse.swift` | `lastDeskCommand: String?`, optional, so older files still load. After each New desk made from the window's form, it is set to the command the form sent, and an empty command is saved as nil, so the next form opens empty. Start again does not change it. Used as the next form's default. Never logged. (Agent's call, section 12.) |
+| Changes to `Menu/MenuLog.swift` | `window opened`; `window action: <kind> <result>`, the kind one of `newDesk`, `rename`, `remove`, `startAgain`, `setting` and `openAll`, the result `ok` or `failed`; `menu tracking: object=<kind>`, where the kind is one of four fixed words: `mainMenu` (the object is `NSApp.mainMenu`), `statusMenu` (the menu-bar item's menu), `popUp` (a pop-up button's menu) and `other`. It is chosen from the object's class and its relation to `NSApp.mainMenu`, never from a title. How the menu-bar item's menu is recognised is read on the daily Mac in step 3; until then it logs `other`. (Agent's call, section 12.) |
 
 **New in the app target:** `Sources/MacMoshApp/Window/` with the views in section 7.2; the `Window` scene and the `isInserted` binding in `MacMoshApp.swift`; the **Open MacMosh** line in `MenuContent.swift`.
 
-**New tests:** `BoardModelTests` (built from recorded reports through `HostStatus.parse`), `ButtonRulesTests` (the menu and the window give the same buttons for every sample state), a test that the flattened menu equals today's for every `everySampleMenu()` case, `EndedDeskTrackerTests`, `NewDeskFormTests`, `WindowActionRunnerTests` (`FakeRunner` shows the exact ssh arguments, including a startup command with spaces and quotes), `MenuRefresherTests` for keeping the last result while checking, and `MenuLogTests` for the new lines. A new fixture, `Tests/MacMoshKitTests/Fixtures/status/desks-board.txt`, has six desks, a permanent closed desk, a desk without reopen, a desk made by hand with no definition, and `def` lines in the current form with the permanent field.
+**New tests:**
+
+- `BoardModelTests`, built from recorded reports through `HostStatus.parse`.
+- `ButtonRulesTests`: for every sample state, the buttons the menu and the window share have the same titles in the same order. The menu's tab actions for `desk new`, `desk rename` and `desk remove --ask` are mapped to their `.window` counterparts (`newDesk`, `rename`, `remove`). The window-only buttons (Open the N not in a tab, Start again, Start again and keep it, Forget) are listed by name in the test, so a new one can't slip in unnoticed. (Agent's call, section 12.)
+- A test that the flattened menu equals today's for every `everySampleMenu()` case, against a stored copy (section 8, step 1).
+- `EndedDeskTrackerTests` (including a desk whose definition is still there, a no-reopen desk lost to a restart, and a permanent desk that closes), `NewDeskFormTests` (including the script's taken-name rule), `WindowActionRunnerTests` (`FakeRunner` shows the exact ssh arguments, including a startup command with spaces and quotes, and the keep flag passed through on Start again), `MenuRefresherTests` for keeping the last result while checking and for the `checking` set, and `MenuLogTests` with one case for each new line and each `menu tracking` word. A new fixture, `Tests/MacMoshKitTests/Fixtures/status/desks-board.txt`, has six desks, a permanent closed desk, a desk without reopen, a desk made by hand with no definition, and `def` lines in the current form with the permanent field.
 
 **CI:** the smoke test keeps `lines=2`, and adds a check that no `window opened` line appears at launch.
 
@@ -460,14 +485,16 @@ Title: "New desk on <workhorse>". It opens only from a Ready workhorse; for any 
 
 | Field | Default | Rules |
 |---|---|---|
-| **Folder**: the folders inside the workhorse's projects folder (`DeskFlow.folders`), with a filter box. Folders that already have a desk are marked "(has a desk)" but can be chosen. Below: "Or a path, full or starting with ~:" | Nothing chosen | Make desk stays off until a folder is chosen or typed. A typed path wins over the list. With no projects folder saved, the list is replaced by "Projects folder on Attic: [~/Development] [Save]", which saves the setting and fills the list. If the list can't be fetched, the `DeskFormat` sentence shows and the path field remains. |
-| **Name** | The folder's last part, made to fit: characters other than letters, digits, `-` and `_` become `-`, at most 64 | Checked as he types against `DeskName` and the desks and definitions in the last report ("Attic already has a desk called api."). Help line: "Letters, digits, - and _ only." |
-| **Command to start** | The last command used for a new desk on this workhorse (`Workhorse.lastDeskCommand`), empty the first time | Sent exactly as typed, spaces and quotes included, through `NewDeskRequest.command`. Tabs and new lines are refused, as the script refuses them. Help line: "Leave it empty for a plain shell." |
+| **Folder**: the folders inside the workhorse's projects folder (`DeskFlow.folders`), with a filter box. Folders that already have a desk are marked "(has a desk)" but can be chosen. Below: "Or a path, full or starting with ~:" | Nothing chosen | Make desk stays off until a folder is chosen or typed. A typed path wins over the list. With no projects folder saved, the list is replaced by "Projects folder on Attic: [~/Development] [Save]", which saves the setting and fills the list. `DeskFlow.folders` and `HostCommands.folders` read the folder from the check's `CheckResult`, which was loaded before the save, so after Save the form hands `DeskFlow` a copy of that `CheckResult` whose workhorse is reloaded from `WorkhorseStore` (agent's call, section 12). If the list can't be fetched, the `DeskFormat` sentence shows and the path field remains. |
+| **Name** | The folder's last part, made to fit: characters other than letters, digits, `-` and `_` become `-`, at most 64 | Checked as he types against `DeskName`, and against the last report by the script's own rule: a name is taken when a desk with that name is open, or a permanent desk holds it ("Attic already has a desk called api."). A leftover definition of an ended desk does not count, because the script replaces it (section 5.2). Start again uses the same rule. (Agent's call, section 12.) Help line: "Letters, digits, - and _ only." |
+| **Command to start** | The last command this form sent for a new desk on this workhorse (`Workhorse.lastDeskCommand`), empty the first time or after a plain-shell desk | Sent exactly as typed, spaces and quotes included, through `NewDeskRequest.command`. Tabs and new lines are refused, as the script refuses them. Help line: "Leave it empty for a plain shell." |
 | **After a restart: Comes back** | Ticked (his ruling: every new desk comes back) | Unticked sends reopen off (`--no-reopen`). |
 | **When its last shell exits**: "Remove the desk" or "Keep it, closed" | Remove the desk (his ruling: ephemeral unless permanent) | "Keep it, closed" sets permanent (`--permanent`). |
 | **Open it in a tab now** | Ticked | Afterwards the window runs the menu's `connect <id> <name>` tab. |
 
-Not shown: "keep running" (`--keep`), whose command-line help still says "not active yet"; the form sends keep off.
+Not shown: "keep running" (`--keep`), whose command-line help still says "not active yet"; the form sends keep off. Start again still passes a desk's keep flag through, and the detail strip shows it.
+
+"Keep it, closed" is hidden on a workhorse whose script is older than 0.5.0 (section 7.2).
 
 Buttons: **Cancel** and **Make desk**; Return presses Make desk. While the desk is made, the sheet can't be dismissed and the button reads "Making…". On success the sheet closes. On failure it stays open with the reason under the button, and nothing is made.
 
@@ -494,18 +521,21 @@ Whether the menu's `New desk…`, `Rename…` and `Remove…` should later open 
 | **Issue #99, a command line and MCP for agents** | Not built here. The pieces this adds to MacMoshKit (`Board`, `NewDeskForm`, `WindowActionRunner`, `QuietInteraction`) ask no questions, so a later agent command line can reuse them. Which actions an agent may take alone stays an issue #99 question. |
 | **Issue #89's comment, bringing hand-made desks into MacMosh** | Not built. Such desks show as "Not made with MacMosh". Adopting them is a separate issue. |
 
+**When the v1 text changes:** the agent coordinating the build makes these changes to the v1 plan and design (Task 29's New desk outline, call 35, and the order of Tasks 28 to 31) in one docs-only PR right after Shariq approves this design, before step 1, so each step's issue links to the updated plan (agent's call, section 12).
+
 ## 8. Order of work
 
 Each step is one issue and one PR, tests first, with a build-log entry, as the plan requires.
 
-1. **Groundwork, no visible change.** Rename `Menu` to `MenuLines`. Move the button rules into `ButtonRules` and build the menu from a structured model plus a flatten step. Tests: the 44 `MenuModelTests` pass unchanged, and the flattened menu equals today's for every `everySampleMenu()` case. `MenuRefresher` publishes `latest`, `lastReady`, `checking`, `isRefreshing` and `waitingForDeskServer`, and keeps the last result while a check is still running. Add the `menu tracking: object=<kind>` log line.
+0. **Before step 1, docs only:** the v1 plan and design changes listed in section 7.7.
+1. **Groundwork, no visible change.** First, in a commit of its own before any refactor, store today's `MenuModel.build` output for every `everySampleMenu()` case as an expectation (titles, indents, actions and symbol, in a fixture or a literal). Then rename `Menu` to `MenuLines`, move the button rules into `ButtonRules`, and build the menu from a structured model plus a flatten step. Tests: the flattened menu equals the stored copy for every case, and the 44 tests in `MenuModelTests` pass with their bodies unchanged. The rename does touch test files: four helper signatures at the top of `MenuModelTests.swift` and `everySampleMenu()` in `Tests/MacMoshKitTests/Support/MenuSamples.swift` name the `Menu` type, and change to `MenuLines`. `MenuRefresher` publishes `latest`, `lastReady`, `checking`, `isRefreshing` and `waitingForDeskServer`, and keeps the last result while a check is still running. Add the `menu tracking: object=<kind>` log line.
 2. **The board model, in MacMoshKit only.** `Board`, `BoardModel.build`, the new fixture, `BoardModelTests` and `ButtonRulesTests`. Still nothing visible.
-3. **The window, read and click.** The `Window` scene (suppressed at launch, not restored), the `isInserted` initializer with quit on removal, **Open MacMosh** with `NSApp.activate()`, the sidebar, the workhorse page, short rows and the detail strip, "Open the N not in a tab", the greyed list under Locked, and every button through the menu's `MenuItem`. No pop-up, context menu, `Menu` or toolbar. The `window opened` log line and its CI check. **One sitting on the daily Mac** (section 11): it comes to the front, takes the keyboard, pastes into a text field, closing it keeps the menu running, and the tracking log line shows what object the menu-bar menu sends. This step alone meets issue #94's "done when", with the test correction in section 5.2.
-4. **Desk forms in the window.** `WindowActionRunner`, `QuietInteraction`, the New desk sheet (with `lastDeskCommand` and the inline projects folder), the Rename sheet, the Remove confirmation, per-action progress and result lines, and the window wording in `DeskFormat`.
+3. **The window, read and click.** The `Window` scene (suppressed at launch, not restored), the `isInserted` initializer with quit on removal, **Open MacMosh** with `NSApp.activate()`, the sidebar, the workhorse page, short rows and the detail strip, "Open the N not in a tab", the greyed list under every non-Ready state (section 7.1 D), and every button through the menu's `MenuItem`. No pop-up, context menu, `Menu` or toolbar. The `window opened` log line and its CI check. **One sitting on the daily Mac** (section 11): it comes to the front, takes the keyboard, pastes into a text field, closing it keeps the menu running, and the tracking log line shows what object the menu-bar menu sends. This step alone meets issue #94's "done when", with the test correction in section 5.2.
+4. **Desk forms in the window.** Starts only after step 3's sitting has shown that the window comes to the front and that paste works in its text fields, or after Shariq has chosen a fallback (section 11). `WindowActionRunner`, `QuietInteraction`, the New desk sheet (with `lastDeskCommand` and the inline projects folder), the Rename sheet, the Remove confirmation, per-action progress and result lines, and the window wording in `DeskFormat`.
 5. **Ended desks.** `EndedDeskTracker`, the Ended group, Start again, Start again and keep it, Forget.
 6. **The Settings page** (if decision 2 says so). The terminal choice and each workhorse's name, connection with its "which one do I use?" lines, typing prediction, projects folder and Advanced ssh key, saved through `WorkhorseSetting` and `WorkhorseStore.update`. Run the checklist… and Remove MacMosh from this workhorse… as today's tabs. "Show this Mac first" only if decision 4 asks for it.
-7. **Only if decision 3 says so: switches on a running desk.** A `desk-set <name> [--permanent|--no-permanent] [--reopen|--no-reopen] [--command <text>]` subcommand in `host/macmosh-host` and its embedded copy, rewriting one `desks.tsv` line under the existing lock; the script's version goes to 0.7.0; host tests against the throwaway tmux socket; `HostCommands.setDesk`; and in the detail strip, the "When its last shell exits" and "After a restart" choices and a "Change…" for the startup command. They show as plain text on a workhorse whose report says an older script. Each workhorse shows "Needs setting up" once, until **Finish setting up…** installs the new script (no password).
-8. **Only if decision 5 says so: a quiet-time line.** One added report record per tmux window carrying tmux's `window_activity` ("Time of window last activity", `man tmux`), and a line such as "Quiet for 12 min" per window. The parser already ignores record types it doesn't know, so an older app is unaffected. Same script reinstall as step 7; if both are wanted, they ship together as one script version.
+7. **Only if decision 3 says so: switches on a running desk.** A `desk-set <name> [--permanent|--no-permanent] [--reopen|--no-reopen] [--command <text>]` subcommand in `host/macmosh-host` and its embedded copy, rewriting one `desks.tsv` line under the existing lock; the script's version goes to 0.7.0; host tests against the throwaway tmux socket; `HostCommands.setDesk`; and in the detail strip, the "When its last shell exits" and "After a restart" choices and a "Change…" for the startup command. They show as plain text on a workhorse whose report says an older script. How that workhorse gets the new script is decision 6: today's code leaves it Ready, because the protocol number does not change (section 5.2).
+8. **Only if decision 5 says so: a quiet-time line.** One added report record per tmux window carrying tmux's `window_activity` ("Time of window last activity", `man tmux`), and a line such as "Quiet for 12 min" per window. The parser already ignores record types it doesn't know, so an older app is unaffected. The new script reaches each workhorse as decision 6 says; if steps 7 and 8 are both wanted, they ship together as one script version.
 
 Later, already filed: Add a Mac's guided steps (Task 28) and the checklist page (Task 29), as pages of this window.
 
@@ -522,17 +552,18 @@ Later, already filed: Add a Mac's guided steps (Task 28) and the checklist page 
 
 ## 10. Decisions for Shariq
 
-Five questions. The first two are the ones issue #94 leaves open.
+Six questions, most important first. Each one changes what gets built. The first two are the ones issue #94 leaves open, and the sixth matters only if he picks 3b or 5b. Smaller points were settled by the agent and are listed in section 12 for him to check.
 
-**1. When does this window come?** (Issue #94: "Whether this goes in v1, after #31 and #32, or comes first after v1.")
+**1. Is this design approved, and when is it built?** (Issue #94: "Whether this goes in v1, after #31 and #32, or comes first after v1.") The v1 design says phases 3 to 5 "are checked again after Shariq's review of the first menu-bar item" (Task 21, issue #24), and the build log still lists that review as to come. The answer sets the order of the work, and whether Task 29's Settings and New desk parts are built here or as separate windows.
 
 | Choice | What it means |
 |---|---|
-| **a. In v1, before issues #31 and #32 (recommended)** | Steps 1 to 6 come next, after this design goes through your Task 21 review. Task 29's Settings and New desk parts become pages of this window; the checklist and Add a Mac land in it later. Nothing is built twice. |
-| b. In v1, after #31 and #32 | Add a Mac and Settings are built as their own windows first, then the main window follows, and the Settings window is folded in or kept beside it. |
-| c. First thing after v1 | v1 ships with the menu and the separate windows of Tasks 28 and 29; this waits. |
+| **a. Approve; build after the Task 21 review, before issues #31 and #32 (recommended)** | This design goes into the Task 21 review as its main input. After the review, step 0 and steps 1 to 6 come next. Task 29's Settings and New desk parts become pages of this window; the checklist and Add a Mac land in it later. Nothing is built twice. |
+| b. Approve; start steps 1 and 2 now, the rest after the Task 21 review | Steps 1 and 2 change nothing he can see (groundwork and the board model), so they can't get ahead of the review. Step 3 onward waits for it. Still before #31 and #32. |
+| c. In v1, after #31 and #32 | Add a Mac and Settings are built as their own windows first, then the main window follows, and the Settings window is folded in or kept beside it. |
+| d. First thing after v1 | v1 ships with the menu and the separate windows of Tasks 28 and 29; this waits. |
 
-Recommended: a. His daily use is desks, which the window is built around, and adding a Mac happens once or twice in total.
+Recommended: a. His daily use is desks, which the window is built around, and adding a Mac happens once or twice in total. Waiting for the review keeps the plan's own rule; b is a fair choice if he wants the groundwork moving sooner.
 
 **2. Settings: a page of this window, or a window of its own?** (Issue #94: "Whether Settings (#32) becomes part of this window instead of a window of its own.")
 
@@ -548,8 +579,8 @@ Recommended: a. He asked for one place to "configure/see what's going on", and e
 | Choice | What it means |
 |---|---|
 | **a. The Ended list only (recommended for now)** | Start again, or Start again and keep it, after a desk ends. No workhorse change. Ended desks are remembered only while MacMosh runs. |
-| b. The Ended list, plus a switch on each running desk | Step 7: a workhorse script update, so each workhorse shows "Needs setting up" once. Also lets him change a desk's startup command and "comes back" later. |
-| c. The Ended list, remembered across MacMosh restarts | Ended desks are saved on the daily Mac, so one that ended overnight is still listed in the morning. A small saved file; no workhorse change. |
+| b. The Ended list, plus a switch on each running desk | Step 7: a new `desk-set` subcommand in the workhorse script, with host tests, and a script update on each workhorse (how it gets there is decision 6). Also lets him change a desk's startup command and "comes back" later. |
+| c. The Ended list, remembered across MacMosh restarts | Ended desks are saved in a small file on the daily Mac, so one that ended overnight is still listed in the morning. No workhorse change, but it replaces the "memory only" rule in section 7.1 C. |
 
 Recommended: a first, then b if he finds he wants to decide before the exit rather than after it.
 
@@ -558,7 +589,7 @@ Recommended: a first, then b if he finds he wants to decide before the exit rath
 | Choice | What it means |
 |---|---|
 | **a. Nothing yet (recommended while there is one workhorse)** | With one workhorse there is nothing to choose. The question comes back when he adds a second. |
-| b. Which Mac is shown first | "Show this Mac first" in Settings: the window opens on it and the menu lists it first. It rewrites the saved list's order. |
+| b. Which Mac is shown first | "Show this Mac first" in Settings: the window opens on it and the menu lists it first. It rewrites the saved list's order, so it changes the menu's order too. |
 | c. Also the Mac the `macmosh` command uses when none is named | b, plus a saved default and changes to the commands (for example `macmosh connect website` with no workhorse). |
 
 Recommended: a, then b when a second workhorse arrives.
@@ -568,11 +599,20 @@ Recommended: a, then b when a second workhorse arrives.
 | Choice | What it means |
 |---|---|
 | **a. Window names and the startup command (recommended)** | What the report already carries. A window's name is usually the program running in it. No workhorse change. |
-| b. Also a quiet-time line per window | Step 8: "Busy now" or "Quiet for 12 min" from tmux's last-activity time, to spot an agent waiting for him. A workhorse script update, so each workhorse shows "Needs setting up" once. |
+| b. Also a quiet-time line per window | Step 8: "Busy now" or "Quiet for 12 min" from tmux's last-activity time, to spot an agent waiting for him. One new report record and a script update on each workhorse (decision 6). |
 
 Seeing whether an agent is working or waiting for certain is not offered either way; that means reading a desk's screen, which issue #99 leaves open.
 
 Recommended: a, and b later if he finds himself checking desks for a waiting agent.
+
+**6. Only if he picks 3b or 5b: how does a workhorse with the older script get the new one?** Steps 7 and 8 keep protocol 1, and today a workhorse is "Needs setting up" only when the protocol number differs (section 5.2). So with today's code, a workhorse running script 0.6.0 stays Ready after the app ships 0.7.0, and only the checklist notices the older version. The choice changes what he sees in the menu, so it is his.
+
+| Choice | What it means |
+|---|---|
+| **a. Keep today's rule; the window says what to do (recommended)** | The menu does not change. On a workhorse with the older script, the new switches show as plain text with one line under them: "These need a newer workhorse script." and an **Update the script…** button. It opens the same tab as the menu's Finish setting up… (`prepare <id> --fix --pause`), whose automatic fixes replace an older script and say so first. |
+| b. A version rule in `StateResolver` | A report from a script older than the one built into the app makes the workhorse "Needs setting up", with **Finish setting up…** in the menu and the window. Every later script update then shows in the menu once, on every workhorse, until it is installed. |
+
+Recommended: a. It keeps the menu word for word (an anti-goal in section 4), and the switches are only a convenience. Choose b if he would rather be told in the menu whenever a workhorse has an older script.
 
 ## 11. What is not known yet
 
@@ -585,10 +625,33 @@ Recommended: a, and b later if he finds himself checking desks for a waiting age
 | Whether `MacMoshKit.Menu` clashes with SwiftUI's `Menu` | A build failure in the first view | Avoided by renaming it in step 1. |
 | What tmux names a window running his agent (for example `claude`, or the name of the program underneath it) | The rows show it | Read from the report on the workhorse during step 3, read-only. If the name is unhelpful, the row can fall back to the startup command. |
 | Whether `removeDesk(kill: true)` after the window's confirmation matches `--ask` in every case (for example a desk that closed between the check and the click) | Remove must never hit the wrong desk | `WindowActionRunnerTests`, and the script already addresses desks by session id (v1 design, call 38). |
-| Whether the Ended tracker shows false entries in real use (a desk removed from the command line) | A wrong "ended" line is confusing | Watched during his first days with step 5; "Forget" clears one. |
+| Whether the Ended tracker shows false entries in real use (a desk removed with the menu's Remove… or from the command line, where the app can't tell whether he typed `yes`) | A wrong "ended" line is confusing | Watched during his first days with step 5; "Forget" clears one. If they are common, skipping a desk whose menu Remove… was clicked in the last few minutes is a small follow-up. |
 | Whether the `isInserted` setter is called when the icon is dragged out of the menu bar | Quit on removal depends on it | Tried in step 3. |
 
-## 12. Sources
+## 12. Smaller calls the agent made, for Shariq to check
+
+A builder's review raised these points. None changes what gets built enough to need his decision, so the agent settled each one in the sections named. Each is marked "agent's call" there. Any he disagrees with is a one-line change to this document.
+
+| Point | The call | Where |
+|---|---|---|
+| What counts as an ended desk | Its session is gone and it was not permanent in the previous Ready report; the window does not wait for the script to remove its definition. A no-reopen desk lost to a restart shows as ended too. | 7.1 C, 7.2 Data |
+| A desk removed with the menu's Remove… | Shows as ended, because the app can't tell whether he typed `yes`. Forget clears it; section 11 watches for it. | 7.1 C, 11 |
+| Shortening folders with `~` | Replace a leading `/Users/<the workhorse's saved user>/` with `~/`; otherwise show the full path. No script change. | 7.1 A, 7.2 Data |
+| Which desk names are taken | The script's rule: an open desk, or a permanent one. Used by New desk and Start again. | 7.5 |
+| The folder list after the inline projects-folder Save | DeskFlow gets a copy of the check with the workhorse reloaded from the saved list. | 7.5 |
+| Setting the menu's notice from the window | A new refresher method, `finishWindowAction(id:result:)`. | 7.2 Actions |
+| What `ButtonRulesTests` compares | The shared buttons' titles and order; the menu's tab forms of New desk, Rename and Remove map to the window's forms; window-only buttons listed by name. | 7.3 |
+| The greyed list of desks | Under every non-Ready state that has a last Ready result, with a heading that fits the state. | 7.1 D, 7.2 Views |
+| The keep-running flag | Shown in the detail strip as "Keeps its command running", and passed through by Start again. The New desk form still sends it off. | 7.1 A, 7.2 Data, 7.5 |
+| What `lastDeskCommand` saves | What the form sent, with an empty command saved as nil. Start again does not change it. | 7.3 |
+| Proving the menu is unchanged in step 1 | Store today's output in a commit before the refactor, and compare against that copy. | 8, step 1 |
+| The window with no workhorses | It selects the Add a Mac page. | 7.1 A |
+| The per-workhorse "Checking…" | Every id when a refresh starts; each leaves when it comes back checked. | 7.2 Data |
+| Two window actions at once | One per desk; that desk's buttons are off while it runs, the others stay usable. | 7.2 Actions |
+| The words in `menu tracking: object=<kind>` | `mainMenu`, `statusMenu`, `popUp` and `other`, never a title, one test each. | 7.3 |
+| When the v1 plan and design text change | A docs-only PR right after approval, before step 1. | 7.7, 8 |
+
+## 13. Sources
 
 Apple pages were read on 2026-11-23 through the data endpoint behind each page (`https://developer.apple.com/tutorials/data/documentation/<path>.json`).
 
