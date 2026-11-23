@@ -57,11 +57,11 @@ extension HostScriptTests {
         let folder = try makeFolder(h, "site")
         _ = h.run(["start"])
         #expect(h.run(["desk-new", "website", folder.path]).exitCode == 0)
-        #expect(desksFile(h) == "website\t0\t0\t\(folder.path)\t\n")
+        #expect(desksFile(h) == "website\t1\t0\t0\t\(folder.path)\t\n")
         #expect(h.tmux(["has-session", "-t", "=website"]).exitCode == 0)
         let report = h.run(["status"]).stdout
         #expect(report.contains("\ndesk\twebsite\t1\t0\n"))
-        #expect(report.contains("\ndef\twebsite\t0\t0\t\(folder.path)\t\n"))
+        #expect(report.contains("\ndef\twebsite\t1\t0\t0\t\(folder.path)\t\n"))
     }
 
     @Test func deskNewStoresTheFlagsAndTheCommand() throws {
@@ -69,7 +69,23 @@ extension HostScriptTests {
         let folder = try makeFolder(h, "site")
         _ = h.run(["start"])
         #expect(h.run(["desk-new", "web", folder.path, "--reopen", "--keep", "--command", "npm run dev"]).exitCode == 0)
-        #expect(desksFile(h) == "web\t1\t1\t\(folder.path)\tnpm run dev\n")
+        #expect(desksFile(h) == "web\t1\t1\t0\t\(folder.path)\tnpm run dev\n")
+    }
+
+    @Test func deskNewReopensByDefaultAndStoresPermanent() throws {
+        let h = try HostHarness(); defer { h.cleanUp() }
+        _ = h.run(["start"])
+        #expect(h.run(["desk-new", "plain", h.home.path]).exitCode == 0)
+        #expect(h.run(["desk-new", "noreopen", h.home.path, "--no-reopen"]).exitCode == 0)
+        #expect(h.run(["desk-new", "perm", h.home.path, "--permanent"]).exitCode == 0)
+        #expect(h.run(["desk-new", "both", h.home.path, "--permanent", "--no-reopen"]).exitCode == 0)
+        let lines = desksFile(h)?.split(separator: "\n").map(String.init) ?? []
+        #expect(lines == [
+            "plain\t1\t0\t0\t\(h.home.path)\t",
+            "noreopen\t0\t0\t0\t\(h.home.path)\t",
+            "perm\t1\t0\t1\t\(h.home.path)\t",
+            "both\t0\t0\t1\t\(h.home.path)\t",
+        ])
     }
 
     @Test func deskNamesAreRestricted() throws {
@@ -124,7 +140,7 @@ extension HostScriptTests {
         #expect(out == "0\n0\n")
         let lines = (desksFile(h) ?? "").split(separator: "\n").map(String.init)
         #expect(lines.count == 2)
-        for line in lines { #expect(line.split(separator: "\t", omittingEmptySubsequences: false).count == 5) }
+        for line in lines { #expect(line.split(separator: "\t", omittingEmptySubsequences: false).count == 6) }
     }
 
     @Test func twoWritersWithTheSameNameGetOneDesk() throws {
@@ -228,14 +244,14 @@ extension HostScriptTests {
         let folder = try makeFolder(h, "projects")
         _ = h.run(["start"])
         #expect(h.run(["desk-new", "t", "~/projects"]).exitCode == 0)
-        #expect(desksFile(h) == "t\t0\t0\t\(folder.path)\t\n")
+        #expect(desksFile(h) == "t\t1\t0\t0\t\(folder.path)\t\n")
     }
 
     @Test func reopenDesksComeBackOnStart() throws {
         let h = try HostHarness(); defer { h.cleanUp() }
         _ = h.run(["start"])
         _ = h.run(["desk-new", "keepme", h.home.path, "--reopen"])
-        _ = h.run(["desk-new", "dropme", h.home.path])
+        _ = h.run(["desk-new", "dropme", h.home.path, "--no-reopen"])
         _ = h.tmux(["kill-server"])
         #expect(h.run(["start"]).exitCode == 0)
         #expect(h.tmux(["has-session", "-t", "=keepme"]).exitCode == 0)
@@ -323,7 +339,8 @@ extension HostScriptTests {
     @Test func attachCreatesADefinedDeskThatIsClosed() throws {
         let h = try HostHarness(); defer { h.cleanUp() }
         _ = h.run(["start"])
-        _ = h.run(["desk-new", "closed", h.home.path])
+        // Permanent, so closing its session leaves the definition for attach to open again.
+        _ = h.run(["desk-new", "closed", h.home.path, "--permanent"])
         _ = h.tmux(["kill-session", "-t", "=closed"])
         #expect(h.tmux(["has-session", "-t", "=closed"]).exitCode == 1)
         let r = h.run(["attach", "--dry-run", "closed"])
@@ -354,7 +371,7 @@ extension HostScriptTests {
     @Test func restartServerClosesDesksAndAsksTheLoginAgent() throws {
         let h = try HostHarness(); defer { h.cleanUp() }
         _ = h.run(["start"])
-        _ = h.run(["desk-new", "open", h.home.path])
+        _ = h.run(["desk-new", "open", h.home.path, "--no-reopen"])
         _ = h.run(["desk-new", "again", h.home.path, "--reopen"])
         try loginAgentStub(h)
         #expect(h.run(["restart-server", "--yes"]).exitCode == 0)

@@ -40,7 +40,13 @@ struct DeskCommand: AsyncParsableCommand {
     struct New: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
             commandName: "new",
-            abstract: "Make a desk. With no desk name or folder it asks for them."
+            abstract: "Make a desk. With no desk name or folder it asks for them.",
+            discussion: """
+                A new desk opens again by itself after the workhorse restarts, unless you say --no-reopen. \
+                When you close its last window (typing exit, for example), the desk is removed and its name \
+                is free again, unless you say --permanent: a permanent desk stays in the menu, marked closed, \
+                and opens again with one click.
+                """
         )
 
         @Argument(help: "The workhorse's id or name.")
@@ -52,8 +58,14 @@ struct DeskCommand: AsyncParsableCommand {
         @Option(help: "The folder on the workhorse, a full path or one starting with ~. Leave it out to pick from the projects folder.")
         var folder: String?
 
-        @Flag(help: "Open the desk again after the workhorse restarts.")
+        @Flag(help: "Open the desk again after the workhorse restarts. This is what happens anyway, unless you say --no-reopen.")
         var reopen = false
+
+        @Flag(name: .customLong("no-reopen"), help: "Don't open the desk again after the workhorse restarts.")
+        var noReopen = false
+
+        @Flag(help: "Keep the desk when its last window is closed, so it can be opened again from the menu. Without this, closing its last window removes the desk.")
+        var permanent = false
 
         @Flag(help: "The startup command is kept running (not active yet).")
         var keep = false
@@ -62,7 +74,13 @@ struct DeskCommand: AsyncParsableCommand {
         var command: String?
 
         func run() async throws {
-            let request = NewDeskRequest(name: desk, folder: folder, reopen: reopen, keep: keep, command: command)
+            let request: NewDeskRequest
+            do {
+                request = try NewDeskRequest.fromFlags(name: desk, folder: folder, reopen: reopen, noReopen: noReopen,
+                                                       keep: keep, permanent: permanent, command: command)
+            } catch let mistake as DeskUsageError {
+                throw ValidationError(mistake.description)
+            }
             let ui = TerminalInteraction()
             var outcome: DeskResult
             switch await checkedForDesk(workhorse) {

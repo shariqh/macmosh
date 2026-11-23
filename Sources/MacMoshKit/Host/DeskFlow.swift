@@ -1,24 +1,51 @@
 import Foundation
 
 /// What the person typed for `desk new`. A missing name or folder makes it the interactive form.
+///
+/// A new desk comes back after a restart unless asked not to (`reopen`), and is removed for good when
+/// its last shell exits unless it is `permanent`. The form that asks questions asks about neither, so
+/// a desk made from the menu's `New desk…` comes back and is not permanent.
 public struct NewDeskRequest: Sendable, Equatable {
     public var name: String?
     public var folder: String?
     public var reopen: Bool
     public var keep: Bool
+    public var permanent: Bool
     public var command: String?
 
-    public init(name: String? = nil, folder: String? = nil, reopen: Bool = false, keep: Bool = false,
-                command: String? = nil) {
+    public init(name: String? = nil, folder: String? = nil, reopen: Bool = true, keep: Bool = false,
+                permanent: Bool = false, command: String? = nil) {
         self.name = name
         self.folder = folder
         self.reopen = reopen
         self.keep = keep
+        self.permanent = permanent
         self.command = command
+    }
+
+    /// Reads `macmosh desk new`'s flags. `--no-reopen` turns reopening off; `--reopen` is still accepted
+    /// and means the same as leaving both out. Giving both is a mistake.
+    public static func fromFlags(name: String?, folder: String?, reopen: Bool, noReopen: Bool, keep: Bool,
+                                 permanent: Bool, command: String?) throws -> NewDeskRequest {
+        if reopen && noReopen { throw DeskUsageError.reopenAndNoReopen }
+        return NewDeskRequest(name: name, folder: folder, reopen: !noReopen, keep: keep, permanent: permanent,
+                              command: command)
     }
 
     /// The form that asks questions. Everything given in the arguments is taken as it is; it never asks.
     public var isInteractive: Bool { name == nil || folder == nil }
+}
+
+/// A mistake in how `macmosh desk new` was typed. The text says what to type instead.
+public enum DeskUsageError: Error, Equatable, CustomStringConvertible {
+    case reopenAndNoReopen
+
+    public var description: String {
+        switch self {
+        case .reopenAndNoReopen:
+            return "Choose one: a new desk comes back after a restart unless you add --no-reopen. --reopen is the same as leaving both out."
+        }
+    }
 }
 
 /// How a desk command ended. `reason` is what to tell the person when `code` isn't 0; `output` is a
@@ -78,7 +105,8 @@ public struct DeskFlow: Sendable {
 
         do {
             try await commands.newDesk(on: w, address: address, name: name, folder: folder,
-                                       reopen: request.reopen, keep: request.keep, command: request.command)
+                                       reopen: request.reopen, keep: request.keep, permanent: request.permanent,
+                                       command: request.command)
         } catch {
             return .failure(DeskFormat.message(error, workhorse: w))
         }
