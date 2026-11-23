@@ -25,6 +25,10 @@ public struct MenuItem: Sendable, Equatable {
         MenuItem(title: title, action: action, indent: indent, isSeparator: false)
     }
 
+    static func line(_ button: ActionButton, indent: Int = 1) -> MenuItem {
+        line(button.title, button.action, indent: indent)
+    }
+
     static let separator = MenuItem(title: "", action: .none, indent: 0, isSeparator: true)
 }
 
@@ -95,7 +99,7 @@ public enum MenuModel {
         if gathered.isEmpty {
             return MenuLines(symbol: noWorkhorsesSymbol, items: [
                 .line("No workhorses yet", indent: 0),
-                .line("Add a Mac…", .tab(["pair"]), indent: 0),
+                .line(ButtonRules.addAMac, indent: 0),
             ])
         }
 
@@ -113,12 +117,12 @@ public enum MenuModel {
                 }
             case .stillChecking(let w):
                 items.append(.line("\(w.name) · Still checking…", indent: 0))
-                items.append(checklist(w))
+                items.append(.line(ButtonRules.checklist(w.id)))
             }
         }
         items.append(.separator)
-        items.append(.line("Add a Mac…", .tab(["pair"]), indent: 0))
-        items.append(.line("Check now", .refresh, indent: 0))
+        items.append(.line(ButtonRules.addAMac, indent: 0))
+        items.append(.line(ButtonRules.checkNow, indent: 0))
         let symbol = mostUrgent(states).map(symbol(for:)) ?? stillCheckingSymbol
         return MenuLines(symbol: symbol, items: items)
     }
@@ -128,48 +132,21 @@ public enum MenuModel {
     /// Under "Waiting for the desk server". Every clause is true when it is shown (issue #88).
     static let waitingForDeskServerHint = "Someone has logged in and the desk server isn't running yet. MacMosh's login agent starts it after a login; if it still isn't running in a minute, this menu says so."
 
-    private static func checklist(_ w: Workhorse) -> MenuItem {
-        .line("Run the checklist…", .tab(["prepare", w.id, "--pause"]))
-    }
-
     /// A headline, the hint, and the checklist. No "Finish setting up…": the login agent is about to do it.
     private static func deskServerWaitBlock(_ r: CheckResult) -> [MenuItem] {
         [.line("\(r.workhorse.name) · Waiting for the desk server", indent: 0),
          .line(waitingForDeskServerHint),
-         checklist(r.workhorse)]
+         .line(ButtonRules.checklist(r.workhorse.id))]
     }
 
+    /// The headline, the hint (a Ready workhorse with sign-ins working has none), the state's own
+    /// button, a Ready workhorse's desks and buttons, and the checklist.
     private static func block(for r: CheckResult, now: Date, timeZone: TimeZone) -> [MenuItem] {
-        let id = r.workhorse.id
         var items: [MenuItem] = [.line(StatusFormat.headline(r), indent: 0)]
-        let hint = StatusFormat.hint(r, now: now, timeZone: timeZone)
-
-        switch r.state {
-        case .ready(let signIns):
-            if !signIns {
-                if let hint { items.append(.line(hint)) }
-                items.append(.line("Fix…", .tab(["prepare", id, "--restart-desk-server", "--pause"])))
-            }
-            items += readyItems(r)
-        case .waitingForLogin:
-            if let hint { items.append(.line(hint)) }
-            items.append(.line("Log in…  (opens Screen Sharing)", .run(["screen", id])))
-        case .locked:
-            if let hint { items.append(.line(hint)) }
-            if r.workhorse.canUnlockOverSSH {
-                items.append(.line("Unlock disk…  (you type the Mac's password)", .tab(["unlock", id])))
-            }
-        case .cantVerify, .cantReach:
-            if let hint { items.append(.line(hint)) }
-        case .notSetUp(let problem):
-            if let hint { items.append(.line(hint)) }
-            if problem == .notPaired {
-                items.append(.line("Pair…", .tab(["pair", id])))
-            } else {
-                items.append(.line("Finish setting up…", .tab(["prepare", id, "--fix", "--pause"])))
-            }
-        }
-        items.append(checklist(r.workhorse))
+        if let hint = StatusFormat.hint(r, now: now, timeZone: timeZone) { items.append(.line(hint)) }
+        items += ButtonRules.forState(r).map { .line($0) }
+        if case .ready = r.state { items += readyItems(r) }
+        items.append(.line(ButtonRules.checklist(r.workhorse.id)))
         return items
     }
 
@@ -184,39 +161,23 @@ public enum MenuModel {
         for desk in desks {
             let name = desk.name.value
             items.append(.line(deskTitle(desk, kept: kept.contains(name), permanent: permanent.contains(name)),
-                               .tab(["connect", id, name])))
-            items.append(.line("New window in \(name)", .run(["desk", "window", id, name]), indent: 2))
-            items += deskActions(id, name)
+                               ButtonRules.connect(workhorse: id, desk: name)))
+            items += ButtonRules.forDesk(workhorse: id, desk: name, isOpen: true).map { .line($0, indent: 2) }
         }
         // A permanent desk whose last shell exited stays, closed; connect makes it again. Any other
         // definition with no desk is a leftover the workhorse clears up, so it gets no line.
         let open = Set(desks.map(\.name.value))
         for definition in definitions where definition.permanent && !open.contains(definition.name.value) {
             let name = definition.name.value
-            items.append(.line("\(name) (closed)", .tab(["connect", id, name])))
-            items += deskActions(id, name)
+            items.append(.line("\(name) (closed)", ButtonRules.connect(workhorse: id, desk: name)))
+            items += ButtonRules.forDesk(workhorse: id, desk: name, isOpen: false).map { .line($0, indent: 2) }
         }
-        items.append(.line("New desk…", .tab(["desk", "new", id])))
-        items.append(.line("Share screen", .run(["screen", id])))
-        items.append(.line("Restart…", .tab(["restart", id])))
-        if let status = r.status, status.isLaptop {
-            if status.power.disableSleep == 1 {
-                items.append(.line("Turn off lid-closed mode…", .tab(["power", id, "lid", "off"])))
-            } else {
-                items.append(.line("Turn on lid-closed mode…", .tab(["power", id, "lid", "on"])))
-            }
-        }
+        items += ButtonRules.forReady(r).map { .line($0) }
         if let status = r.status { items.append(.line(StatusFormat.summaryLine(status))) }
         if let reachable = r.homeReachable {
             items.append(.line("Home address reachable from here: \(reachable ? "yes" : "no")"))
         }
         return items
-    }
-
-    /// The lines under every desk in the menu, open or closed: each opens a tab that asks first.
-    private static func deskActions(_ id: String, _ name: String) -> [MenuItem] {
-        [.line("Rename \(name)…", .tab(["desk", "rename", id, name]), indent: 2),
-         .line("Remove \(name)…", .tab(["desk", "remove", id, name, "--ask"]), indent: 2)]
     }
 
     /// `website (2 windows: zsh, vim, kept running, permanent, open in 1 tab)`
