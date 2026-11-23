@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Testing
 @testable import MacMoshKit
@@ -28,6 +29,24 @@ private final class Lines: @unchecked Sendable {
     @Test func theRefreshLineHasTheSymbolAndTheCounts() {
         #expect(MenuLog.refreshed(MenuModel.build([]), workhorses: 0)
                 == "menu refreshed: symbol=plus.circle workhorses=0 lines=2")
+    }
+
+    @Test func theTrackingLineNamesTheMenuInOneOfFourFixedWords() {
+        #expect(MenuLog.tracking(.mainMenu) == "menu tracking: object=mainMenu")
+        #expect(MenuLog.tracking(.statusMenu) == "menu tracking: object=statusMenu")
+        #expect(MenuLog.tracking(.popUp) == "menu tracking: object=popUp")
+        #expect(MenuLog.tracking(.other) == "menu tracking: object=other")
+        #expect(MenuTrackingObject.allCases.map(\.rawValue) == ["mainMenu", "statusMenu", "popUp", "other"])
+    }
+
+    @Test func onlyTheMainMenuItselfCountsAsTheMainMenu() {
+        let main = NSMenu(title: "Main")
+        let sameTitle = NSMenu(title: "Main")
+        #expect(MenuTrackingObject.of(main, mainMenu: main) == .mainMenu)
+        #expect(MenuTrackingObject.of(sameTitle, mainMenu: main) == .other)
+        #expect(MenuTrackingObject.of(NSMenu(title: "Other"), mainMenu: nil) == .other)
+        #expect(MenuTrackingObject.of(nil, mainMenu: main) == .other)
+        #expect(MenuTrackingObject.of(nil, mainMenu: nil) == .other)
     }
 
     @Test func anActionLineNamesOnlyTheSubcommand() {
