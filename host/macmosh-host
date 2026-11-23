@@ -4,7 +4,7 @@
 # Plain bash 3.2 (what macOS ships at /bin/bash): no associative arrays, no mapfile, no ${var,,}.
 set -u
 
-MACMOSH_HOST_VERSION=0.6.0
+MACMOSH_HOST_VERSION=0.7.0
 MACMOSH_PROTOCOL=1
 AGENT_LABEL=io.github.shariqh.macmosh.host
 
@@ -150,12 +150,34 @@ mm_def_line() {
 # The tmux id ($n) of the session with exactly this name, or nothing. Not has-session -t "=name": when
 # no session has the name, tmux also matches it against an attached client's tty (ttys003), and then
 # stands for the session that client shows.
+# A view (a session tagged @macmosh-view, see mm_open_view) is never a desk, even when tmux's own rename
+# (prefix and $, in a tab) has given it a desk's name.
 mm_session_id() {
-    mm_tmux list-sessions -F "#{session_id}$TAB#{session_name}" 2>/dev/null |
-        awk -F '\t' -v n="$1" '($2 "") == (n "") { print $1; exit }'
+    mm_tmux list-sessions -F "#{session_id}$TAB#{@macmosh-view}$TAB#{session_name}" 2>/dev/null |
+        awk -F '\t' -v n="$1" '{ id = $1; tag = $2; sub(/^[^\t]*\t[^\t]*\t/, "") }
+            tag == "" && ($0 "") == (n "") { print id; exit }'
 }
 
 mm_session_exists() { [ -n "$(mm_session_id "$1")" ]; }
+
+# One format of the session with this id ($n), or nothing when there is no such session. Read through
+# list-sessions: display-message answers even for a session or a window that does not exist (seen with
+# tmux 3.8), so it can't tell.
+mm_session_field() {
+    mm_tmux list-sessions -F "#{session_id}$TAB$2" 2>/dev/null |
+        awk -F '\t' -v id="$1" '($1 "") == (id "") { sub(/^[^\t]*\t/, ""); print; exit }'
+}
+
+# True when the session with id $1 has the window with id $2 (@n).
+mm_session_has_window() {
+    mm_tmux list-windows -t "$1:" -F '#{window_id}' 2>/dev/null | grep -qxF -- "$2"
+}
+
+# True when a session or a session group already has this name.
+mm_name_in_use() {
+    mm_tmux list-sessions -F "#{session_name}$TAB#{session_group}" 2>/dev/null |
+        awk -F '\t' -v n="$1" '($1 "") == (n "") || ($2 "") == (n "") { found = 1 } END { exit !found }'
+}
 
 # Reads one line of desks.tsv into d_name, d_reopen, d_keep, d_permanent, d_folder and d_command.
 # A line is: name, reopen (0 or 1), keep (0 or 1), permanent (0 or 1), folder, startup command.
@@ -231,13 +253,14 @@ mm_set_hook() {
     prefix="MACMOSH_HOME=$(mm_shell_quote "$MACMOSH_HOME") MACMOSH_SOCKET=$(mm_shell_quote "$MACMOSH_SOCKET")"
     prefix="$prefix $(mm_shell_quote "$(mm_self_path)") desk-closed"
     # The prefix is kept in a user option and put into the command when the hook runs, so a path with
-    # odd characters never passes through tmux's own command parser. q: quotes the desk name for sh.
+    # odd characters never passes through tmux's own command parser. q: quotes the desk name and the
+    # session id ($n) for sh; the id tells desk-closed when the session was a view (see mm_open_view).
     # destroy-unattached is forced off here too (see mm_write_tmux_conf), for a server that is already
     # running or whose user settings were loaded again.
     # shellcheck disable=SC2016  # the #{...} parts are tmux formats, expanded when the hook runs
     mm_tmux set-option -g destroy-unattached off \; \
         set-option -g @macmosh-desk-closed "$prefix" \; \
-        set-hook -g "$MM_HOOK" "run-shell -b -d $MM_HOOK_DELAY '#{@macmosh-desk-closed} #{q:hook_session_name} #{pid} >/dev/null 2>&1 || true'" \
+        set-hook -g "$MM_HOOK" "run-shell -b -d $MM_HOOK_DELAY '#{@macmosh-desk-closed} #{q:hook_session_name} #{pid} #{q:hook_session} >/dev/null 2>&1 || true'" \
         >/dev/null 2>&1
     return 0
 }
@@ -277,10 +300,24 @@ mm_shell_quote() {
 # The keys wait in the terminal's input queue, so a shell that is slow to start still receives them.
 # The keys go to the new session's id, never "=name" (see mm_session_id). MM_NEW_SID holds that id, or
 # nothing when no session was made, so a caller that rolls back kills only the session made here.
+#
+# The session is born in a session group of its own, which its views join later (see mm_open_view). A
+# group keeps the name it was made with for good, and a new session asked to join a name that a group
+# has joins that group (both seen with tmux 3.8). So the name is one no desk can have and no other group
+# has: "macmosh+g" and the number of the id the session is about to get. Every caller holds the desk
+# list's lock, as mm_open_view does, so no other MacMosh session is made in between. tmux before 3.3
+# has no next_session_id; then the name is made of this process, the time and a count, because one
+# start reopens several desks within a second.
+MM_GROUP_COUNT=0
 mm_create_session() {
     # $1 name, $2 folder, $3 startup command (may be empty), $4 keep: 1 or 0 (optional)
-    local folder="$2" typed="$3" sid
+    local folder="$2" typed="$3" sid next group
     MM_NEW_SID=""
+    MM_GROUP_COUNT=$((MM_GROUP_COUNT + 1))
+    next=$(mm_tmux display-message -p '#{next_session_id}' 2>/dev/null)
+    group="macmosh+g${next#\$}"
+    if [ -z "$next" ] || mm_name_in_use "$group"; then group="macmosh+g$$-$(date +%s)-$MM_GROUP_COUNT"; fi
+    if mm_name_in_use "$group"; then return 1; fi
     if [ ! -d "$folder" ]; then
         mm_log "create-desk" "$1: folder is gone, using the home folder"
         folder="$HOME"
@@ -288,7 +325,7 @@ mm_create_session() {
     if [ "${4:-0}" = 1 ] && [ -n "$typed" ]; then
         typed="$(mm_shell_quote "$(mm_self_path)") keep $1"
     fi
-    sid=$(mm_tmux new-session -d -P -F '#{session_id}' -s "$1" -c "$folder" 2>/dev/null) || return 1
+    sid=$(mm_tmux new-session -d -P -F '#{session_id}' -s "$1" -t "$group" -c "$folder" 2>/dev/null) || return 1
     MM_NEW_SID="$sid"
     [ -n "$sid" ] || return 1
     if [ -n "$typed" ]; then
@@ -567,10 +604,14 @@ cmd_desk_remove() {
             return 1
         fi
     fi
-    mm_release_lock
+    # The desk's views first, each by its id, while the lock keeps a new one from being made. A view
+    # left behind would keep the desk's windows running. kill-session without -g closes only windows
+    # that no other session shows, so the desk's own session goes last and takes the windows.
     if [ "$kill" = 1 ] && [ "$had_session" = 1 ]; then
+        mm_kill_views "$sid"
         mm_tmux kill-session -t "$sid" >/dev/null 2>&1
     fi
+    mm_release_lock
     mm_log desk-remove "removed $name"
     return 0
 }
@@ -655,11 +696,29 @@ cmd_desk_rename() {
 # restart, while one kept by mistake is only a name that desk-new replaces and the menu doesn't show.
 # It stays when: another server answers or none does (the server went away: a restart, kill-server,
 # a signal), nobody is logged in at the screen (logging out), the desk is open again, or it is permanent.
+# The closed session's id comes third (a hook set by a script before 0.7.0 leaves it out). A view's id
+# was recorded on the server when it was made, so a view is ignored whatever name it had when it closed.
 cmd_desk_closed() {
-    local name pid line
-    [ $# -eq 2 ] || mm_usage_error desk-closed "usage: desk-closed <desk> <desk server pid>"
+    local name pid line id="" key
+    [ $# -eq 2 ] || [ $# -eq 3 ] || mm_usage_error desk-closed "usage: desk-closed <desk> <desk server pid> [<session id>]"
     name="$1"
     pid="$2"
+    [ $# -lt 3 ] || id="$3"
+    case "$id" in
+        '$'[0-9]*)
+            key="@macmosh-view-${id#\$}"
+            case "$key" in
+                *[!0-9a-z@-]*) ;;
+                *)
+                    if [ "$(mm_server_pid)" = "$pid" ] && [ -n "$(mm_tmux show-options -sqv "$key" 2>/dev/null)" ]; then
+                        mm_tmux set-option -su "$key" >/dev/null 2>&1
+                        mm_log desk-closed "ignored: a view"
+                        return 0
+                    fi
+                    ;;
+            esac
+            ;;
+    esac
     if ! mm_valid_desk_name "$name"; then
         mm_log desk-closed "ignored: not a desk name"
         return 0
@@ -744,12 +803,138 @@ cmd_window_new() {
     return 0
 }
 
+# --- Views: one terminal tab on one window of a desk.
+#
+# A view is a small tmux session in the same session group as the desk's own session. "Sessions in the
+# same group share the same set of windows", and "the current and previous window ... remain independent"
+# (man tmux, new-session -t), so each tab keeps its own current window over the desk's windows. A view is
+# named "<desk>+<pid of the attach>": the + is not allowed in a desk name, so the status report, desk-closed,
+# reopen at start, desk-new, desk-rename, desk-remove, window-new and attach never take a view for a
+# desk. It is tagged with the option @macmosh-view, set to its desk's session id, which a rename keeps,
+# and its id is recorded on the server (@macmosh-view-<n>). The name can be changed by hand (tmux's own
+# rename, prefix and $, renames the view a tab shows), so the tag keeps a view out of every desk lookup
+# (mm_session_id) and the record keeps its closing from counting as a desk's (desk-closed).
+# A view ends with its tab (destroy-unattached on, set once the tab is attached), and status sweeps
+# a view that never got a tab, or whose desk's own session is gone (mm_sweep_views). Seen with tmux 3.8 on
+# a throwaway socket: when a desk's last shell exits, every session of its group closes, and the
+# session-closed hook runs for each name.
+
+# Makes a view of a desk showing one window: the given one, or a new one made with -d so that no other
+# tab moves. Under the desk list's lock, which every maker of a desk's session also holds. Sets MM_VIEW_ID
+# and MM_VIEW_WINDOW. Returns 4 when the desk or the window is gone, 1 when the view can't be made.
+mm_open_view() {
+    # $1 desk name, $2 window id (@n) or empty, $3 1 for a new window
+    local name="$1" wid="$2" sid grouped group vid
+    MM_VIEW_ID="" MM_VIEW_WINDOW=""
+    if ! mm_lock; then
+        echo "macmosh-host: could not lock the desk list" >&2
+        mm_log attach "failed: lock"
+        return 1
+    fi
+    sid=$(mm_session_id "$name")
+    if [ -z "$sid" ]; then
+        mm_release_lock
+        echo "macmosh-host: no such desk: $name" >&2
+        mm_log attach "no such desk: $name"
+        return 4
+    fi
+    if [ -n "$wid" ] && ! mm_session_has_window "$sid" "$wid"; then
+        mm_release_lock
+        echo "That window has closed." >&2
+        mm_log attach "$name: window $wid has closed"
+        return 4
+    fi
+    grouped=$(mm_session_field "$sid" '#{session_grouped}')
+    if [ "$grouped" != 1 ]; then
+        # A desk made by a script before 0.7.0 has no group. Its first view makes one, which takes the
+        # desk's name, or joins a group that already has that name (seen with tmux 3.8). A group keeps
+        # its name for good, so a group with this name belongs to a desk that has been renamed since,
+        # and joining it would mix the two desks' windows.
+        if mm_tmux list-sessions -F '#{session_group}' 2>/dev/null | grep -qxF -- "$name"; then
+            mm_release_lock
+            echo "macmosh-host: this desk can open another tab only after the desk server restarts" >&2
+            mm_log attach "refused: $name: a group already has its name"
+            return 1
+        fi
+    fi
+    # The group is joined through the desk's session id, never its name: a group keeps its first name
+    # after a rename, and tmux reads a name as a session's before a group's, so a group's name can
+    # stand for another desk (seen with tmux 3.8). Given an id, tmux joins that session's own group.
+    # A signal between making the view and tagging it would leave a view no sweep knows, so signals
+    # are ignored for those two calls; a tab that closed meanwhile leaves a tagged view to sweep.
+    trap '' INT HUP TERM
+    vid=$(mm_tmux new-session -d -t "$sid" -s "$name+$$" -P -F '#{session_id}' 2>/dev/null)
+    case "$vid" in
+        '$'[0-9]*) ;;
+        *) vid="" ;;
+    esac
+    # The tag and the record by the view's own id: a command with no target acts on the session of
+    # the pane it is run from (TMUX_PANE), not on the session just made with -d. The record on the
+    # server outlives the view, for desk-closed.
+    if [ -n "$vid" ]; then
+        mm_tmux set-option -t "$vid" @macmosh-view "$sid" \; \
+            set-option -s "@macmosh-view-${vid#\$}" "$sid" >/dev/null 2>&1
+    fi
+    trap 'exit 130' INT HUP
+    trap 'exit 143' TERM
+    group=$(mm_session_field "$sid" '#{session_group}')
+    if [ -z "$vid" ] || [ -z "$group" ] ||
+        [ "$(mm_session_field "$vid" "#{@macmosh-view}$TAB#{session_group}")" != "$sid$TAB$group" ]; then
+        if [ -n "$vid" ]; then mm_tmux kill-session -t "$vid" >/dev/null 2>&1; fi
+        mm_release_lock
+        echo "macmosh-host: could not open a tab on the desk $name" >&2
+        mm_log attach "failed: no view for $name"
+        return 1
+    fi
+    if [ "$3" = 1 ]; then
+        # The desk's own session is the target, so the window starts in the desk's folder as window-new's do.
+        wid=$(mm_tmux new-window -d -P -F '#{window_id}' -t "$sid:" 2>/dev/null)
+        case "$wid" in
+            @[0-9]*) ;;
+            *)
+                mm_tmux kill-session -t "$vid" >/dev/null 2>&1
+                mm_release_lock
+                echo "macmosh-host: could not add a window" >&2
+                mm_log attach "failed: no window for $name"
+                return 1
+                ;;
+        esac
+    fi
+    if ! mm_tmux select-window -t "$vid:$wid" >/dev/null 2>&1; then
+        mm_tmux kill-session -t "$vid" >/dev/null 2>&1
+        mm_release_lock
+        echo "That window has closed." >&2
+        mm_log attach "$name: window $wid has closed"
+        return 4
+    fi
+    mm_release_lock
+    MM_VIEW_ID="$vid"
+    MM_VIEW_WINDOW="$wid"
+    return 0
+}
+
+# Kills every view of the desk whose session has this id, each by its own id.
+mm_kill_views() {
+    local vid
+    for vid in $(mm_tmux list-sessions -F "#{session_id}$TAB#{@macmosh-view}" 2>/dev/null |
+        awk -F '\t' -v d="$1" '($2 "") == (d "") { print $1 }'); do
+        mm_tmux kill-session -t "$vid" >/dev/null 2>&1
+    done
+    return 0
+}
+
 cmd_attach() {
-    local name="" cc=0 dry=0 npos=0 line sid
+    local name="" cc=0 dry=0 npos=0 line sid window="" newwin=0 vid="" code
     while [ $# -gt 0 ]; do
         case "$1" in
             --cc) cc=1 ;;
             --dry-run) dry=1 ;;
+            --window)
+                [ $# -ge 2 ] || mm_usage_error attach "--window needs a window id, such as @3"
+                window="$2"
+                shift
+                ;;
+            --new-window) newwin=1 ;;
             --*) mm_usage_error attach "unknown option $1" ;;
             *)
                 npos=$((npos + 1))
@@ -759,7 +944,23 @@ cmd_attach() {
         esac
         shift
     done
-    [ "$npos" -eq 1 ] || mm_usage_error attach "usage: attach [--cc] [--dry-run] <desk>"
+    [ "$npos" -eq 1 ] || mm_usage_error attach "usage: attach [--cc] [--window @<id> | --new-window] [--dry-run] <desk>"
+    case "$window" in
+        '') ;;
+        @[0-9]*)
+            case "${window#@}" in
+                *[!0-9]*) mm_usage_error attach "--window needs a window id, such as @3" ;;
+            esac
+            ;;
+        *) mm_usage_error attach "--window needs a window id, such as @3" ;;
+    esac
+    if [ -n "$window" ] && [ "$newwin" = 1 ]; then
+        mm_usage_error attach "--window and --new-window can't be used together"
+    fi
+    # Tabs mode shows every window as a tab already, and needs no views.
+    if [ "$cc" = 1 ] && { [ -n "$window" ] || [ "$newwin" = 1 ]; }; then
+        mm_usage_error attach "--cc can't be used with --window or --new-window"
+    fi
 
     if ! mm_valid_desk_name "$name"; then
         echo "macmosh-host: no such desk: $name" >&2
@@ -796,24 +997,55 @@ cmd_attach() {
     fi
 
     if [ "$dry" = 1 ]; then
+        # A dry run checks the window it was given and makes nothing: no view, no window.
+        sid=$(mm_session_id "$name")
+        if [ -n "$window" ] && { [ -z "$sid" ] || ! mm_session_has_window "$sid" "$window"; }; then
+            echo "That window has closed." >&2
+            mm_log attach "dry run $name: window $window has closed"
+            return 4
+        fi
         echo ok
         mm_log attach "dry run $name"
         return 0
     fi
-    # By id, looked up last: a desk that closed since the check above is no desk to attach to.
-    sid=$(mm_session_id "$name")
-    if [ -z "$sid" ]; then
-        echo "macmosh-host: no such desk: $name" >&2
-        mm_log attach "no such desk: $name"
-        return 4
+    if [ -n "$window" ] || [ "$newwin" = 1 ]; then
+        code=0
+        mm_open_view "$name" "$window" "$newwin" || code=$?
+        [ "$code" = 0 ] || return "$code"
+        vid="$MM_VIEW_ID"
+        if [ "$newwin" = 1 ]; then
+            mm_log attach "$name (new window $MM_VIEW_WINDOW)"
+        else
+            mm_log attach "$name (window $MM_VIEW_WINDOW)"
+        fi
+    else
+        # By id, looked up last: a desk that closed since the check above is no desk to attach to.
+        sid=$(mm_session_id "$name")
+        if [ -z "$sid" ]; then
+            echo "macmosh-host: no such desk: $name" >&2
+            mm_log attach "no such desk: $name"
+            return 4
+        fi
+        mm_log attach "$name"
     fi
-    mm_log attach "$name"
     # The terminal may itself be inside another tmux; the desk server is a separate one.
     unset TMUX
     if [ "$cc" = 1 ]; then
         exec tmux -L "$MACMOSH_SOCKET" -CC attach-session -t "$sid"
     fi
-    exec tmux -L "$MACMOSH_SOCKET" attach-session -t "$sid"
+    if [ -n "$vid" ]; then
+        # The view goes when its tab goes: "on" destroys the session once it has no client. While the
+        # desk's own session is there, that closes no window; once it is gone (killed by hand, or by
+        # the script before 0.7.0, which knows nothing of views), the last view takes the windows with
+        # it. keep-last would keep a view that is alone in its group, with its shells running, until a
+        # status check of 0.7.0 swept it. It is set after the attach, in the same command list, because
+        # set on a view that has no client yet it destroys the view at once (seen with tmux 3.8). If the
+        # attach fails, the option is never set, and status sweeps the view a minute later.
+        set -- attach-session -t "$vid" \; set-option -t "$vid" destroy-unattached on
+    else
+        set -- attach-session -t "$sid"
+    fi
+    exec tmux -L "$MACMOSH_SOCKET" "$@"
 }
 
 # Runs the desk's startup command, and again each time it ends. It runs inside the desk's own shell
@@ -833,9 +1065,15 @@ cmd_keep() {
     # The name and the line are read under the lock, which desk-rename holds while it changes both,
     # so they are both old or both new. Without the lock they are read as they are.
     if mm_lock; then locked=1; fi
+    # A pane that a view also shows may be reported as the view's (seen with tmux 3.8); the view's tag
+    # holds its desk's session id, and that session's name is the desk's.
     if [ -n "${TMUX:-}" ] && [ -n "${TMUX_PANE:-}" ]; then
-        cur=$(mm_tmux display-message -p -t "$TMUX_PANE" "#{socket_path}$TAB#{session_name}" 2>/dev/null)
+        cur=$(mm_tmux display-message -p -t "$TMUX_PANE" "#{socket_path}$TAB#{@macmosh-view}$TAB#{session_name}" 2>/dev/null)
         if [ "${cur%%"$TAB"*}" = "${TMUX%%,*}" ]; then cur="${cur#*"$TAB"}"; else cur=""; fi
+        case "$cur" in
+            '$'[0-9]*"$TAB"*) cur=$(mm_session_field "${cur%%"$TAB"*}" '#{session_name}') ;;
+            *) cur="${cur#*"$TAB"}" ;;
+        esac
         if [ -n "$cur" ] && mm_valid_desk_name "$cur"; then
             line=$(mm_def_line "$cur")
             if [ -n "$line" ]; then name="$cur"; fi
@@ -1284,12 +1522,37 @@ mm_window_records() {
     }
 }
 
+# Which windows of one desk a tab shows, after its window records: one "windowinfo" line per window
+# (desk, index, window id, 1 when the desk's own session shows it, the number of tabs showing it) and
+# one "view" line per view (desk, the view's name, the window it shows, its tabs). window_active_clients
+# counts the tabs of every session in the group (seen with tmux 3.8). An older app skips both records.
+# $1 is the desk's name, $2 its session id, $3 the list of every session (id, tag, tabs, window, name).
+mm_window_info_records() {
+    local desk="$1" sid="$2" index wid active tabs tag view
+    mm_tmux list-windows -t "$sid:" -F '#{window_index}|#{window_id}|#{window_active}|#{window_active_clients}' 2>/dev/null |
+        while IFS='|' read -r index wid active tabs; do
+            case "$index$active$tabs" in
+                '' | *[!0-9]*) continue ;;
+            esac
+            printf 'windowinfo\t%s\t%s\t%s\t%s\t%s\n' "$desk" "$index" "$wid" "$active" "$tabs"
+        done
+    printf '%s\n' "$3" | while IFS='|' read -r _ tag tabs wid view; do
+        [ -n "$tag" ] && [ "$tag" = "$sid" ] || continue
+        case "$tabs" in
+            '' | *[!0-9]*) continue ;;
+        esac
+        printf 'view\t%s\t%s\t%s\t%s\n' "$desk" "$(mm_clean "$view")" "$wid" "$tabs"
+    done
+}
+
 mm_desk_records() {
-    local text line name rest windows attached sid
+    local text sessions line name windows attached sid tag
     mm_server_up || return 0
-    # Format: id|name|windows|attached. A name that breaks the naming rule is left out. The windows are
-    # listed by the session's id, never by "=name" (see mm_session_id).
-    text=$(mm_tmux list-sessions -F '#{session_id}|#{session_name}|#{session_windows}|#{session_attached}' 2>/dev/null)
+    # Format: id|tag|windows|attached|name. A name that breaks the naming rule is left out, and so is a
+    # view (a session tagged @macmosh-view). The windows are listed by the session's id, never by "=name"
+    # (see mm_session_id). A desk's tabs are those of every session in its group, its views' included.
+    text=$(mm_tmux list-sessions -F '#{session_id}|#{@macmosh-view}|#{session_windows}|#{?session_grouped,#{session_group_attached},#{session_attached}}|#{session_name}' 2>/dev/null)
+    sessions=$(mm_tmux list-sessions -F '#{session_id}|#{@macmosh-view}|#{session_attached}|#{window_id}|#{session_name}' 2>/dev/null)
     printf '%s\n' "$text" | while IFS= read -r line; do
         sid="${line%%|*}"
         line="${line#*|}"
@@ -1297,17 +1560,65 @@ mm_desk_records() {
             '$'[0-9]*) ;;
             *) continue ;;
         esac
-        attached="${line##*|}"
-        rest="${line%|*}"
-        windows="${rest##*|}"
-        name="${rest%|*}"
+        tag="${line%%|*}"
+        line="${line#*|}"
+        windows="${line%%|*}"
+        line="${line#*|}"
+        attached="${line%%|*}"
+        name="${line#*|}"
+        [ -z "$tag" ] || continue
         mm_valid_desk_name "$name" || continue
         case "$windows$attached" in
             '' | *[!0-9]*) continue ;;
         esac
         printf 'desk\t%s\t%s\t%s\n' "$name" "$windows" "$attached"
         mm_window_records "$name" "$sid"
+        mm_window_info_records "$name" "$sid" "$sessions"
     done
+}
+
+# Removes the views that never got a tab, or kept none: tagged @macmosh-view, no client, and older than
+# MACMOSH_VIEW_SWEEP_AGE seconds (a minute by default). A tab attaches to its view within a moment of
+# making it and never later, so an old view with no client is never one a tab is reaching for.
+# Which of two cases it is decides what goes with it, and is read from the desk's own session, which
+# the sweep never kills:
+# - the desk's session is there, in the view's group: plain kill-session closes only windows no other
+#   session shows, so the desk keeps every window;
+# - the desk's session is gone (killed by hand, which closed every window before views existed): the
+#   view holds the desk's windows, out of the menu, and they go with it, as they would have gone then.
+# A view whose tag names a session in another group is left alone.
+MM_VIEW_SWEEP_AGE="${MACMOSH_VIEW_SWEEP_AGE:-60}"
+case "$MM_VIEW_SWEEP_AGE" in
+    '' | *[!0-9]*) MM_VIEW_SWEEP_AGE=60 ;;
+esac
+
+mm_sweep_views() {
+    local now text vid tag attached created group desk n=0
+    now=$(date +%s)
+    text=$(mm_tmux list-sessions -F '#{session_id}|#{@macmosh-view}|#{session_attached}|#{session_created}|#{session_group}' 2>/dev/null)
+    while IFS='|' read -r vid tag attached created group; do
+        [ -n "$tag" ] || continue
+        case "$vid" in
+            '$'[0-9]*) ;;
+            *) continue ;;
+        esac
+        case "$attached$created" in
+            '' | *[!0-9]*) continue ;;
+        esac
+        [ "$attached" = 0 ] && [ $((now - created)) -gt "$MM_VIEW_SWEEP_AGE" ] || continue
+        # "x" and the desk's group, or nothing when the desk's session is gone.
+        desk=$(mm_session_field "$tag" 'x#{session_group}')
+        [ -z "$desk" ] || { [ -n "$group" ] && [ "$desk" = "x$group" ]; } || continue
+        if mm_tmux kill-session -t "$vid" >/dev/null 2>&1; then n=$((n + 1)); fi
+    done <<EOF
+$text
+EOF
+    if [ "$n" = 1 ]; then
+        mm_log status "removed 1 view with no tab"
+    elif [ "$n" -gt 1 ]; then
+        mm_log status "removed $n views with no tab"
+    fi
+    return 0
 }
 
 # Every definition in the newest form, whatever form its line in desks.tsv has:
@@ -1331,6 +1642,7 @@ cmd_status() {
         server=up
         # The menu checks every 30 seconds, so a running server gets the hook soon after the script is updated.
         mm_set_hook
+        mm_sweep_views
         # shellcheck disable=SC2016  # the command is expanded by the desk server's shell, not here
         signins=$(mm_tmux run-shell 'security show-keychain-info "$HOME/Library/Keychains/login.keychain-db" >/dev/null 2>&1 && echo ok || echo off' 2>/dev/null | head -n 1)
         case "$signins" in
@@ -1410,7 +1722,9 @@ usage: macmosh-host <subcommand>
   version   print the script version
   start     start the desk server if it is down
   status    print the status report
-  attach [--cc] [--dry-run] <desk>
+  attach [--cc] [--window @<id> | --new-window] [--dry-run] <desk>
+            --window opens this tab on one window of the desk, --new-window on a new one;
+            other tabs on the desk stay where they are
   desk-new <name> <folder> [--no-reopen] [--permanent] [--keep] [--command <text>]
             a new desk comes back after a restart unless --no-reopen, and is removed
             when its last shell exits unless --permanent

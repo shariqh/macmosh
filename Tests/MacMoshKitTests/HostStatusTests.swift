@@ -227,6 +227,27 @@ private func versionLine(in text: String) -> String {
         #expect(indexes == [0, 1])
     }
 
+    /// Script 0.7.0 adds a "windowinfo" line per window and a "view" line per view after a desk's
+    /// window lines. This version reads the desk and its windows as before and skips both.
+    @Test func theWindowInfoAndViewLinesOfScript070AreSkipped() throws {
+        let desk: [[String]] = [
+            ["desk", "website", "2", "2"],
+            ["window", "website", "0", "zsh"],
+            ["window", "website", "1", "claude"],
+        ]
+        let added: [[String]] = [
+            ["windowinfo", "website", "0", "@0", "1", "1"],
+            ["windowinfo", "website", "1", "@1", "0", "1"],
+            ["view", "website", "website+4242", "@1", "1"],
+        ]
+        let before = try HostStatus.parse(report(desk))
+        let after = try HostStatus.parse(report(desk + added))
+        #expect(after == before)
+        #expect(after.desks.count == 1)
+        #expect(after.desks[0].attached == 2)
+        #expect(after.desks[0].windows.map(\.name) == ["zsh", "claude"])
+    }
+
     @Test func aWindowWithoutADeskIsLeftOut() throws {
         let s = try HostStatus.parse(report([["window", "ghost", "0", "zsh"]]))
         #expect(s.desks.isEmpty)
