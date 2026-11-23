@@ -19,6 +19,8 @@ public final class MenuRefresher: ObservableObject {
     private var refreshAgain = false
     /// How many checks in a row found a workhorse that can't be reached; sets the wait in `runInBackground`.
     private var missesInARow = 0
+    /// Which workhorses have just been logged in to and are given a minute to start their desk server (issue #88).
+    private var deskServerWait = DeskServerWait()
 
     /// How long to wait before looking again at a workhorse that has just stopped answering.
     static let secondLook: Duration = .seconds(5)
@@ -89,7 +91,8 @@ public final class MenuRefresher: ObservableObject {
         }
         // The saved list is written under a file lock, so it is done off the main thread.
         await Task.detached { for result in checked { save(result) } }.value
-        menu = MenuModel.build(gathered)
+        let waiting = deskServerWait.update(gathered)
+        menu = MenuModel.build(gathered, waitingForDeskServer: waiting)
         logRefresh(MenuLog.refreshed(menu, workhorses: list.count))
     }
 
@@ -139,5 +142,56 @@ public final class MenuRefresher: ObservableObject {
             load: { try store.load() },
             gather: { list in await MenuData.gather(list, checker: checker, budget: .seconds(20)) },
             save: { try? store.absorb($0) })
+    }
+}
+
+/// Tells a login that has just happened from a desk server that stays down (issue #88).
+///
+/// Right after a login the workhorse's report has a console user and no desk server, because the
+/// login agent hasn't started it yet. `StateResolver` calls that `notSetUp(.deskServerDown)`, and the
+/// menu used to offer a fix for something that fixes itself. The result of the check is not changed:
+/// this only decides, for the menu, which workhorses to show as waiting for a minute.
+///
+/// A wait begins on a check that finds the desk server down with the login agent installed, when the
+/// check before it in this run of the app found nobody logged in or couldn't tell (or there was none).
+/// It lasts while later checks say the same, for less than `limit` after the check that began it.
+/// It uses each result's `checkedAt`, so it needs no clock.
+struct DeskServerWait {
+    /// How long after the first such check the menu waits before it says "Desk server is off".
+    static let limit: TimeInterval = 60
+    private var last: [String: WorkhorseState] = [:]   // what the last finished check found, by id
+    private var since: [String: Date] = [:]            // when a wait began, by id, only while waiting
+
+    /// Takes one refresh's results and returns the ids to show as "Waiting for the desk server".
+    /// `.stillChecking` entries leave that workhorse's memory as it was.
+    mutating func update(_ gathered: [Gathered]) -> Set<String> {
+        var waiting: Set<String> = []
+        for entry in gathered {
+            guard case .checked(let r) = entry else { continue }
+            let id = r.workhorse.id
+            let before = last[id]
+            last[id] = r.state
+            guard r.state == .notSetUp(.deskServerDown), r.status?.agentInstalled == true else {
+                since[id] = nil
+                continue
+            }
+            if since[id] == nil, Self.mayBegin(after: before) { since[id] = r.checkedAt }
+            if let began = since[id] {
+                if r.checkedAt.timeIntervalSince(began) < Self.limit {
+                    waiting.insert(id)
+                } else {
+                    since[id] = nil
+                }
+            }
+        }
+        return waiting
+    }
+
+    /// Nobody logged in, or no way to tell, or no earlier check: a login may have just happened.
+    private static func mayBegin(after before: WorkhorseState?) -> Bool {
+        switch before {
+        case nil, .waitingForLogin?, .locked?, .cantReach?: return true
+        default: return false
+        }
     }
 }
