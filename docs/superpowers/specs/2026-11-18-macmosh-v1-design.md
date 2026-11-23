@@ -62,7 +62,7 @@ Nothing found prepares the workhorse and gets you back in after a restart. That 
 3. **Status in the menu bar.** Ready, waiting for login, locked after a restart, or unreachable, with the reason.
 4. **Buttons.** Open a desk, make a new desk, share the screen, restart.
 5. **Restart recovery at home, out of the box.** Unlock the disk and log in from the daily Mac. Doing this from away is an optional add-on.
-6. **A "keep running with the lid closed" setting**, marked experimental until tested.
+6. **A "keep running with the lid closed" setting**, tested on the MacBook Pro on 2026-11-22 (section 8.5).
 7. **Something to try early:** the native menu-bar item with the status and the buttons comes first, then the rest of the app.
 8. **An install people can trust:** signed and notarized by Apple, with a Homebrew command.
 9. **A build log** good enough to write the blog post and the video from.

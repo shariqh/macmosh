@@ -1004,7 +1004,7 @@ mm_def_records() {
 }
 
 cmd_status() {
-    local os_version arch console server signins fv ar custom firewall_text sharing_line sharing agent_file
+    local os_version arch console server signins fv ar custom plain_pmset firewall_text sharing_line sharing agent_file
     os_version=$(sw_vers -productVersion 2>/dev/null)
     arch=$(uname -m 2>/dev/null)
 
