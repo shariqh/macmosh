@@ -18,6 +18,7 @@ It is for one person with one or two spare Macs, and it is not tied to any AI to
 - [`docs/build-log.md`](docs/build-log.md): what was done, in order, with the decisions and the surprises.
 - [`docs/superpowers/specs/2026-11-18-macmosh-v1-design.md`](docs/superpowers/specs/2026-11-18-macmosh-v1-design.md): the design for version 1.
 - [`docs/superpowers/plans/2026-11-19-macmosh-v1.md`](docs/superpowers/plans/2026-11-19-macmosh-v1.md): the build plan, one task per GitHub issue.
+- [`docs/lid-closed.md`](docs/lid-closed.md): running a laptop workhorse with its lid closed, and what was tested.
 
 ## Building from source
 
