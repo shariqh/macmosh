@@ -189,6 +189,14 @@ import Testing
         #expect(try opener(AppSettings(terminal: .iterm2), installed: []).terminal() == .iterm2)
     }
 
+    /// The same rule as a function the menu's refresher asks, to know where a new tab opens.
+    @Test func theTerminalRuleIsAFunctionOfTheSettingAndWhatIsInstalled() {
+        let iTerm: @Sendable (String) -> Bool = { $0 == "/Applications/iTerm.app" }
+        #expect(TabOpener.terminal(settings: AppSettings(), fileExists: iTerm) == .iterm2)
+        #expect(TabOpener.terminal(settings: AppSettings(), fileExists: { _ in false }) == .appleTerminal)
+        #expect(TabOpener.terminal(settings: AppSettings(terminal: .appleTerminal), fileExists: iTerm) == .appleTerminal)
+    }
+
     @Test func openingUsesTheChosenTerminalsScript() async throws {
         let runner = FakeRunner { _ in FakeRunner.ok() }
         let said = try await opener(AppSettings(terminal: .appleTerminal), runner: runner).open(try command(), title: "website")

@@ -9,6 +9,13 @@ import Testing
         #expect(HostInstaller.decide(installed: installed, builtIn: builtIn) == expected)
     }
 
+    /// The menu's gate (menu design 8.3) asks "0.8.0 or newer" with the same comparison.
+    @Test(arguments: [("0.8.0", true), ("0.8.1", true), ("0.10.0", true), ("1.0", true), ("0.7.9", false),
+                      ("0.7.0", false), ("", false), ("0.8", true), ("garbage", false)])
+    func aVersionIsAtLeastAnotherByTheSameComparison(version: String, atLeast: Bool) {
+        #expect(HostInstaller.isAtLeast(version, "0.8.0") == atLeast)
+    }
+
     @Test func installPipesTheScriptThenLoadsTheAgent() async throws {
         let runner = FakeRunner { _ in FakeRunner.ok() }
         try await HostInstaller(runner: runner, paths: .test).install(on: .sample(), address: "workhorse")
