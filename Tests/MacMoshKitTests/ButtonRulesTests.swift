@@ -187,10 +187,11 @@ import Testing
 
     /// For every sample state, the buttons the menu and the board share have the same titles and actions
     /// in the same order. The menu's order is the lines under the headline first, then its submenu's.
-    /// The three known differences are named in `windowSide`, `isWindowOnly` and `deskRowClick` below,
-    /// so a new button on either side fails this test until someone decides where it goes.
+    /// The four known differences are named in `windowSide`, `isWindowOnly`, `deskRowClick` and the
+    /// line-per-window functions below, so a new button on either side fails this test until someone decides
+    /// where it goes.
     @Test func theMenuAndTheBoardShareTheirButtonsForEverySampleState() throws {
-        var inputs = everySampleInput() + moreSampleInputs()
+        var inputs = everySampleInput() + moreSampleInputs() + windowSampleInputs()
         let fixture = try HostStatus.parse(fixture("status/desks-board.txt"))
         var off = fixture
         off.signIns = .no
@@ -199,7 +200,7 @@ import Testing
                                                                   status: fixture, homeReachable: true))]))
         inputs.append(SampleMenuInput(gathered: [.checked(.sample(.ready(signIns: false), workhorse: attic,
                                                                   status: off))]))
-        var compared = 0, windowOnly = 0, desks = 0
+        var compared = 0, windowOnly = 0, desks = 0, withWindowLines = 0
         for (i, input) in inputs.enumerated() {
             let menu = input.menu
             let board = boardFor(input)
@@ -233,15 +234,35 @@ import Testing
 
                 let rows = block.children.filter { $0.id.hasPrefix("desk:") }
                 #expect(rows.count == w.desks.count, "case \(i), \(w.id)")
+                // Which desks the menu drew with a line per window: the shared rule, given the menu's tabs.
+                let result = input.gathered.lazy.compactMap { entry -> CheckResult? in
+                    if case .checked(let r) = entry, r.workhorse.id == w.id { return r }
+                    return nil
+                }.first
+                let gated = Set((result.map { ButtonRules.desks($0, tabs: input.tabs, now: input.now) } ?? [])
+                    .filter { $0.windows != nil }.map(\.name))
                 for row in rows {
-                    let name = try #require(deskName(row.action))
+                    let name = try #require(deskName(row, workhorse: w.id))
                     let desk = try #require(w.desks.first { $0.name == name }, "case \(i), \(name)")
                     var lines = actionLines(row.submenu)
                     let open = lines.removeFirst()
-                    #expect(open.title == "Open \(name)" && open.action == row.action)
-                    #expect(deskRowClick(open) == desk.open, "case \(i), \(name)")
-                    #expect(lines.map(\.title) == desk.buttons.map(\.title), "case \(i), \(name)")
-                    #expect(lines.map { windowSide($0.action) } == desk.buttons.map(\.action), "case \(i), \(name)")
+                    #expect(open.action == row.action)
+                    if gated.contains(name) {
+                        withWindowLines += 1
+                        #expect(isFirstLineVariant(open, workhorse: w.id, desk: name), "case \(i), \(open.title)")
+                        #expect(desk.open == BoardButton(title: "Open \(name)", action: .menu(ButtonRules.connect(workhorse: w.id, desk: name))))
+                        lines.removeAll(where: isWindowLine)
+                        #expect(flagsLine(row) == flagsOnBoard(desk), "case \(i), \(name)")
+                        #expect(lines.map(\.title) == desk.buttons.map(\.title), "case \(i), \(name)")
+                        #expect(lines.map { windowSide(newWindowOnBoard($0.action)) } == desk.buttons.map(\.action),
+                                "case \(i), \(name)")
+                    } else {
+                        #expect(open.title == "Open \(name)")
+                        #expect(deskRowClick(open) == desk.open, "case \(i), \(name)")
+                        #expect(flagsLine(row) == nil)
+                        #expect(lines.map(\.title) == desk.buttons.map(\.title), "case \(i), \(name)")
+                        #expect(lines.map { windowSide($0.action) } == desk.buttons.map(\.action), "case \(i), \(name)")
+                    }
                     desks += 1
                 }
                 // Every ended desk's buttons are the window's own.
@@ -249,7 +270,7 @@ import Testing
                 windowOnly += w.ended.flatMap(\.buttons).count
             }
         }
-        #expect(compared > 50 && desks > 15 && windowOnly > 30)
+        #expect(compared > 50 && desks > 15 && windowOnly > 30 && withWindowLines > 20)
     }
 
     @Test func theNamedDifferencesAreTheOnlyOnes() {
@@ -266,6 +287,22 @@ import Testing
                            .tab(["desk", "remove", "mbp", "website", "--ask"])] {
             #expect(BoardAction(a) == windowSide(a))
         }
+        // The line-per-window differences (issue #124) touch only the menu's own forms.
+        #expect(newWindowOnBoard(.tab(["connect", "mbp", "website", "--new-window"])) == .run(["desk", "window", "mbp", "website"]))
+        for a in others + [.tab(["connect", "mbp", "website", "--window", "@1"]), .tab(["connect", "mbp", "website", "--view"])] {
+            #expect(newWindowOnBoard(a) == a)
+        }
+        let first = { (title: String, action: MenuAction) in
+            isFirstLineVariant(MenuEntry(id: "x", title: title, action: action), workhorse: "mbp", desk: "website")
+        }
+        let window = ["connect", "mbp", "website", "--window", "@1"]
+        #expect(first("Open website", .tab(window)) && first("Open website", .tab(["connect", "mbp", "website", "--view"])))
+        #expect(first("Open website in 2 tabs", .tabs([window, window])) && first("Open the 1 window not in a tab", .tabs([window])))
+        #expect(first("Open the 3 windows not in a tab", .tabs([window])) && first("Go to website", .focus(label: "abcd", orOpen: window)))
+        #expect(first("Open website in a new tab", .tab(["connect", "mbp", "website", "--view"])))
+        #expect(!first("Open website", .tab(["connect", "mbp", "website"])))
+        #expect(!first("Go to website", .tab(window)) && !first("Open api", .tab(window)))
+        #expect(!first("Open website", .run(["desk", "window", "mbp", "website"])))
     }
 
     @Test func noTwoButtonsInOneGroupShareAKey() {
@@ -279,7 +316,7 @@ import Testing
     }
 }
 
-// MARK: The three known differences between the menu's buttons and the window's
+// MARK: The four known differences between the menu's buttons and the window's
 
 /// 1. The menu's terminal-tab forms of `desk new`, `desk rename` and `desk remove --ask` are, in the
 ///    window, its New desk form, its Rename form and its Remove confirmation.
@@ -305,15 +342,56 @@ private func deskRowClick(_ line: MenuEntry) -> BoardButton {
     BoardButton(title: line.title, action: .menu(line.action))
 }
 
+/// 4. With a line per window (issue #124, menu design 6.1 (a)), the menu has four things the board has not:
+///    a. a first line that is one of the menu design's 6.2 forms, opening tabs on windows or a tab of its
+///       own, or going to a tab, where the board's row click stays today's `Open <desk>`;
+///    b. a line per window, its id `…:win:<window id>`;
+///    c. New window as a tab of its own (`connect … --new-window`), where the board keeps `desk window`;
+///    d. the desk's flags as one grey line, `…:flags`, where the board has them as values.
+private func isFirstLineVariant(_ line: MenuEntry, workhorse id: String, desk: String) -> Bool {
+    let forms = ["Open \(desk)", "Go to \(desk)", "Open \(desk) in a new tab", "Open the 1 window not in a tab"]
+    let counted = [("Open \(desk) in ", " tabs"), ("Open the ", " windows not in a tab")].contains { prefix, suffix in
+        line.title.hasPrefix(prefix) && line.title.hasSuffix(suffix)
+            && Int(line.title.dropFirst(prefix.count).dropLast(suffix.count)).map { $0 >= 2 } == true
+    }
+    guard forms.contains(line.title) || counted else { return false }
+    let tabOnWindow = { (a: [String]) in
+        a.count == 5 && Array(a.prefix(4)) == ["connect", id, desk, "--window"] && HostStatus.isWindowId(a[4])
+    }
+    switch line.action {
+    case .tab(let a): return a == ["connect", id, desk, "--view"] || (tabOnWindow(a) && line.title == "Open \(desk)")
+    case .tabs(let list): return !list.isEmpty && list.allSatisfy(tabOnWindow) && !line.title.hasPrefix("Go to")
+    case .focus(let label, let orOpen): return TabLabel.isValid(label) && tabOnWindow(orOpen) && line.title == "Go to \(desk)"
+    default: return false
+    }
+}
+
+private func isWindowLine(_ line: MenuEntry) -> Bool { line.id.contains(":win:@") }
+
+private func newWindowOnBoard(_ action: MenuAction) -> MenuAction {
+    guard case .tab(let a) = action, a.count == 4, a[0] == "connect", a[3] == "--new-window" else { return action }
+    return .run(["desk", "window", a[1], a[2]])
+}
+
+private func flagsLine(_ row: MenuEntry) -> String? {
+    row.submenu.first { $0.id.hasSuffix(":flags") && $0.action == .none }?.title
+}
+
+private func flagsOnBoard(_ desk: BoardDesk) -> String? {
+    let set = [desk.keep == true ? "kept running" : nil, desk.permanent == true ? "permanent" : nil].compactMap { $0 }
+    return set.isEmpty ? nil : set.joined(separator: ", ")
+}
+
 /// The lines that do something, in order: no separators and no text.
 private func actionLines(_ entries: [MenuEntry]) -> [MenuEntry] {
     entries.filter { !$0.isSeparator && $0.action != .none }
 }
 
-/// The desk a row opens: `connect <id> <desk>`.
-private func deskName(_ action: MenuAction) -> String? {
-    guard case .tab(let a) = action, a.count == 3, a[0] == "connect" else { return nil }
-    return a[2]
+/// The desk a row is for, from its id `desk:<workhorse id>:<desk>`, numbered or not.
+private func deskName(_ row: MenuEntry, workhorse id: String) -> String? {
+    let prefix = "desk:\(id):"
+    guard row.id.hasPrefix(prefix) else { return nil }
+    return String(row.id.dropFirst(prefix.count).split(separator: "#").first ?? "")
 }
 
 /// The board from the same checks as a sample menu: each answer is `latest` (the first one, for a

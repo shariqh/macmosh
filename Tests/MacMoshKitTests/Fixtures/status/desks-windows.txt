@@ -1,0 +1,42 @@
+macmosh-host	1	0.8.0
+os	27.3	arm64
+console	alex
+server	up
+signins	ok
+filevault	on
+authrestart	yes
+power	sleep=0	womp=1	autorestart=1	disablesleep=1
+battery	present	ac	100
+home	192.168.1.20	24	workhorse.local
+firewall	off
+screensharing	on
+agent	installed
+desk	website	3	0
+window	website	0	claude
+window	website	1	zsh
+window	website	2	vim
+windowinfo	website	0	@1	1	1
+windowinfo	website	1	@2	0	1
+windowinfo	website	2	@3	0	0
+view	website	website+4101	@1	1	3f9a2c71e5b7d4a6
+view	website	website+4102	@2	1	b04e5d12c3a4f5e6
+desk	api	2	0
+window	api	0	server
+window	api	1	tests
+windowinfo	api	0	@5	1	0
+windowinfo	api	1	@6	0	0
+desk	notes	1	0
+window	notes	0	zsh
+windowinfo	notes	0	@7	1	1
+view	notes	notes+4130	@7	1	c1d2e3f4a5b6c7d8
+desk	blog	1	0
+window	blog	0	zsh
+windowinfo	blog	0	@8	1	0
+desk	shop	2	1
+window	shop	0	web
+window	shop	1	db
+windowinfo	shop	0	@9	1	1
+windowinfo	shop	1	@10	0	0
+def	website	1	1	1	/Users/alex/Development/website	claude --continue
+def	garden	1	0	1	/Users/alex/Development/garden	claude
+end

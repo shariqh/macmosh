@@ -59,8 +59,9 @@ public struct WorkhorseBlock: Sendable, Equatable {
     }
 
     /// The block for one check's result. `now` and `timeZone` shape the time in a hint's "Last seen 14:02".
+    /// `tabs`, which only the menu gives, adds each desk's line per window (`ButtonRules.desks`).
     public static func of(_ r: CheckResult, waitingForDeskServer: Set<String>, now: Date,
-                          timeZone: TimeZone) -> WorkhorseBlock {
+                          timeZone: TimeZone, tabs: TabsOnThisMac? = nil) -> WorkhorseBlock {
         let checklist = ButtonRules.checklist(r.workhorse.id)
         if isWaitingForDeskServer(r, waitingForDeskServer) {
             // No "Finish setting up…": the login agent is about to do it.
@@ -75,7 +76,7 @@ public struct WorkhorseBlock: Sendable, Equatable {
                                    summaryFacts: [], homeReachable: nil, checklist: checklist)
         guard case .ready = r.state else { return block }
         block.kind = .ready
-        block.desks = ButtonRules.desks(r)
+        block.desks = ButtonRules.desks(r, tabs: tabs, now: now)
         block.newDesk = ButtonRules.newDesk(r.workhorse.id)
         block.rareButtons = ButtonRules.forHeadline(r)
         block.summaryFacts = r.status.map(StatusFormat.summaryFacts) ?? []

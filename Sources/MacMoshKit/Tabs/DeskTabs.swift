@@ -27,7 +27,7 @@ public enum DeskTabs {
         }
     }
 
-    /// One entry per window of `desk` that has a `windowinfo` line, in the desk's order.
+    /// One entry per window of `desk` that has a `windowinfo` line (an id that is `@` and digits), in the desk's order.
     ///
     /// - A window's findable tabs are `workhorse`'s records whose label is on a `view` line for that window.
     ///   The join is by label only, never by the desk's name, so a rename can't break it.
@@ -40,14 +40,14 @@ public enum DeskTabs {
     public static func build(desk: HostStatus.Desk, workhorse: String, records: [TabRecord], now: Date) -> [WindowTabs] {
         let mine = records.filter { $0.workhorse == workhorse && TabLabel.isValid($0.label) }
             .sorted { ($0.openedAt, $0.label) < ($1.openedAt, $1.label) }
-        let ids = Set(desk.windows.compactMap(\.id))
+        let ids = Set(desk.windows.compactMap(\.id).filter(HostStatus.isWindowId))
         // Each label's window: the first view line carrying it, among those whose window has a windowinfo line.
         var windowOf: [String: String] = [:]
         for view in desk.views where ids.contains(view.windowId) {
             if let label = view.label, windowOf[label] == nil { windowOf[label] = view.windowId }
         }
         return desk.windows.compactMap { window -> WindowTabs? in
-            guard let id = window.id else { return nil }
+            guard let id = window.id, HostStatus.isWindowId(id) else { return nil }
             let found = mine.filter { record in
                 if let shown = windowOf[record.label] { return shown == id }
                 return record.askedWindow == id

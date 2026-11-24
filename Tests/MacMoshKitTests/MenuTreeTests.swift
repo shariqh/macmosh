@@ -224,7 +224,8 @@ private func twoWithTheSameDesk() -> MenuLines {
                 check(e.children, inSubmenu: inSubmenu)
             }
         }
-        for menu in everySampleMenu() + moreSampleMenus() + [twoWithTheSameDesk(), sixDesks(), sixDesks(signIns: false)] {
+        for menu in everySampleMenu() + moreSampleMenus() + windowSampleInputs().map(\.menu)
+            + [twoWithTheSameDesk(), sixDesks(), sixDesks(signIns: false)] {
             check(menu.entries, inSubmenu: false)
         }
     }
@@ -262,7 +263,8 @@ private func twoWithTheSameDesk() -> MenuLines {
 
     /// No word on screen says view, session, pane or tmux.
     @Test func noTitleNamesTheMachinery() {
-        for menu in everySampleMenu() + moreSampleMenus() + [twoWithTheSameDesk(), sixDesks(), sixDesks(signIns: false)] {
+        for menu in everySampleMenu() + moreSampleMenus() + windowSampleInputs().map(\.menu)
+            + [twoWithTheSameDesk(), sixDesks(), sixDesks(signIns: false)] {
             for e in allEntries(menu.entries) {
                 let words = e.title.lowercased()
                 for bad in ["view", "session", "pane", "tmux"] { #expect(!words.contains(bad), "\(e.title)") }
@@ -273,7 +275,7 @@ private func twoWithTheSameDesk() -> MenuLines {
     /// Every argument of every action in the tree, a row's primary action included, is a plain word.
     @Test func everyActionInTheTreeUsesOnlyPlainWords() {
         var seen = 0
-        for menu in everySampleMenu() + moreSampleMenus() + [twoWithTheSameDesk(), sixDesks()] {
+        for menu in everySampleMenu() + moreSampleMenus() + windowSampleInputs().map(\.menu) + [twoWithTheSameDesk(), sixDesks()] {
             for action in allActions(menu.entries) {
                 switch action {
                 case .tab(let args), .run(let args):
@@ -344,7 +346,8 @@ private func twoWithTheSameDesk() -> MenuLines {
 
     @Test func idsAreUniqueAcrossTheWholeTree() {
         // The last case of `everySampleMenu()` gives all eight workhorses the id `mbp`; it is in too.
-        for menu in everySampleMenu() + moreSampleMenus() + [twoWithTheSameDesk(), everyStateWithItsOwnID()] {
+        for menu in everySampleMenu() + moreSampleMenus() + windowSampleInputs().map(\.menu)
+            + [twoWithTheSameDesk(), everyStateWithItsOwnID()] {
             let ids = allIDs(menu.entries)
             #expect(Set(ids).count == ids.count, "\(ids)")
         }
