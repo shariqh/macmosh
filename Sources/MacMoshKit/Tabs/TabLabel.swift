@@ -8,4 +8,13 @@ public enum TabLabel {
     public static func isValid(_ word: String) -> Bool {
         (4...32).contains(word.count) && word.allSatisfy { ("0"..."9").contains($0) || ("a"..."f").contains($0) }
     }
+
+    /// A new label: 8 random bytes as 16 lowercase hex characters. `fill` fills the bytes; by default it is
+    /// `arc4random_buf`, which arc4random(3) on this Mac describes as using "a cryptographic pseudo-random
+    /// number generator" that "is re-seeded from the kernel random number subsystem on a regular basis".
+    public static func make(fill: (inout [UInt8]) -> Void = { $0.withUnsafeMutableBytes { arc4random_buf($0.baseAddress, $0.count) } }) -> String {
+        var bytes = [UInt8](repeating: 0, count: 8)
+        fill(&bytes)
+        return bytes.map { String(format: "%02x", $0) }.joined()
+    }
 }
