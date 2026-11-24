@@ -409,12 +409,12 @@ import Testing
 
     /// A fresh tab whose select stopped at a step says so as a focus does, and opens nothing.
     @Test func aFreshTabWhoseSelectStoppedSaysWhichStep() async throws {
-        let tabs = RecordingTabs(selection: .failure(LaunchError.selectStopped(.appleTerminal, step: .b, error: -1719)))
+        let tabs = RecordingTabs(selection: .failure(LaunchError.selectStopped(.iterm2, step: .b, error: -1719)))
         let store = try fresh()
         let outcome = await clocked(tabs, store).outcome(of: .tab(Self.fallback), title: "vim")
         #expect(tabs.events == ["select /dev/ttys004 iterm2"])
         #expect(outcome == ActionOutcome(summary: "tab not selected (step B, error -1719)",
-                                         notice: "Couldn't bring that tab forward. Terminal couldn't bring the tab's window to the front (error -1719)."))
+                                         notice: "Couldn't bring that tab forward. iTerm2 couldn't bring the tab's window to the front (error -1719)."))
         #expect(store.record(label: Self.label) != nil)
     }
 

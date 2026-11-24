@@ -12,8 +12,10 @@
 #
 # The cases: (a) a tab in a window that is not in front (for iTerm2 also not the selected tab of its
 # window); (b) a tab in a minimized window; (c) the tab that is already in front; (d) a tty no tab
-# has, whose answer must be gone. After each, a separate AppleScript reads which window is in front
-# and which tab or session is current in it.
+# has, whose answer must be gone. Before (a) and (b) Finder is brought forward, so the terminal is behind
+# another app as when a person clicks the menu. After each, a separate AppleScript reads which window is
+# in front, which tab or session is current in it, and whether the app is frontmost.
+# On macOS 26 iTerm2 may ask "Allow 'iTerm' to find devices on local networks?"; it has not blocked a run.
 #
 # What it leaves in OUT: <app>-driver.log (every step and every answer), <app>-results.tsv (one line
 # per check: PASS, FAIL, NOTE or SKIPPED), and pictures/<os>-<app>-<step>.png.
@@ -37,6 +39,8 @@ case "$app" in
     *) echo "say iterm2 or terminal" >&2; exit 64 ;;
 esac
 select_script=$(< "$SCRIPTS/$app-select.applescript")
+# $(< file) drops trailing newlines; stop if that changed the bytes, so the job runs exactly the app's text.
+cmp -s <(printf '%s' "$select_script") "$SCRIPTS/$app-select.applescript" || { echo "the script file ends in a newline: the job would not run the app's exact text" >&2; exit 65; }
 
 now() { perl -MTime::HiRes=time -e 'printf "%.3f", time'; }
 say() { printf '%s %s\n' "$(now)" "$*" | tee -a "$LOG"; }
@@ -152,8 +156,25 @@ show_layout() {
     printf '%s\n' "$LAYOUT" | sed 's/^/layout: /' >> "$LOG"
 }
 
+# behind_finder <case>: brings Finder forward (with open, which sends the terminal no Apple event), as the
+# menu-bar app is in front when a person clicks, so the case also tests the script's `activate`. It is a
+# FAIL when the terminal is still the frontmost app afterwards.
+behind_finder() {
+    local _
+    for _ in 1 2 3; do
+        lim 15 open -a Finder >> "$LOG" 2>&1
+        sleep 2
+        osa 20 "$front"
+        if [[ "$ANSWER" == *"frontmost=false" ]]; then
+            result PASS "case $1: another app is in front before the select" "Finder; $name: $ANSWER"
+            return
+        fi
+    done
+    result FAIL "case $1: another app is in front before the select" "$name is still frontmost: $ANSWER"
+}
+
 # try_case <case> <tty> <expected answer>: runs the app's script on that tty and checks the answer, and
-# then which tty is in front, unminimized.
+# then which tty is in front, unminimized, with the app frontmost.
 try_case() {
     local label=$1 tty=$2 want=$3 before seen
     osa 20 "$front"
@@ -188,7 +209,7 @@ try_case() {
     if [[ "$seen" == *"frontmost=true" ]]; then
         result PASS "case $label: $name is the frontmost app" "$seen"
     else
-        result NOTE "case $label: $name is the frontmost app" "not frontmost: $seen"
+        result FAIL "case $label: $name is the frontmost app" "not frontmost: $seen"
     fi
 }
 
@@ -295,7 +316,12 @@ if [ "$app" = iterm2 ]; then
 else
     a=$(printf '%s\n' "$LAYOUT" | awk '$2 != 1 { print $5; exit }')
 fi
-if [ -n "$a" ]; then try_case a "$a" ok; else result FAIL "case a" "no such tab in the layout"; fi
+if [ -n "$a" ]; then
+    behind_finder a
+    try_case a "$a" ok
+else
+    result FAIL "case a" "no such tab in the layout"
+fi
 
 # (b) a tab in a minimized window: minimize a window behind the front one, then select one of its tabs
 # (for iTerm2, one that is not its current tab).
@@ -307,14 +333,19 @@ else
 fi
 if [ -n "$b" ]; then
     osa 20 "$minimize" "$b"
-    sleep 2
-    show_layout
+    # A FAIL when the window never shows minimized, so case b can't pass without testing step A.
+    for _ in 1 2 3 4 5; do
+        sleep 1
+        show_layout
+        printf '%s\n' "$LAYOUT" | grep -F " $b " | grep -q "minimized=true" && break
+    done
     if printf '%s\n' "$LAYOUT" | grep -F " $b " | grep -q "minimized=true"; then
         result PASS "case b: the window is minimized before the select" "$(printf '%s\n' "$LAYOUT" | grep -F " $b ")"
     else
-        result NOTE "case b: the window is minimized before the select" "the layout does not show it minimized: $(printf '%s' "$LAYOUT" | tr '\n' ';')"
+        result FAIL "case b: the window is minimized before the select" "the layout does not show it minimized: $(printf '%s' "$LAYOUT" | tr '\n' ';')"
     fi
     snap minimized
+    behind_finder b
     try_case b "$b" ok
 else
     result FAIL "case b" "no such tab in the layout"

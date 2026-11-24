@@ -28,7 +28,8 @@ public struct ITermLauncher: TerminalLauncher {
     /// Three steps, each a fresh search by the device: A un-minimizes the session's window, B brings that
     /// window to the front, C selects the tab and the session and activates iTerm2. A loop variable is a
     /// reference by position (`item 2 of windows`), and iTerm2 lists its windows front to back, so after a
-    /// command that can move a window, a step returns at once and never uses its references again.
+    /// command that can move a window, a step returns at once and never uses its references again. Step C
+    /// uses `s` after `select t`: step B has already put that window in front, so it stays `item 1 of windows`.
     ///
     /// Inside `tell application "iTerm2"` no word may be read as AppleScript's own: `contents` is iTerm2's
     /// session property, "The currently visible contents of the session.", and the script that used `contents
