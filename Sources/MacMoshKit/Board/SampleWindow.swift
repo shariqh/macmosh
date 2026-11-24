@@ -11,24 +11,56 @@ public enum SampleWindow: String, CaseIterable, Sendable {
     /// The six-desk workhorse of `SampleMenu.sixDesks`, Ready at the first check and Locked after a
     /// restart from the second on, so the window shows the greyed list of its last Ready check.
     case readyThenLocked = "ready-then-locked"
+    /// A Ready workhorse with two desks: `website-redesign`, made by MacMosh in a long folder, kept when
+    /// it exits and not brought back after a restart, and `notes`, made by hand. Their second lines carry
+    /// every unusual fact, whatever the folder's length.
+    case longFolder = "long-folder"
+    /// A saved list that can't be read: the menu shows the store's sentence, and so does the window, in
+    /// place of the Add a Mac page.
+    case unreadableList = "unreadable-list"
 
-    var workhorses: [Workhorse] { [SampleMenu.main] }
+    var workhorses: [Workhorse] { self == .unreadableList ? [] : [SampleMenu.main] }
+
+    /// Reads the sample's saved list. The unreadable one throws what a damaged file throws.
+    func load() throws -> [Workhorse] {
+        if self == .unreadableList { throw StoreError.unreadable("workhorses.json: not JSON") }
+        return workhorses
+    }
 
     /// What the `check`-th check finds (counting from 0).
     func gathered(check: Int) -> [Gathered] {
-        if check == 0 {
-            return [.checked(SampleMenu.result(SampleMenu.main, .ready(signIns: true),
-                                               report: SampleMenu.report(change: nil), home: true))]
+        switch self {
+        case .readyThenLocked:
+            if check == 0 {
+                return [.checked(SampleMenu.result(SampleMenu.main, .ready(signIns: true),
+                                                   report: SampleMenu.report(change: nil), home: true))]
+            }
+            return [.checked(SampleMenu.result(SampleMenu.main, .locked, report: nil, home: nil))]
+        case .longFolder:
+            return [.checked(SampleMenu.result(SampleMenu.main, .ready(signIns: true), report: Self.longFolderReport,
+                                               home: true))]
+        case .unreadableList:
+            return []
         }
-        return [.checked(SampleMenu.result(SampleMenu.main, .locked, report: nil, home: nil))]
     }
+
+    /// A workhorse script 0.8.0 report with the two desks of `longFolder`. The `def` fields are the
+    /// name, reopen, keep, permanent and the folder.
+    static let longFolderReport = [
+        "macmosh-host\t1\t0.8.0", "os\t26.1\tarm64", "console\tsample", "server\tup", "signins\tok",
+        "agent\tinstalled", "power\tsleep=0\twomp=1", "battery\tpresent\tac\t82",
+        "desk\twebsite-redesign\t1\t1", "window\twebsite-redesign\t0\tzsh",
+        "desk\tnotes\t1\t0", "window\tnotes\t0\tzsh",
+        "def\twebsite-redesign\t0\t0\t1\t/Users/sample/Development/clients/acme/website-redesign",
+        "end",
+    ].joined(separator: "\n") + "\n"
 
     /// The real refresher, with the saved list and the checks replaced.
     @MainActor public func refresher() -> MenuRefresher {
         let sample = self
         let checks = OSAllocatedUnfairLock(initialState: 0)
         return MenuRefresher(
-            load: { sample.workhorses },
+            load: { try sample.load() },
             gather: { _ in
                 let check = checks.withLock { n -> Int in
                     defer { n += 1 }
@@ -46,18 +78,21 @@ public enum SampleWindow: String, CaseIterable, Sendable {
 @MainActor public struct SampleRun {
     public let startedLine: String
     public let workhorses: [Workhorse]
+    /// Reads the sample's saved list, for the window: the workhorses, or the error of an unreadable one.
+    public let load: @Sendable () throws -> [Workhorse]
     public let refresher: MenuRefresher
     public let actions: MenuActionRunner
 
     /// The sample with that name, or nil when there is none.
     public static func named(_ name: String) -> SampleRun? {
         if let menu = SampleMenu(rawValue: name) {
-            return SampleRun(startedLine: menu.startedLine, workhorses: menu.workhorses, refresher: menu.refresher(),
-                             actions: SampleMenu.actions)
+            let list = menu.workhorses
+            return SampleRun(startedLine: menu.startedLine, workhorses: list, load: { list },
+                             refresher: menu.refresher(), actions: SampleMenu.actions)
         }
         if let window = SampleWindow(rawValue: name) {
             return SampleRun(startedLine: "sample menu: \(window.rawValue)", workhorses: window.workhorses,
-                             refresher: window.refresher(), actions: SampleMenu.actions)
+                             load: { try window.load() }, refresher: window.refresher(), actions: SampleMenu.actions)
         }
         return nil
     }

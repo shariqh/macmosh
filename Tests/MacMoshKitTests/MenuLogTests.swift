@@ -37,10 +37,9 @@ private final class Lines: @unchecked Sendable {
         #expect(MenuLog.windowOpened == "window opened")
     }
 
-    /// How the app comes to quit, or not: the icon removed, the last window closed, and the quit itself.
+    /// How the app comes to quit: the icon removed, and the quit itself.
     @Test func theQuitLinesAreFixedWords() {
         #expect(MenuLog.iconRemoved == "menu-bar icon removed: quitting")
-        #expect(MenuLog.lastWindowClosed == "last window closed: the app stays")
         #expect(MenuLog.quitting == "app quitting")
     }
 

@@ -17,7 +17,7 @@ struct MainWindow: View {
     @State private var chosen: WindowSelection?
 
     var body: some View {
-        let selection = WindowSelection.resolve(chosen, board: screen.board)
+        let selection = WindowSelection.resolve(chosen, board: screen.board, listUnreadable: screen.listProblem != nil)
         HStack(spacing: 0) {
             Sidebar(items: SidebarItem.list(screen.board), selection: selection) { chosen = $0 }
                 .frame(width: 200)
@@ -31,6 +31,12 @@ struct MainWindow: View {
                     }
                 case .addMac:
                     AddMacPageView(page: .standard, notice: screen.notice, run: run)
+                case .unreadableList:
+                    // The menu's own sentence, in place of an invitation to add a Mac.
+                    Text(verbatim: screen.listProblem ?? "")
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(20)
+                        .accessibilityIdentifier(WindowMarks.listProblem)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -66,6 +72,7 @@ enum WindowMarks {
         switch selection {
         case .workhorse(let id): return "sidebar.\(id)"
         case .addMac: return "sidebar.addMac"
+        case .unreadableList: return "sidebar.unreadableList"
         }
     }
     static func desk(_ name: String) -> String { "desk.\(name)" }
@@ -85,6 +92,7 @@ enum WindowMarks {
     }
     static let headline = "page.headline"
     static let addMac = "page.addMac"
+    static let listProblem = "page.listProblem"
 }
 
 /// Each workhorse with its state's symbol, then Add a Mac….

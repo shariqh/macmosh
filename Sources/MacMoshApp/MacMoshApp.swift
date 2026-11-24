@@ -27,14 +27,16 @@ struct MacMoshApp: App {
                 exit(64)
             }
             MenuLog.write(sample.startedLine)
-            let refresher = sample.refresher, list = sample.workhorses
+            let refresher = sample.refresher
             _screen = StateObject(wrappedValue: MenuOnScreen(refresher: refresher))
-            board = BoardOnScreen(refresher: refresher, load: { list })
+            board = BoardOnScreen(refresher: refresher, load: sample.load)
             actions = sample.actions
             pause = { _ in try? await Task.sleep(for: SampleMenu.lookEvery) }
             return
         }
         #endif
+        // The menu's object and the window's follow this one refresher. That relies on `@main` making
+        // the app once: a second init would give the board a refresher nothing runs.
         let refresher = MenuRefresher.standard()
         _screen = StateObject(wrappedValue: MenuOnScreen(refresher: refresher))
         board = BoardOnScreen(refresher: refresher, load: { try WorkhorseStore(paths: Paths.standard()).load() })
@@ -117,8 +119,8 @@ struct MacMoshApp: App {
         .restorationBehavior(.disabled)
         // "Sets a default width and height for a window." (macOS 13.0,
         // https://developer.apple.com/documentation/swiftui/scene/defaultsize(width:height:)). It fits
-        // the CI runners' 1024 by 768 screen.
-        .defaultSize(width: 880, height: 620)
+        // the CI runners' 1024 by 768 screen, with room for the foot under one open detail strip.
+        .defaultSize(width: 880, height: 680)
         // contentMinSize: "A minimum size that matches the minimum size of the window's content." and
         // "No maximum size." (macOS 13.0, https://developer.apple.com/documentation/swiftui/windowresizability/contentminsize ;
         // https://developer.apple.com/documentation/swiftui/scene/windowresizability(_:)). The minimum is
@@ -131,7 +133,8 @@ struct MacMoshApp: App {
 ///
 /// On GitHub's macOS 15 and 26 runners, with the window scene added, the app quit with nothing on
 /// stderr when the menu closed after a click on a desk's line (with no window open), and when the
-/// MacMosh window was closed (pull request #126, first run). A menu-bar app must outlive both.
+/// MacMosh window was closed (pull request #126, first run). A menu-bar app must outlive both. AppKit
+/// asks this each time the menu closes too, so it writes no log line.
 /// Apple, `applicationShouldTerminateAfterLastWindowClosed(_:)`
 /// (https://developer.apple.com/documentation/appkit/nsapplicationdelegate/applicationshouldterminateafterlastwindowclosed(_:)):
 /// "If your implementation returns false, control returns to the main event loop and the application
@@ -140,8 +143,7 @@ struct MacMoshApp: App {
 /// instantiates the delegate and calls the delegate's methods in response to life cycle events."
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        MenuLog.write(MenuLog.lastWindowClosed)
-        return false
+        false
     }
 
     func applicationWillTerminate(_ notification: Notification) {

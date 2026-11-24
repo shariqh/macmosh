@@ -23,8 +23,6 @@ public enum MenuLog {
     public static let windowOpened = "window opened"
     /// The person removed the menu-bar icon, so the app quits (main window design, section 7.2).
     public static let iconRemoved = "menu-bar icon removed: quitting"
-    /// AppKit asked whether to quit now that the app's last window has closed; it doesn't.
-    public static let lastWindowClosed = "last window closed: the app stays"
     /// The app is about to quit, by whatever path.
     public static let quitting = "app quitting"
     static let listUnreadable = "menu refreshed: the saved list can't be read"

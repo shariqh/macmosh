@@ -13,13 +13,16 @@ import Foundation
 ///
 /// The board lists the workhorses on the saved list, in its order, which the refresher does not
 /// publish. So this reads the saved list itself, off the main thread, when it starts, whenever a check
-/// starts, and when the window opens; a list that can't be read leaves the last one in place.
+/// starts, and when the window opens; a list that can't be read leaves the last one in place and says so.
 @MainActor
 public final class BoardOnScreen: ObservableObject {
     /// The board the window shows. Changes only when it differs from the one on screen.
     @Published public private(set) var board: Board
     /// What the last action said, the sentence the menu shows as its first line; nil when there is none.
     @Published public private(set) var notice: String?
+    /// The menu's sentence about a saved list that can't be read (`StatusFormat.storeMessage`), while the
+    /// last read failed; nil once a read works. The board keeps the last list it read.
+    @Published public private(set) var listProblem: String?
 
     /// Checks the workhorses and does what a button asks; the same one the menu uses.
     public let refresher: MenuRefresher
@@ -101,15 +104,24 @@ public final class BoardOnScreen: ObservableObject {
     }
 
     /// Reads the saved list off the main thread and rebuilds the board with it. A list that can't be
-    /// read changes nothing, and neither does a read that started before one already shown.
+    /// read keeps the last one and sets `listProblem`. A read that started before one already shown
+    /// changes nothing.
     public func reloadList() async {
         reads &+= 1
         let mine = reads
         let load = self.load
-        guard let list = try? await Task.detached(operation: { try load() }).value, mine > shownRead else { return }
+        let read = await Task.detached(operation: { Result { try load() } }).value
+        guard mine > shownRead else { return }
         shownRead = mine
-        order = list
-        rebuild()
+        switch read {
+        case .success(let list):
+            if listProblem != nil { listProblem = nil }
+            order = list
+            rebuild()
+        case .failure(let error):
+            let problem = StatusFormat.storeMessage(error)
+            if listProblem != problem { listProblem = problem }
+        }
     }
 
     private func startReading() {

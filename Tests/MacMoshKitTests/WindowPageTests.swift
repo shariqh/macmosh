@@ -113,7 +113,8 @@ private func titles(_ buttons: [BoardButton]) -> [String] { buttons.map(\.title)
     @Test func aWorkhorseThatHasNeverAnsweredHasNoTimeAndOnlyTheChecklist() throws {
         let p = try page(nil, checking: true)
         #expect(p.headline == "Attic · Still checking…")
-        #expect(p.checked == nil && p.checking == "Checking…")
+        // The headline already says it is checking, so the header doesn't say so twice.
+        #expect(p.checked == nil && p.checking == nil)
         #expect(p.underHint.isEmpty && p.deskButtons.isEmpty && titles(p.foot) == ["Run the checklist…"])
         #expect(p.desksHeading == nil && p.desks.isEmpty && p.noDesks == nil && p.home == nil)
     }
@@ -290,6 +291,19 @@ private func titles(_ buttons: [BoardButton]) -> [String] { buttons.map(\.title)
         #expect(WindowSelection.resolve(nil, board: empty) == .addMac)
         #expect(WindowSelection.resolve(.workhorse("attic"), board: empty) == .addMac)
         #expect(SidebarItem.list(empty) == [SidebarItem(selection: .addMac, title: "Add a Mac…", symbol: "plus")])
+    }
+
+    /// A saved list that can't be read is not an empty one: the window says what the menu says, and
+    /// doesn't invite the person to add a Mac. A list it read before stays on screen.
+    @Test func anUnreadableListIsNotTheAddAMacPage() {
+        let empty = BoardModel.build(latest: [:], lastReady: [:], checking: [], order: [], waitingForDeskServer: [],
+                                     now: formatNow, timeZone: formatZone)
+        #expect(WindowSelection.resolve(nil, board: empty, listUnreadable: true) == .unreadableList)
+        #expect(WindowSelection.resolve(.addMac, board: empty, listUnreadable: true) == .unreadableList)
+        #expect(WindowSelection.resolve(nil, board: empty, listUnreadable: false) == .addMac)
+        let kept = BoardModel.build(latest: [:], lastReady: [:], checking: [], order: [attic], waitingForDeskServer: [],
+                                    now: formatNow, timeZone: formatZone)
+        #expect(WindowSelection.resolve(nil, board: kept, listUnreadable: true) == .workhorse("attic"))
     }
 
     // MARK: The Add a Mac page

@@ -180,6 +180,21 @@ private func locked(_ w: Workhorse = attic) -> Gathered {
         #expect(screen.board.workhorses.map(\.id) == ["attic", "den"])
     }
 
+    /// A list that can't be read from the start: the board stays empty and the window has the menu's
+    /// own sentence for it, until a read works again.
+    @Test func aListThatCantBeReadSaysTheMenusSentence() async {
+        let saved = SavedList([attic])
+        saved.breakIt()
+        let (_, screen) = make(Script([[ready()]]), saved: saved)
+        await screen.reloadList()
+        #expect(screen.board.workhorses.isEmpty)
+        #expect(screen.listProblem == StatusFormat.storeMessage(StoreError.unreadable("workhorses.json: not JSON")))
+        saved.set([attic])
+        await screen.reloadList()
+        #expect(screen.listProblem == nil)
+        #expect(screen.board.workhorses.map(\.id) == ["attic"])
+    }
+
     /// A slow read of the saved list that started before a later one was shown can't put the older list back.
     @Test func aSlowEarlierReadDoesNotReplaceALaterOne() async throws {
         let saved = GatedList([attic])

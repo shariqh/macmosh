@@ -92,7 +92,8 @@ public struct WorkhorsePage: Sendable, Equatable {
         hint = w.hint
         summary = w.summary
         checked = w.checkedAt.map { WindowWords.checked($0, now: now, timeZone: timeZone) }
-        checking = w.isChecking ? WindowWords.checking : nil
+        // A workhorse that has never answered says "Still checking…" in its headline already.
+        checking = w.isChecking && w.state != nil ? WindowWords.checking : nil
         checkNow = BoardButton(ButtonRules.checkNow)
         let isDeskButton: (BoardButton) -> Bool = {
             switch $0.action {
@@ -246,14 +247,20 @@ public struct StaleDesks: Sendable, Equatable {
     }
 }
 
-/// What the sidebar has selected: a workhorse by id, or the Add a Mac page.
+/// What the sidebar has selected: a workhorse by id, or the Add a Mac page; or, with no workhorse on
+/// the board because the saved list can't be read, the store's sentence.
 public enum WindowSelection: Sendable, Hashable {
     case workhorse(String)
     case addMac
+    /// The saved list can't be read and no workhorse is on the board: the window shows the sentence the
+    /// menu shows (`BoardOnScreen.listProblem`), not an invitation to add a Mac.
+    case unreadableList
 
     /// The chosen page while it is still there; otherwise the first workhorse, or Add a Mac when there
-    /// is none (main window design, section 7.1 A).
-    public static func resolve(_ chosen: WindowSelection?, board: Board) -> WindowSelection {
+    /// is none (main window design, section 7.1 A). When the list can't be read and none was read
+    /// before, the store's sentence in place of either.
+    public static func resolve(_ chosen: WindowSelection?, board: Board, listUnreadable: Bool = false) -> WindowSelection {
+        if listUnreadable && board.workhorses.isEmpty { return .unreadableList }
         switch chosen {
         case .addMac?: return .addMac
         case .workhorse(let id)? where board.workhorses.contains { $0.id == id }: return .workhorse(id)
