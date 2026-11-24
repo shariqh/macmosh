@@ -16,7 +16,9 @@
 #
 # The job fails only when the app does not start, its menu does not open, a click runs the wrong row
 # or none, an open submenu closes under the pointer, or a held change is shown before the clicked
-# row has run. How a picture looks never fails it.
+# row has run. In the "changing" sample it also fails when the hold could not be tested (the
+# submenu never opened, fewer than two changes landed during the wait, or the held change was never
+# shown), so the job cannot go green without testing it. How a picture looks never fails it.
 set -uo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -42,6 +44,10 @@ say() { printf '%s drv %s\n' "$(now)" "$*" | tee -a "$LOG"; }
 lim() { perl -e 'alarm shift @ARGV; exec @ARGV or die "exec failed"' "$@"; }
 # A moment for `log show --start`: lines from this second on.
 moment() { date '+%Y-%m-%d %H:%M:%S'; }
+# The time now as the app's log writes it (local time, to the millisecond), to bound lines exactly.
+stamp_ms() { perl -MTime::HiRes=time -MPOSIX=strftime -e '$t = time; printf "%s.%03d", strftime("%Y-%m-%d %H:%M:%S", localtime $t), ($t - int $t) * 1000'; }
+# between <from stamp> <to stamp>: the log lines on stdin written from the first to the second.
+between() { awk -v from="$1" -v to="$2" '{ t = $1 " " $2 } t >= from && t <= to'; }
 
 # result <PASS|FAIL|DIFFERS|NOT-SHOWN> <check> <detail>
 result() {
@@ -286,6 +292,7 @@ six_desks() {
 
 changing() {
     local since open_since hold_since click_since n idx x y name watch fewest changes lines row_at shown_at base
+    local watch_from watch_to gap
     local sel_before sel_after quick ms before
     start_app changing || return
     open_since=$(moment)
@@ -298,7 +305,7 @@ changing() {
     tool move "$x" "$y" > /dev/null
     n=$(wait_menus 2 4)
     if [ "$n" -lt 2 ]; then
-        result NOT-SHOWN "the submenu stays open while the menu changes" "it never opened (menu windows=$n)"
+        result FAIL "the submenu stays open while the menu changes" "the hold was not tested: the submenu never opened (menu windows=$n)"
     else
         sleep 0.3
         base=$(printf '%s-%s' "$os" "$sample")
@@ -307,18 +314,24 @@ changing() {
         sel_before=$(ax selected top | grep '^selected' | tail -n 1)
         snap submenu-open-before-the-wait
         hold_since=$(moment)
+        watch_from=$(stamp_ms)
         watch=$(tool watch 7.5 hold)
+        watch_to=$(stamp_ms)
         fewest=$(sed -n 's/.*done after .* fewest=\([0-9]*\).*/\1/p' <<< "$watch")
+        gap=$(sed -n 's/.*done after .* about \([0-9]*\) ms apart.*/\1/p' <<< "$watch")
         snap submenu-open-after-7s
         ax names top > "$OUT/ax/$base-hold-after-top.txt"
         ax dump "   website" > "$OUT/ax/$base-hold-after-submenu.txt"
         sel_after=$(ax selected top | grep '^selected' | tail -n 1)
         n=$(count)
-        changes=$(applog "$hold_since" | grep -c "sample changed:")
-        if [ "${fewest:-0}" -ge 2 ] && [ "$n" -ge 2 ]; then
-            result PASS "the submenu stays open while the menu changes" "menu windows never below 2 in 7.5 s; $changes sample changes in that time"
+        # Only the changes that landed while the menu windows were being watched count.
+        changes=$(applog "$hold_since" | between "$watch_from" "$watch_to" | grep -c "sample changed:")
+        if [ "${fewest:-0}" -ge 2 ] && [ "$n" -ge 2 ] && [ "$changes" -ge 2 ]; then
+            result PASS "the submenu stays open while the menu changes" "menu windows never below 2 in 7.5 s (a sample about every ${gap:-?} ms); $changes sample changes during the watch"
+        elif [ "${fewest:-0}" -ge 2 ] && [ "$n" -ge 2 ]; then
+            result FAIL "the submenu stays open while the menu changes" "the hold was not tested: only $changes sample change(s) during the 7.5 s watch"
         else
-            result FAIL "the submenu stays open while the menu changes" "fewest menu windows ${fewest:-?}, now $n; $changes sample changes in that time"
+            result FAIL "the submenu stays open while the menu changes" "fewest menu windows ${fewest:-?}, now $n; $changes sample changes during the watch"
         fi
         if [[ "$sel_before" == *"website"* ]] && [ "$sel_after" = "$sel_before" ] \
             && cmp -s "$OUT/ax/$base-hold-before-submenu.txt" "$OUT/ax/$base-hold-after-submenu.txt"; then
@@ -326,20 +339,24 @@ changing() {
         else
             result FAIL "the accessibility tree shows the submenu still open" "highlighted before [$sel_before], after [$sel_after]; see ax/$base-hold-*-submenu.txt"
         fi
-        if applog "$hold_since" | grep -qF "menu showed the held change"; then
-            result DIFFERS "no held change is shown while the menu is open" "a 'menu showed the held change' line during the wait"
+        # From the start of the wait up to the click: no held change may be shown in that time.
+        if applog "$hold_since" | between "$watch_from" "$(stamp_ms)" | grep -qF "menu showed the held change"; then
+            result FAIL "no held change is shown while the menu is open" "a 'menu showed the held change' line during the wait, before the click"
         else
-            result PASS "no held change is shown while the menu is open" "no 'menu showed the held change' line during the wait"
+            result PASS "no held change is shown while the menu is open" "no 'menu showed the held change' line from the start of the wait to the click"
         fi
         if cmp -s "$OUT/ax/$base-hold-before-top.txt" "$OUT/ax/$base-hold-after-top.txt"; then
             result PASS "the open menu's rows did not change" "the accessibility tree reads the same rows before and after"
         else
-            result DIFFERS "the open menu's rows did not change" "see ax/$base-hold-*-top.txt"
+            result FAIL "the open menu's rows did not change" "see ax/$base-hold-*-top.txt"
         fi
+        # HoldStill holds whenever the open menu has submenu rows (spec 6.4), so this line can come
+        # before the pointer reaches a row: it shows a change was held while the menu was open, not
+        # that a submenu window was up at that moment.
         if wait_log "$open_since" "menu held a change: open with a submenu" 5; then
-            result PASS "the app held a change" "log: menu held a change: open with a submenu"
+            result PASS "the app held a change" "log: menu held a change: open with a submenu (written while the menu was open)"
         else
-            result DIFFERS "the app held a change" "no 'menu held a change: open with a submenu' line"
+            result FAIL "the app held a change" "no 'menu held a change: open with a submenu' line"
         fi
 
         # A click on a line in the open submenu runs it, and the held change waits until after it.
@@ -352,7 +369,7 @@ changing() {
             row_at=$(printf '%s\n' "$lines" | grep -nF "sample row ran: desk:workhorse:website:window" | head -n 1 | cut -d: -f1)
             shown_at=$(printf '%s\n' "$lines" | grep -nF "menu showed the held change" | head -n 1 | cut -d: -f1)
             if [ -z "$shown_at" ]; then
-                result NOT-SHOWN "the held change is shown after the clicked row ran" "no 'menu showed the held change' line after the click"
+                result FAIL "the held change is shown after the clicked row ran" "no 'menu showed the held change' line after the click"
             elif [ -z "$row_at" ]; then
                 result FAIL "the held change is shown after the clicked row ran" "the change was shown and the row never ran"
             elif [ "$shown_at" -gt "$row_at" ]; then
@@ -361,7 +378,7 @@ changing() {
                 result FAIL "the held change is shown after the clicked row ran" "the change came first"
             fi
         else
-            result NOT-SHOWN "a click on New window in the held submenu" "the line was not found"
+            result FAIL "a click on New window in the held submenu" "the hold was not tested: the line was not found"
         fi
         sleep 1
 
@@ -369,7 +386,7 @@ changing() {
         if opened_or_fail "again after the held change"; then
             snap reopened-shows-the-change
             if cmp -s "$OUT/ax/$base-hold-before-top.txt" "$OUT/ax/$(printf '%s-%02d' "$base" "$shotn")-reopened-shows-the-change.txt"; then
-                result DIFFERS "the reopened menu shows the change" "the rows read the same as before the wait"
+                result FAIL "the reopened menu shows the change" "the rows read the same as before the wait"
             else
                 result PASS "the reopened menu shows the change" "the rows differ from before the wait"
             fi

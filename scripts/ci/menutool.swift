@@ -6,14 +6,15 @@
 //   menutool preflight             what this process may do (post events, capture the screen)
 //   menutool move <x> <y>          moves the pointer there in small steps (CGEvent mouseMoved)
 //   menutool click <x> <y>         moves there, rests 150 ms, then left button down and up
-//   menutool rushclick <x> <y>     one move straight there, and the button down about 20 ms after it: a click
+//   menutool rushclick <x> <y>     one move straight there, and the button down one window list after it: a click
 //                                  that lands before a row's submenu can open (it opens about 0.25 s
 //                                  after the pointer reaches the row, on the trial's runners)
 //   menutool keys <code> <count> <gap ms>   posts that key <count> times (CGEvent key down and up)
 //   menutool count                 how many MacMosh menu windows are on screen (the menu and its submenus)
 //   menutool windows <label>       those windows' bounds
-//   menutool watch <seconds> <label>   samples the menu windows every 50 ms, prints each change and,
-//                                  at the end, the fewest and most seen
+//   menutool watch <seconds> <label>   samples the menu windows (a 50 ms rest plus one window list
+//                                  between samples), prints each change and, at the end, the fewest
+//                                  and most seen and the average gap between samples
 //
 // Built by the workflow with swiftc, as a single file. Each line it prints starts with a Unix time.
 import AppKit
@@ -102,8 +103,7 @@ case "rushclick":
     _ = menuWindows()   // the first window list of a process is slow; this one is not timed
     let arrived = Date()
     post(.mouseMoved, target)
-    usleep(20_000)
-    let before = menuWindows()
+    let before = menuWindows()   // one window list (about 50 ms on the runners) is the only wait
     let down = Date()
     post(.leftMouseDown, target)
     usleep(60_000)
@@ -147,7 +147,7 @@ case "watch":
         }
         usleep(50_000)
     }
-    out("watch [\(label)] done after \(samples) samples fewest=\(fewest) most=\(most)")
+    out("watch [\(label)] done after \(samples) samples fewest=\(fewest) most=\(most), about \(Int(seconds * 1000) / max(samples, 1)) ms apart")
 default:
     out("unknown command \(args[1])")
     exit(2)

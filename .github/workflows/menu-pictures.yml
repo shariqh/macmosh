@@ -3,8 +3,9 @@ name: Menu pictures
 # Starts a debug build of the app with each sample menu (issue #113), opens its menu and submenus
 # with posted pointer events, and uploads a picture of each step with the app's log. It fails only
 # when the app does not start, the menu does not open, a click runs the wrong row or none, an open
-# submenu closes under the pointer, or a held change is shown before the clicked row ran; never on how
-# a picture looks. scripts/ci/drive-menu.sh says what it checks.
+# submenu closes under the pointer, or a held change is shown before the clicked row ran (and, in the
+# "changing" sample, when the hold could not be tested); never on how a picture looks.
+# scripts/ci/drive-menu.sh says what it checks.
 on:
   pull_request:
     paths:
@@ -18,6 +19,10 @@ on:
 
 permissions:
   contents: read
+
+concurrency:
+  group: menu-pictures-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   pictures:
