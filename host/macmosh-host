@@ -1042,8 +1042,7 @@ mm_view_bar() {
 # desk-closed ignores it by its record, as for any view. That closes only windows no other session of
 # the group shows, so it is done only while another session is in the group: a view left alone in its
 # group (its desk's session killed by hand) holds the desk's windows, and keeps today's behaviour. A
-# view with no tab is left to the sweep in status. A tmux too old for these formats reads them as
-# empty, which keeps the view.
+# view with no tab is left to the sweep in status. The formats were tried with tmux 3.8 only.
 # Limits: a hook of the view's own takes the place of the global hook of the same name for that view
 # (seen with tmux 3.8), so a session-window-changed hook in the person's own tmux settings doesn't run
 # for a tab on one window. A view made by a script before 0.10.0 has no such hook, and keeps today's
