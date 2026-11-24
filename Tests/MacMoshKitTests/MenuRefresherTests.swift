@@ -382,6 +382,7 @@ private final class Saved: @unchecked Sendable {
     @Test func theLiveRecordsReachTheMenu() async throws {
         let store = try windowsStore()
         let r = withTabs(Self.windowsGathered(), store: store)
+        #expect(r.tabsSeen == nil)
         await r.refresh()
         #expect(entry(r.menu.entries, "desk:attic:website:win:@1")?.title == "claude (in a tab)")
         #expect(entry(r.menu.entries, "desk:attic:website:win:@2")?.title == "zsh (open in another tab)")
@@ -392,6 +393,8 @@ private final class Saved: @unchecked Sendable {
         let expected = MenuModel.build([Self.windowsGathered()],
                                        tabs: TabsOnThisMac(records: store.records(), terminal: .iterm2), now: Self.t0)
         #expect(r.menu == expected)
+        // What the build had is kept for the window's board, which reads no record itself (issue #134).
+        #expect(r.tabsSeen == TabsSeen(tabs: TabsOnThisMac(records: store.records(), terminal: .iterm2), at: Self.t0))
     }
 
     /// The terminal the refresher is told tabs open in decides the gate in Tabs mode, as connect would.

@@ -25,6 +25,10 @@ public final class MenuRefresher: ObservableObject {
     /// The workhorses shown as "Waiting for the desk server" (issue #88). Like `latest` and
     /// `lastReady`, it is left as it was when the saved list can't be read.
     @Published public private(set) var waitingForDeskServer: Set<String> = []
+    /// What the menu's last build knew about this Mac's tabs: the live records, the terminal and the time it was
+    /// given (issue #134). The window's board is built from these, so it reads no record itself and makes the
+    /// menu's choices. nil until the first build.
+    @Published public private(set) var tabsSeen: TabsSeen?
 
     private let load: @Sendable () throws -> [Workhorse]
     private let gather: @Sendable ([Workhorse]) async -> [Gathered]
@@ -127,9 +131,13 @@ public final class MenuRefresher: ObservableObject {
         }
         // The saved list is written under a file lock, so it is done off the main thread.
         await Task.detached { for result in checked { save(result) } }.value
-        keep(gathered, list: list)
         let now = self.now()
         let tabs = await tabsOnThisMac(after: gathered, now: now)
+        // From here to the menu there is no wait, so the window's board takes the new results and the tabs
+        // that go with them in the same turn of the main actor.
+        keep(gathered, list: list)
+        let seen = TabsSeen(tabs: tabs, at: now)
+        if tabsSeen != seen { tabsSeen = seen }
         let waiting = deskServerWait.update(gathered)
         if waitingForDeskServer != waiting { waitingForDeskServer = waiting }
         menu = MenuModel.build(gathered, waitingForDeskServer: waiting, tabs: tabs, now: now)

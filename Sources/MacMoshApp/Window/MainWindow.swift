@@ -78,6 +78,8 @@ enum WindowMarks {
     static func desk(_ name: String) -> String { "desk.\(name)" }
     static func open(_ name: String) -> String { "desk.\(name).open" }
     static func strip(_ name: String) -> String { "desk.\(name).strip" }
+    /// A window's button in its desk's strip: `desk.website.win.@3`.
+    static func window(_ name: String, _ id: String) -> String { "desk.\(name).win.\(id)" }
     /// A button by what it does: `button.openAllWithoutTab`, `button.menu.connect.attic.api`.
     static func button(_ b: BoardButton) -> String {
         switch b.action {

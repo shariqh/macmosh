@@ -15,6 +15,20 @@ public struct TabsOnThisMac: Sendable, Equatable {
     }
 }
 
+/// What the menu's last build knew about this Mac's tabs, and the time it built with: the same records, the
+/// same terminal and the same time, so the window's board makes exactly the menu's choices (issue #134).
+/// `MenuRefresher` publishes it after each build; `BoardModel.build` takes it as a value.
+public struct TabsSeen: Sendable, Equatable {
+    public var tabs: TabsOnThisMac
+    /// The `now` the menu's build was given, which dates the records.
+    public var at: Date
+
+    public init(tabs: TabsOnThisMac, at: Date) {
+        self.tabs = tabs
+        self.at = at
+    }
+}
+
 /// Whether a desk gets a line per window (menu design 6.1 (a) and 8.3). All three must hold:
 /// 1. the workhorse's script is 0.8.0 or newer (`HostInstaller.isAtLeast`, the installer's comparison), so
 ///    `attach` takes `--label`, `--window` and `--new-window`;
@@ -50,13 +64,22 @@ public struct DeskWindows: Sendable, Equatable {
     public var newWindow: ActionButton?
     /// The desk's flags that are set, as one grey line: `kept running`, `permanent`, or both; nil for none.
     public var flags: String?
+    /// How many tabs show its windows, findable or not, a tab opened a moment ago that the report doesn't list
+    /// yet included; 0 for a closed desk. The window's board says "In 2 tabs" from it (issue #134).
+    public var tabs: Int
+    /// The `connect` arguments of a tab on each window that no tab shows, in the desk's order; none for a closed
+    /// desk. The window's "Open the N not in a tab" opens these (issue #134).
+    public var notInATab: [[String]]
 
-    public init(title: String, first: ActionButton, windows: [ActionButton], newWindow: ActionButton?, flags: String?) {
+    public init(title: String, first: ActionButton, windows: [ActionButton], newWindow: ActionButton?, flags: String?,
+                tabs: Int = 0, notInATab: [[String]] = []) {
         self.title = title
         self.first = first
         self.windows = windows
         self.newWindow = newWindow
         self.flags = flags
+        self.tabs = tabs
+        self.notInATab = notInATab
     }
 
     /// The shape for one desk of workhorse `id`, with this Mac's live records and the time. nil for an open
@@ -139,6 +162,7 @@ public struct DeskWindows: Sendable, Equatable {
         }
         return DeskWindows(title: title, first: first, windows: lines,
                            newWindow: ActionButton(key: "window", title: "New window", action: .tab(connect(["--new-window"]))),
-                           flags: flagsLine)
+                           flags: flagsLine, tabs: tabs.reduce(0) { $0 + $1.labels.count + $1.others },
+                           notInATab: noTab.map(onWindow))
     }
 }

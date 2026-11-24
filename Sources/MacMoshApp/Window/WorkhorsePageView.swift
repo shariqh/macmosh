@@ -142,7 +142,12 @@ struct DeskRowView: View {
                     Text(verbatim: tabs).foregroundStyle(.secondary)
                 }
                 if let open = row.open {
+                    // "Go to" or "Open"; the menu's own words for the click ("Go to website", "Open the 1 window
+                    // not in a tab") are its help tag. Apple, help(_:) (macOS 11.0,
+                    // https://developer.apple.com/documentation/swiftui/view/help(_:)-9lm7l): "Adding help to a
+                    // view configures the view's accessibility hint and its help tag (also called a tooltip) in macOS".
                     Button { run(open) } label: { Text(verbatim: open.title) }
+                        .help(Text(verbatim: row.openWords ?? ""))
                         .accessibilityIdentifier(WindowMarks.open(row.name))
                 }
             }
@@ -154,7 +159,8 @@ struct DeskRowView: View {
     }
 }
 
-/// The detail strip: Folder, Starts with, After a restart, When its last shell exits, "Keeps its
+/// The detail strip: one line per window when the desk has the menu's line per window (its words and a small
+/// "Go to" or "Open" button), then Folder, Starts with, After a restart, When its last shell exits, "Keeps its
 /// command running" when set, and New window, Rename…, Remove….
 struct DeskDetail: View {
     let row: DeskRow
@@ -162,6 +168,25 @@ struct DeskDetail: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
+            if !row.windowLines.isEmpty {
+                Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 3) {
+                    ForEach(row.windowLines) { line in
+                        GridRow {
+                            Text(verbatim: line.words)
+                            // Apple, controlSize(_:) (macOS 10.15, https://developer.apple.com/documentation/swiftui/view/controlsize(_:)):
+                            // "Sets the size for controls within this view."; ControlSize.small: "A control version
+                            // that is proportionally smaller size for space-constrained views."
+                            // The window's words are its help tag too, so the button's accessibility hint names
+                            // its window (help(_:), quoted above).
+                            Button { run(line.button) } label: { Text(verbatim: line.button.title) }
+                                .controlSize(.small)
+                                .help(Text(verbatim: line.words))
+                                .accessibilityIdentifier(WindowMarks.window(row.name, line.id))
+                        }
+                    }
+                }
+                Divider()
+            }
             if !row.detail.isEmpty {
                 Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 3) {
                     ForEach(Array(row.detail.enumerated()), id: \.offset) { _, line in

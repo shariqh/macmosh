@@ -106,7 +106,7 @@ private let a = "aaaaaaaaaaaaaaaa", b = "bbbbbbbbbbbbbbbb", c = "ccccccccccccccc
         #expect(WindowLinesGate.passes(atticResult([]), desk: nil, terminal: .iterm2))
     }
 
-    /// The window's board reads the same desks with no tabs given, and so keeps its buttons as they are.
+    /// With no tabs given (the board before the menu's first build), no desk has a line per window.
     @Test func withNoTabsGivenNoDeskHasALinePerWindow() {
         let r = atticResult([detailedDesk("blog", [detailedWindow(0, "@8", "zsh", tabs: 0)])])
         #expect(ButtonRules.desks(r).first?.windows == nil)
@@ -264,6 +264,33 @@ private let a = "aaaaaaaaaaaaaaaa", b = "bbbbbbbbbbbbbbbb", c = "ccccccccccccccc
         for (definitions, flags) in cases {
             #expect(deskLines(atticResult([desk], definitions: definitions)).first?.windows?.flags == flags)
         }
+    }
+
+    // MARK: What the window's board reads besides the lines (issue #134)
+
+    /// How many tabs show the desk's windows, findable or not, a fresh record not in the report yet included;
+    /// and a tab on each window no tab shows, in the desk's order, which "Open the N not in a tab" opens.
+    @Test func theTabsThatShowItsWindowsAndTheWindowsNotInATab() {
+        let desk = detailedDesk("website", [
+            detailedWindow(0, "@1", "claude", tabs: 1),   // one findable tab
+            detailedWindow(1, "@2", "zsh", tabs: 2),      // one findable tab and one other
+            detailedWindow(2, "@3", "logs", tabs: 1),     // only a tab this Mac can't find
+            detailedWindow(3, "@4", "vim", tabs: 0),      // no tab
+            detailedWindow(4, "@5", "web", tabs: 0),      // none in the report, but a tab opened on it a minute ago
+            detailedWindow(5, "@6", "db", tabs: 0),       // no tab
+        ], views: [labelledView("website", "@1", a), labelledView("website", "@2", b)])
+        let w = windowsOf(desk, records: [atticRecord(a), atticRecord(b), atticRecord(c, asked: "@5", minutesAgo: 1)])
+        #expect(w?.tabs == 5)
+        #expect(w?.notInATab == [connect("website", "--window", "@4"), connect("website", "--window", "@6")])
+
+        let allInTabs = windowsOf(detailedDesk("notes", [detailedWindow(0, "@7", "zsh", tabs: 1)]))
+        #expect(allInTabs?.tabs == 1 && allInTabs?.notInATab == [])
+        let none = windowsOf(detailedDesk("api", [detailedWindow(0, "@5", "server", tabs: 0),
+                                                  detailedWindow(1, "@6", "tests", tabs: 0)]))
+        #expect(none?.tabs == 0)
+        #expect(none?.notInATab == [connect("api", "--window", "@5"), connect("api", "--window", "@6")])
+        let closed = deskLines(atticResult([], definitions: [permanentDefinition("garden")])).first?.windows
+        #expect(closed?.tabs == 0 && closed?.notInATab == [])
     }
 
     // MARK: Rules over every combination
