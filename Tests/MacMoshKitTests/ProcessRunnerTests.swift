@@ -2,6 +2,10 @@ import Foundation
 import Testing
 @testable import MacMoshKit
 
+/// The commands these tests stop would run for 30 seconds. A stop must land well before that; the
+/// bound leaves room for a busy CI machine, which has started a timed test seconds late (issue #137).
+private let timeLimitWithRoom: Duration = .seconds(15)
+
 @Suite struct ProcessRunnerTests {
     let runner = ProcessRunner()
 
@@ -16,7 +20,7 @@ import Testing
         let r = await runner.run("/bin/sleep", ["30"], environment: [:], stdin: nil, timeout: .milliseconds(500))
         #expect(r.timedOut)
         #expect(r.exitCode == -1)
-        #expect(clock.now - start < .seconds(4))
+        #expect(clock.now - start < timeLimitWithRoom)
     }
 
     @Test func aStuckShellAndItsChildAreBothStoppedAtTimeout() async {
@@ -26,7 +30,7 @@ import Testing
                                  environment: [:], stdin: nil, timeout: .milliseconds(500))
         #expect(r.timedOut)
         #expect(r.stdout == "")
-        #expect(clock.now - start < .seconds(4))
+        #expect(clock.now - start < timeLimitWithRoom)
     }
 
     @Test func twoMegabytesOfOutputDoNotBlock() async {
@@ -66,7 +70,7 @@ import Testing
         let clock = ContinuousClock(); let start = clock.now
         task.cancel()
         let r = await task.value
-        #expect(clock.now - start < .seconds(4))
+        #expect(clock.now - start < timeLimitWithRoom)
         #expect(!r.timedOut)
         #expect(kill(started, 0) == -1 && errno == ESRCH)
     }
