@@ -176,8 +176,11 @@ struct DeskDetail: View {
                             // Apple, controlSize(_:) (macOS 10.15, https://developer.apple.com/documentation/swiftui/view/controlsize(_:)):
                             // "Sets the size for controls within this view."; ControlSize.small: "A control version
                             // that is proportionally smaller size for space-constrained views."
+                            // The window's words are its help tag too, so the button's accessibility hint names
+                            // its window (help(_:), quoted above).
                             Button { run(line.button) } label: { Text(verbatim: line.button.title) }
                                 .controlSize(.small)
+                                .help(Text(verbatim: line.words))
                                 .accessibilityIdentifier(WindowMarks.window(row.name, line.id))
                         }
                     }
