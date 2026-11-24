@@ -511,7 +511,10 @@ private func shortClock(_ date: Date) -> String {
         let gathered = await MenuData.gather([.sample(id: "a"), .sample(id: "b")],
                                              checker: StatusChecker(runner: slow, paths: .test, hints: FixedHints(.allFine)),
                                              budget: .seconds(1))
-        #expect(clock.now - start < .seconds(3))
+        // The runner would take 30 seconds; the budget is 1. The bound sits well between the two, because
+        // a busy CI machine has started this test seconds late (3.4 s seen with a 3 s bound, issue #137).
+        // It still fails if the budget is ignored and the gather waits for the runner.
+        #expect(clock.now - start < .seconds(15))
         #expect(MenuModel.build(gathered).items.contains { $0.title.hasSuffix("Still checking…") })
         #expect(gathered == [.stillChecking(.sample(id: "a")), .stillChecking(.sample(id: "b"))])
     }
@@ -537,7 +540,8 @@ private func shortClock(_ date: Date) -> String {
         let gathered = await MenuData.gather([], checker: StatusChecker(runner: FakeRunner.sleeping(.seconds(30)), paths: .test,
                                                                        hints: FixedHints(.allFine)), budget: .seconds(20))
         #expect(gathered.isEmpty)
-        #expect(clock.now - start < .seconds(1))
+        // Well under the 20-second budget, with room for a busy machine (issue #137).
+        #expect(clock.now - start < .seconds(10))
     }
 
     @Test func everythingAnsweringEndsTheCallBeforeTheBudget() async {
@@ -547,7 +551,8 @@ private func shortClock(_ date: Date) -> String {
         let gathered = await MenuData.gather([.sample(id: "a"), .sample(id: "b")],
                                              checker: StatusChecker(runner: quick, paths: .test, hints: FixedHints(.allFine)),
                                              budget: .seconds(30))
-        #expect(clock.now - start < .seconds(5))
+        // Well under the 30-second budget, with room for a busy machine (issue #137).
+        #expect(clock.now - start < .seconds(15))
         #expect(gathered.count == 2)
         for entry in gathered { if case .stillChecking = entry { Issue.record("expected a checked result") } }
     }
