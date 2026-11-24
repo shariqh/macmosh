@@ -67,6 +67,26 @@ private final class Lines: @unchecked Sendable {
                 == "menu action done: tab connect: tab opened")
     }
 
+    /// The two tab actions of issue #120: the subcommand of the first tab, never a desk, a window or a label.
+    @Test func theTabsAndFocusLinesNameOnlyTheSubcommand() {
+        let open = ["connect", "workhorse", "website", "--window", "@3"]
+        #expect(MenuLog.asked(.tabs([open, open])) == "menu action: tabs connect")
+        #expect(MenuLog.asked(.tabs([])) == "menu action: tabs")
+        #expect(MenuLog.asked(.focus(label: "9f3a1c2e", orOpen: open)) == "menu action: focus connect")
+        #expect(MenuLog.asked(.focus(label: "9f3a1c2e", orOpen: [])) == "menu action: focus")
+        #expect(MenuLog.finished(.focus(label: "9f3a1c2e", orOpen: open), summary: "tab selected")
+                == "menu action done: focus connect: tab selected")
+        #expect(MenuLog.finished(.tabs([open]), summary: "tabs opened: 1")
+                == "menu action done: tabs connect: tabs opened: 1")
+    }
+
+    @Test func theTabsSummariesAreNumbersAndFixedWords() {
+        #expect(MenuLog.tabsOpened(3, anotherWay: 0) == "tabs opened: 3")
+        #expect(MenuLog.tabsOpened(3, anotherWay: 2) == "tabs opened: 3 (another way: 2)")
+        #expect(MenuLog.tabsStopped(opened: 1, of: 3, then: "tab did not open (error -1728)")
+                == "tabs opened: 1 of 3, then tab did not open (error -1728)")
+    }
+
     @Test func aTabFailureKeepsOnlyTheErrorNumber() {
         let fromITerm = "31:99: execution error: iTerm got an error: Can’t get window 1 of workhorse. (-1719)"
         #expect(MenuLog.tabFailure(fromITerm) == "tab did not open (error -1719)")

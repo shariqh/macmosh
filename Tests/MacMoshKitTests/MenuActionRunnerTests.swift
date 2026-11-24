@@ -76,6 +76,74 @@ import Testing
         #expect(fake.calls.isEmpty)
     }
 
+    // MARK: several tabs (issue #120)
+
+    private static let windows = (1...3).map { ["connect", "mbp", "website", "--window", "@\($0)"] }
+
+    /// A runner whose pause notes itself in the stand-in's events, so the order can be read.
+    private func pausing(_ tabs: RecordingTabs) -> MenuActionRunner {
+        MenuActionRunner(macmoshPath: Self.path, tabs: tabs, runner: FakeRunner { _ in FakeRunner.ok() },
+                         pause: { tabs.note("pause \($0)") })
+    }
+
+    @Test func severalTabsOpenInOrderWithAPauseBetweenEach() async {
+        let tabs = RecordingTabs()
+        let outcome = await pausing(tabs).outcome(of: .tabs(Self.windows), title: "Open website in 3 tabs")
+        #expect(outcome == ActionOutcome(summary: "tabs opened: 3", notice: nil))
+        #expect(tabs.events == [
+            "open \(Self.path) connect mbp website --window @1",
+            "pause 0.4 seconds",
+            "open \(Self.path) connect mbp website --window @2",
+            "pause 0.4 seconds",
+            "open \(Self.path) connect mbp website --window @3",
+        ])
+        #expect(tabs.titles == ["website", "website", "website"])
+        #expect(MenuActionRunner.tabsPause == .milliseconds(400))
+    }
+
+    @Test func severalTabsStopAtTheFirstThatFailsAndSayHowManyOpened() async {
+        let tabs = RecordingTabs(failure: LaunchError.failed("execution error: iTerm2 got an error. (-1728)"), failFrom: 1)
+        let outcome = await pausing(tabs).outcome(of: .tabs(Self.windows), title: "Open website in 3 tabs")
+        #expect(tabs.events == [
+            "open \(Self.path) connect mbp website --window @1",
+            "pause 0.4 seconds",
+            "open \(Self.path) connect mbp website --window @2",
+        ])
+        #expect(outcome.summary == "tabs opened: 1 of 3, then tab did not open (error -1728)")
+        #expect(outcome.notice == "1 of 3 tabs opened. The tab didn't open. execution error: iTerm2 got an error. (-1728)")
+    }
+
+    /// The first failing gives exactly the notice a single tab gives today.
+    @Test func whenTheFirstTabFailsTheNoticeIsASingleTabs() async {
+        let denied = RecordingTabs(failure: LaunchError.automationDenied(.iterm2))
+        let outcome = await pausing(denied).outcome(of: .tabs(Self.windows), title: "x")
+        let single = await runner(tabs: RecordingTabs(failure: LaunchError.automationDenied(.iterm2)))
+            .outcome(of: .tab(Self.windows[0]), title: "x")
+        #expect(denied.events.count == 1)
+        #expect(outcome.notice == single.notice)
+        #expect(outcome.notice == "macOS hasn't let MacMosh control iTerm2. To allow it: System Settings > Privacy & Security > Automation.")
+        #expect(outcome.summary == "tabs opened: 0 of 3, then not allowed to control the terminal app")
+
+        let moved = MenuActionRunner(macmoshPath: "/Users/alex/My Apps/MacMosh.app/Contents/Helpers/macmosh",
+                                     tabs: RecordingTabs(), runner: FakeRunner { _ in FakeRunner.ok() })
+        let movedOutcome = await moved.outcome(of: .tabs(Self.windows), title: "x")
+        #expect(movedOutcome.notice == MenuActionRunner.moveIt)
+        #expect(movedOutcome.summary == "tabs opened: 0 of 3, then the app's path can't go in a tab")
+    }
+
+    @Test func tabsOpenedAnotherWayKeepTheFirstNotice() async {
+        let tabs = RecordingTabs(notice: "macOS hasn't let MacMosh control iTerm2, so the tab was opened another way.")
+        let outcome = await pausing(tabs).outcome(of: .tabs(Self.windows), title: "x")
+        #expect(outcome.summary == "tabs opened: 3 (another way: 3)")
+        #expect(outcome.notice == "macOS hasn't let MacMosh control iTerm2, so the tab was opened another way.")
+    }
+
+    @Test func noTabsOpensNothingAndDoesNotPause() async {
+        let tabs = RecordingTabs()
+        #expect(await pausing(tabs).outcome(of: .tabs([]), title: "x") == ActionOutcome(summary: "tabs opened: 0", notice: nil))
+        #expect(tabs.events.isEmpty)
+    }
+
     @Test func theTabTitleIsTheDeskForConnect() {
         #expect(MenuActionRunner.tabTitle(for: ["connect", "mbp", "website"]) == "website")
         #expect(MenuActionRunner.tabTitle(for: ["restart", "mbp"]) == "restart")

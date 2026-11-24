@@ -276,9 +276,22 @@ private func twoWithTheSameDesk() -> MenuLines {
                     seen += 1
                     #expect(!args.isEmpty)
                     for word in args { #expect(PlainWords.isPlain(word), "\(word)") }
+                case .tabs(let list):
+                    seen += 1
+                    #expect(!list.isEmpty)
+                    for args in list {
+                        #expect(!args.isEmpty)
+                        for word in args { #expect(PlainWords.isPlain(word), "\(word)") }
+                    }
+                case .focus(let label, let orOpen):
+                    seen += 1
+                    #expect(!orOpen.isEmpty)
+                    #expect(PlainWords.isPlain(label), "\(label)")
+                    for word in orOpen { #expect(PlainWords.isPlain(word), "\(word)") }
                 case .refresh, .none:
                     break
                 }
+                for word in action.words { #expect(PlainWords.isPlain(word), "\(word)") }
             }
         }
         #expect(seen > 20)

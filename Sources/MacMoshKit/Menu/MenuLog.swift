@@ -78,9 +78,22 @@ public enum MenuLog {
         return "tab did not open"
     }
 
+    /// `tabs opened: 3`, or `tabs opened: 3 (another way: 1)` when some were opened with a command file.
+    static func tabsOpened(_ count: Int, anotherWay: Int) -> String {
+        anotherWay == 0 ? "tabs opened: \(count)" : "tabs opened: \(count) (another way: \(anotherWay))"
+    }
+
+    /// `tabs opened: 1 of 3, then tab did not open (error -1728)`: `then` is the failed tab's own summary.
+    static func tabsStopped(opened: Int, of total: Int, then failure: String) -> String {
+        "tabs opened: \(opened) of \(total), then \(failure)"
+    }
+
     private static func name(_ action: MenuAction) -> String {
         switch action {
         case .tab(let arguments): return (["tab"] + arguments.prefix(1)).joined(separator: " ")
+        case .tabs(let list): return (["tabs"] + (list.first ?? []).prefix(1)).joined(separator: " ")
+        // Never the label: it is a word that names one tab.
+        case .focus(_, let orOpen): return (["focus"] + orOpen.prefix(1)).joined(separator: " ")
         case .run(let arguments): return (["run"] + arguments.prefix(1)).joined(separator: " ")
         case .refresh: return "refresh"
         case .none: return "none"
