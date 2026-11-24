@@ -1,0 +1,45 @@
+macmosh-host	1	0.8.0
+os	27.3	arm64
+console	alex
+server	up
+signins	ok
+filevault	on
+authrestart	yes
+power	sleep=0	womp=1	autorestart=1	disablesleep=1
+battery	present	ac	100
+home	192.168.1.20	24	workhorse.local
+firewall	off
+screensharing	on
+agent	installed
+tool	brew	/opt/homebrew/bin/brew	-
+tool	mosh-server	/opt/homebrew/bin/mosh-server	1.4.0
+tool	tmux	/opt/homebrew/bin/tmux	3.8
+desk	website	3	2
+window	website	0	claude
+window	website	1	zsh
+window	website	2	vim
+windowinfo	website	0	@1	1	1
+windowinfo	website	1	@2	0	1
+windowinfo	website	2	@3	0	0
+view	website	website+4101	@1	1	3f9a2c71
+view	website	website+4102	@2	1	b04e5d12
+desk	api	2	1
+window	api	0	server
+window	api	1	tests
+windowinfo	api	0	@5	1	1
+windowinfo	api	1	@6	0	0
+view	api	api+4120	@5	1	c1d2e3f4
+desk	garden	1	0
+window	garden	0	claude
+desk	recipes	1	0
+window	recipes	0	zsh
+desk	blog	2	1
+window	blog	0	claude
+window	blog	1	zsh
+def	website	1	1	0	/Users/alex/Development/website	claude --continue
+def	api	1	0	0	/Users/alex/Development/api	
+def	garden	1	0	1	/Users/alex/Development/garden	claude
+def	notes	1	0	1	/Users/alex/notes	
+def	recipes	0	0	0	/opt/projects/recipes	
+def	shop	1	0	0	/Users/alex/Development/shop	claude
+end

@@ -1,0 +1,226 @@
+import Foundation
+
+/// What the MacMosh window shows: every workhorse on the saved list, in its order, and the symbol of
+/// the most urgent state among them (main window design, section 7.2). `BoardModel.build` makes it from
+/// the checks the menu already runs; nothing here runs a check or an action.
+public struct Board: Sendable, Equatable {
+    public var workhorses: [BoardWorkhorse]
+    public var symbol: String
+
+    public init(workhorses: [BoardWorkhorse], symbol: String) {
+        self.workhorses = workhorses
+        self.symbol = symbol
+    }
+}
+
+/// One workhorse on the board: the menu's words for its state, its desks, and its buttons.
+public struct BoardWorkhorse: Sendable, Equatable, Identifiable {
+    public var id: String
+    public var name: String
+    /// What its last check found; nil when it has never answered.
+    public var state: WorkhorseState?
+    /// The symbol the menu's icon uses for that state.
+    public var symbol: String
+    /// The menu's headline, for example "Attic · Ready".
+    public var headline: String
+    /// The menu's hint under the headline, if the state has one.
+    public var hint: String?
+    /// When the result shown was checked; nil when it has never answered.
+    public var checkedAt: Date?
+    /// A check is running now. The board keeps showing the last result meanwhile.
+    public var isChecking: Bool
+    /// Shown as "Waiting for the desk server" (issue #88), as the menu does.
+    public var isWaitingForDeskServer: Bool
+    /// The menu's summary line, for a Ready workhorse with a report.
+    public var summary: String?
+    /// Whether this Mac can reach its home address; for a Ready workhorse whose home address is known.
+    public var homeReachable: Bool?
+    /// The desks of a Ready workhorse, in name order, closed permanent desks among them. Empty otherwise.
+    public var desks: [BoardDesk]
+    /// The desks that ended (a later step fills them; empty for now).
+    public var ended: [EndedDesk]
+    /// For a workhorse that is not Ready: the desks of its last Ready check, greyed, with no buttons.
+    /// nil when it is Ready, or when no check has found it Ready since MacMosh started.
+    public var lastReadyDesks: [BoardDesk]?
+    /// When that last Ready check was.
+    public var lastReadyAt: Date?
+    /// Every button but the desks' own, in the menu's order, with the window's own among them.
+    public var buttons: [BoardButton]
+    /// What the last action on it said, if any.
+    public var result: String?
+
+    public init(id: String, name: String, state: WorkhorseState?, symbol: String, headline: String, hint: String?,
+                checkedAt: Date?, isChecking: Bool, isWaitingForDeskServer: Bool, summary: String?,
+                homeReachable: Bool?, desks: [BoardDesk], ended: [EndedDesk], lastReadyDesks: [BoardDesk]?,
+                lastReadyAt: Date?, buttons: [BoardButton], result: String?) {
+        self.id = id
+        self.name = name
+        self.state = state
+        self.symbol = symbol
+        self.headline = headline
+        self.hint = hint
+        self.checkedAt = checkedAt
+        self.isChecking = isChecking
+        self.isWaitingForDeskServer = isWaitingForDeskServer
+        self.summary = summary
+        self.homeReachable = homeReachable
+        self.desks = desks
+        self.ended = ended
+        self.lastReadyDesks = lastReadyDesks
+        self.lastReadyAt = lastReadyAt
+        self.buttons = buttons
+        self.result = result
+    }
+}
+
+/// One tmux window of a desk: its name always, its id and the number of tabs showing it only when the
+/// report has them (script 0.7.0 and newer). Nothing may depend on their being there.
+public struct BoardWindow: Sendable, Equatable {
+    public var index: Int
+    public var name: String
+    /// tmux's window id, `@` and digits.
+    public var id: String?
+    public var tabs: Int?
+
+    public init(index: Int, name: String, id: String?, tabs: Int?) {
+        self.index = index
+        self.name = name
+        self.id = id
+        self.tabs = tabs
+    }
+}
+
+/// One desk on the board. Folder, command and flags come from its saved definition; a desk with none
+/// (made by hand with tmux) has them all nil and `madeByMacMosh` false.
+public struct BoardDesk: Sendable, Equatable {
+    public var name: String
+    /// It has a session now. A closed desk is a permanent one whose last shell exited.
+    public var isOpen: Bool
+    public var windows: [BoardWindow]
+    /// The report's count of its windows; 0 when closed.
+    public var windowCount: Int
+    /// How many terminal tabs are attached to it; 0 when closed.
+    public var tabsOpen: Int
+    /// Shown the short way (`BoardModel.shortFolder`).
+    public var folder: String?
+    /// The startup command; nil for a plain shell or no definition.
+    public var command: String?
+    /// Comes back after a restart.
+    public var reopen: Bool?
+    /// Keeps its command running ("kept running").
+    public var keep: Bool?
+    /// Stays, closed, after its last shell exits.
+    public var permanent: Bool?
+    public var madeByMacMosh: Bool
+    /// What a click on the desk's row does: the menu's `Open <desk>`. nil in the greyed list.
+    public var open: BoardButton?
+    /// New window (when open), Rename…, Remove…; none in the greyed list.
+    public var buttons: [BoardButton]
+
+    /// The window names that are not empty, in window order.
+    public var windowNames: [String] { windows.map(\.name).filter { !$0.isEmpty } }
+
+    public init(name: String, isOpen: Bool, windows: [BoardWindow], windowCount: Int, tabsOpen: Int,
+                folder: String?, command: String?, reopen: Bool?, keep: Bool?, permanent: Bool?,
+                madeByMacMosh: Bool, open: BoardButton?, buttons: [BoardButton]) {
+        self.name = name
+        self.isOpen = isOpen
+        self.windows = windows
+        self.windowCount = windowCount
+        self.tabsOpen = tabsOpen
+        self.folder = folder
+        self.command = command
+        self.reopen = reopen
+        self.keep = keep
+        self.permanent = permanent
+        self.madeByMacMosh = madeByMacMosh
+        self.open = open
+        self.buttons = buttons
+    }
+}
+
+/// A desk whose last shell exited and that the workhorse removed (section 7.1 C). The tracker of a
+/// later step makes these; the board only shows them. It keeps every flag, so Start again can pass them back.
+public struct EndedDesk: Sendable, Equatable {
+    public var name: String
+    /// In full, as the definition saved it.
+    public var folder: String
+    public var command: String?
+    public var reopen: Bool
+    public var keep: Bool
+    /// When a check first found it gone.
+    public var endedAt: Date
+    /// Set by `BoardModel.build`: the folder shown the short way.
+    public var shownFolder: String
+    /// Set by `BoardModel.build`: Start again, Start again and keep it, Forget.
+    public var buttons: [BoardButton]
+
+    public init(name: String, folder: String, command: String?, reopen: Bool, keep: Bool, endedAt: Date) {
+        self.name = name
+        self.folder = folder
+        self.command = command
+        self.reopen = reopen
+        self.keep = keep
+        self.endedAt = endedAt
+        self.shownFolder = folder
+        self.buttons = []
+    }
+}
+
+/// One button in the window: its title, a line under it if it needs one, and what it does.
+public struct BoardButton: Sendable, Equatable {
+    public var title: String
+    public var note: String?
+    public var action: BoardAction
+
+    public init(title: String, note: String? = nil, action: BoardAction) {
+        self.title = title
+        self.note = note
+        self.action = action
+    }
+
+    /// A button of the menu's (`ButtonRules`), with its title and its action as the window takes it.
+    init(_ button: ActionButton) {
+        self.init(title: button.title, action: BoardAction(button.action))
+    }
+}
+
+/// What a window button does: the menu's own action, run through `MenuRefresher.perform` as the menu's
+/// line is, or one of the window's own actions.
+public enum BoardAction: Sendable, Equatable {
+    case menu(MenuAction)
+    case window(WindowAction)
+
+    /// The menu's action, except for the three the window does in place of a terminal tab (main
+    /// window design, section 7.3): `desk new` is the window's New desk form, `desk rename` its Rename
+    /// form, and `desk remove --ask` its Remove confirmation.
+    public init(_ action: MenuAction) {
+        switch action {
+        case .tab(let args) where args.count == 3 && args[0] == "desk" && args[1] == "new":
+            self = .window(.newDesk(workhorse: args[2]))
+        case .tab(let args) where args.count == 4 && args[0] == "desk" && args[1] == "rename":
+            self = .window(.rename(workhorse: args[2], desk: args[3]))
+        case .tab(let args) where args.count == 5 && args[0] == "desk" && args[1] == "remove" && args[4] == "--ask":
+            self = .window(.remove(workhorse: args[2], desk: args[3]))
+        default:
+            self = .menu(action)
+        }
+    }
+}
+
+/// The window's own actions (main window design, section 7.2). Nothing runs them yet: the forms come
+/// in step 4, the ended desks in step 5.
+public enum WindowAction: Sendable, Equatable {
+    /// The New desk form.
+    case newDesk(workhorse: String)
+    /// The Rename form.
+    case rename(workhorse: String, desk: String)
+    /// The Remove confirmation.
+    case remove(workhorse: String, desk: String)
+    /// Makes an ended desk again as it was; with `keepIt`, permanent from then on.
+    case startAgain(workhorse: String, desk: String, keepIt: Bool)
+    /// Takes an ended desk off the list.
+    case forget(workhorse: String, desk: String)
+    /// Opens a tab on each of these running desks, which have none (section 7.1 A).
+    case openAllWithoutTab(workhorse: String, desks: [String])
+}
