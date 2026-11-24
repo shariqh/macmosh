@@ -98,7 +98,41 @@ private func locked(_ w: Workhorse = attic) -> Gathered {
     /// What `BoardModel.build` makes of the refresher's values now.
     private func expected(_ r: MenuRefresher, order: [Workhorse], timeZone: TimeZone = formatZone) -> Board {
         BoardModel.build(latest: r.latest, lastReady: r.lastReady, checking: r.checking, order: order,
-                         waitingForDeskServer: r.waitingForDeskServer, now: formatNow, timeZone: timeZone)
+                         waitingForDeskServer: r.waitingForDeskServer, tabs: r.tabsSeen, now: formatNow, timeZone: timeZone)
+    }
+
+    /// Only this Mac's tab records change between two checks: the board changes with them, as the menu does,
+    /// and is built from the records, terminal and time the menu's build had (issue #134).
+    @Test func aChangeInTheTabRecordsAloneChangesTheBoard() async throws {
+        let w = Workhorse.sample(id: "attic", name: "Attic", user: "alex")
+        let same = Gathered.checked(.sample(.ready(signIns: true), workhorse: w, status: windowsReport(),
+                                            homeReachable: true, checkedAt: checkedAt))
+        let store = scratchTabRecords(running: [1: 10])
+        let saved = SavedList([w])
+        let refresher = MenuRefresher(load: { try saved.load() }, gather: { _ in [same] }, save: { _ in }, log: { _ in },
+                                      pause: { _ in }, tabRecords: store, now: { windowsNow }, tabTerminal: { .iterm2 })
+        let screen = BoardOnScreen(refresher: refresher, load: { try saved.load() }, log: { _ in },
+                                   now: { formatNow }, timeZone: formatZone)
+        await screen.reloadList()
+        await refresher.refresh()
+        func notes() -> BoardDesk? { screen.board.workhorses.first?.desks.first { $0.name == "notes" } }
+        #expect(notes()?.open?.title == "Open notes in a new tab")
+        let latest = refresher.latest, before = screen.board
+
+        try store.write(sampleTabRecord(label: "c1d2e3f4a5b6c7d8", workhorse: "attic", desk: "notes", askedWindow: "@7",
+                                        pid: 1, started: 10, openedAt: windowsNow.addingTimeInterval(-60)))
+        await refresher.refresh()
+        #expect(refresher.latest == latest)
+        #expect(refresher.tabsSeen == TabsSeen(tabs: TabsOnThisMac(records: store.records(), terminal: .iterm2), at: windowsNow))
+        #expect(screen.board != before)
+        #expect(notes()?.open == BoardButton(title: "Go to notes", action: .menu(.focus(
+            label: "c1d2e3f4a5b6c7d8", orOpen: ["connect", "attic", "notes", "--window", "@7"]))))
+        #expect(screen.board == expected(refresher, order: [w]))
+        // The menu, built from the same check, offers the same.
+        #expect(entry(refresher.menu.entries, "desk:attic:notes")?.action == notes()?.open.map { b -> MenuAction in
+            if case .menu(let a) = b.action { return a }
+            return .none
+        })
     }
 
     @Test func itFollowsTheRefreshersValues() async {

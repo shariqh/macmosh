@@ -5,7 +5,8 @@ import Foundation
 /// action (main window design, section 7.2). It is the window's own, as `MenuOnScreen` is the menu's.
 ///
 /// It follows the values `MenuRefresher` publishes for the window (`latest`, `lastReady`, `checking`,
-/// `waitingForDeskServer`), builds the board from them with `BoardModel.build`, and publishes it only
+/// `waitingForDeskServer`, and `tabsSeen`, the tabs the menu's last build had), builds the board from them
+/// with `BoardModel.build`, and publishes it only
 /// when it differs from the board on screen. The menu's view never observes this, and the window's
 /// views never observe `MenuOnScreen`, so neither redraws the other. Nothing here changes the
 /// refresher's menu: every change the window asks for goes through the refresher, and the menu takes
@@ -32,6 +33,7 @@ public final class BoardOnScreen: ObservableObject {
         var lastReady: [String: CheckResult]
         var checking: Set<String>
         var waitingForDeskServer: Set<String>
+        var tabs: TabsSeen?
     }
 
     private let load: @Sendable () throws -> [Workhorse]
@@ -57,23 +59,27 @@ public final class BoardOnScreen: ObservableObject {
         self.now = now
         self.timeZone = timeZone
         inputs = Inputs(latest: refresher.latest, lastReady: refresher.lastReady, checking: refresher.checking,
-                        waitingForDeskServer: refresher.waitingForDeskServer)
+                        waitingForDeskServer: refresher.waitingForDeskServer, tabs: refresher.tabsSeen)
         notice = refresher.notice
         board = BoardModel.build(latest: inputs.latest, lastReady: inputs.lastReady, checking: inputs.checking,
-                                 order: [], waitingForDeskServer: inputs.waitingForDeskServer, now: now(),
-                                 timeZone: timeZone)
+                                 order: [], waitingForDeskServer: inputs.waitingForDeskServer, tabs: inputs.tabs,
+                                 now: now(), timeZone: timeZone)
         // Apple, Published (https://developer.apple.com/documentation/combine/published): "publishing
         // occurs in the property's willSet block, meaning subscribers receive the new value before it's
         // actually set on the property". So the new values are read from the publishers, never from the
         // refresher, as `MenuOnScreen` does. The refresher is a main-actor class, so they arrive on the
         // main actor; `MainActor.assumeIsolated` "will crash" if that is ever not so
         // (https://developer.apple.com/documentation/swift/mainactor/assumeisolated(_:file:line:)).
+        // A fifth value is joined with Apple's combineLatest(_:) (https://developer.apple.com/documentation/combine/publisher/combinelatest(_:)):
+        // "Subscribes to an additional publisher and publishes a tuple upon receiving output from either publisher."
         watches.append(refresher.$latest
             .combineLatest(refresher.$lastReady, refresher.$checking, refresher.$waitingForDeskServer)
-            .sink { [weak self] latest, lastReady, checking, waiting in
+            .combineLatest(refresher.$tabsSeen)
+            .sink { [weak self] four, tabs in
+                let (latest, lastReady, checking, waiting) = four
                 MainActor.assumeIsolated {
                     self?.take(Inputs(latest: latest, lastReady: lastReady, checking: checking,
-                                      waitingForDeskServer: waiting))
+                                      waitingForDeskServer: waiting, tabs: tabs))
                 }
             })
         watches.append(refresher.$notice.sink { [weak self] next in
@@ -135,8 +141,8 @@ public final class BoardOnScreen: ObservableObject {
 
     private func rebuild() {
         let next = BoardModel.build(latest: inputs.latest, lastReady: inputs.lastReady, checking: inputs.checking,
-                                    order: order, waitingForDeskServer: inputs.waitingForDeskServer, now: now(),
-                                    timeZone: timeZone)
+                                    order: order, waitingForDeskServer: inputs.waitingForDeskServer, tabs: inputs.tabs,
+                                    now: now(), timeZone: timeZone)
         if next != board { board = next }
     }
 }
