@@ -35,6 +35,9 @@ public enum OSSupport {
 ///   or nil. Where a value has no unknown (a desk's window count, a definition's reopen flag), the
 ///   whole desk or definition is left out. A desk or definition whose name is not a valid
 ///   `DeskName` is left out too.
+/// - a `windowinfo` or `view` line (script 0.7.0 and later) with a window id that isn't `@` and digits, or
+///   a count that isn't one, is left out; so is a `windowinfo` line for a window the report didn't list.
+///   A report without them gives windows with no id and desks with no views.
 public struct HostStatus: Sendable, Equatable {
     public enum Tri: String, Sendable { case yes, no, unknown }
     public struct Power: Sendable, Equatable {
@@ -58,12 +61,39 @@ public struct HostStatus: Sendable, Equatable {
     public struct Window: Sendable, Equatable {
         public var index: Int
         public var name: String
+        /// The rest comes from the window's `windowinfo` line (script 0.7.0 and later), and is nil
+        /// without one. `id` is tmux's window id, `@` and digits.
+        public var id: String? = nil
+        /// Whether the desk's own session shows this window now.
+        public var deskShows: Bool? = nil
+        /// How many terminal tabs show this window, through the desk or any of its views.
+        public var tabs: Int? = nil
+    }
+    /// A small session that one tab uses to show a window of its desk (script 0.7.0 and later).
+    public struct View: Sendable, Equatable {
+        public var name: String
+        /// The window the view shows now: it follows the tab when the person switches windows in it.
+        public var windowId: String
+        public var tabs: Int
+        /// The label MacMosh gave the tab (script 0.8.0 and later), or nil when it has none.
+        public var label: String?
+
+        public init(name: String, windowId: String, tabs: Int, label: String?) {
+            self.name = name
+            self.windowId = windowId
+            self.tabs = tabs
+            self.label = label
+        }
     }
     public struct Desk: Sendable, Equatable {
         public var name: DeskName
         public var windows: [Window]
         public var windowCount: Int
         public var attached: Int
+        public var views: [View] = []
+
+        /// Whether the report gave any of this desk's windows a `windowinfo` line.
+        public var hasWindowInfo: Bool { windows.contains { $0.id != nil } }
     }
     public struct Definition: Sendable, Equatable {
         public var name: DeskName
@@ -132,6 +162,8 @@ public struct HostStatus: Sendable, Equatable {
         s.scriptVersion = lines[start].count > 2 ? lines[start][2] : ""
 
         var windows: [String: [Window]] = [:]
+        var windowInfo: [String: [Int: (id: String, deskShows: Bool, tabs: Int)]] = [:]
+        var views: [String: [View]] = [:]
         for f in lines[(start + 1)..<end] {
             switch f[0] {
             case "os":
@@ -169,6 +201,20 @@ public struct HostStatus: Sendable, Equatable {
                 if let index = Int(field(f, 2)) {
                     windows[field(f, 1), default: []].append(Window(index: index, name: field(f, 3)))
                 }
+            case "windowinfo":
+                // desk, index, window id, 1 when the desk's own session shows it, tabs showing it.
+                if let index = Int(field(f, 2)), isWindowId(field(f, 3)), let shows = flag(field(f, 4)),
+                   let tabs = count(field(f, 5)) {
+                    windowInfo[field(f, 1), default: [:]][index] = (field(f, 3), shows, tabs)
+                }
+            case "view":
+                // desk, view name, the window it shows now, its tabs, and from 0.8.0 its label.
+                if !field(f, 2).isEmpty, isWindowId(field(f, 3)), let tabs = count(field(f, 4)) {
+                    let label = field(f, 5)
+                    views[field(f, 1), default: []].append(
+                        View(name: field(f, 2), windowId: field(f, 3), tabs: tabs,
+                             label: TabLabel.isValid(label) ? label : nil))
+                }
             case "def":
                 if let definition = definition(f) { s.definitions.append(definition) }
             default:
@@ -179,7 +225,17 @@ public struct HostStatus: Sendable, Equatable {
         // A window line may come before its desk's line, so windows are attached once all are read.
         s.desks = s.desks.map { desk in
             var desk = desk
-            desk.windows = (windows[desk.name.value] ?? []).sorted { $0.index < $1.index }
+            let info = windowInfo[desk.name.value] ?? [:]
+            desk.windows = (windows[desk.name.value] ?? []).sorted { $0.index < $1.index }.map { window in
+                var window = window
+                if let found = info[window.index] {
+                    window.id = found.id
+                    window.deskShows = found.deskShows
+                    window.tabs = found.tabs
+                }
+                return window
+            }
+            desk.views = views[desk.name.value] ?? []
             return desk
         }
         return s
@@ -196,6 +252,17 @@ public struct HostStatus: Sendable, Equatable {
         case no: return .no
         default: return .unknown
         }
+    }
+
+    /// tmux's window id: `@` and one or more digits.
+    static func isWindowId(_ value: String) -> Bool {
+        value.count >= 2 && value.hasPrefix("@") && value.dropFirst().allSatisfy { $0.isASCII && $0.isNumber }
+    }
+
+    /// A count: digits only, so not below 0.
+    private static func count(_ value: String) -> Int? {
+        guard !value.isEmpty, value.allSatisfy({ $0.isASCII && $0.isNumber }) else { return nil }
+        return Int(value)
     }
 
     private static func nonEmpty(_ value: String) -> String? { value.isEmpty ? nil : value }

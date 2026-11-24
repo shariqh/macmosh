@@ -30,5 +30,7 @@ public struct Paths: Sendable {
     public var workhorsesFile: URL { supportDir.appendingPathComponent("workhorses.json") }
     public var settingsFile: URL { supportDir.appendingPathComponent("settings.json") }
     public var knownHostsFile: URL { supportDir.appendingPathComponent("known_hosts") }
+    /// One record per terminal tab opened with a window option (menu design 8.1).
+    public var tabsDir: URL { supportDir.appendingPathComponent("tabs", isDirectory: true) }
     public var defaultIdentity: URL { sshDir.appendingPathComponent("macmosh_ed25519") }
 }

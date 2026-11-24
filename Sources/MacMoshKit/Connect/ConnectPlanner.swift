@@ -29,18 +29,23 @@ public enum ConnectPlanner {
 
     /// `path` is this Mac's `PATH`, for putting mosh's folder on it when it is missing: mosh is a script that
     /// starts `mosh-client` by name. It defaults to the running program's own.
+    ///
+    /// `tab`, for a tab opened with a window option, puts `--label <word>` and that option before the desk's
+    /// name (menu design 8.3). Without it the lines are exactly as before. `connect` never asks for it in
+    /// Tabs mode.
     public static func plan(workhorse w: Workhorse, desk: DeskName, mode: ConnectionMode, address: String,
                             paths: Paths, moshPath: String, localeEnvironment: [String: String],
-                            path: String? = ProcessInfo.processInfo.environment["PATH"]) -> ConnectPlan {
+                            path: String? = ProcessInfo.processInfo.environment["PATH"],
+                            tab: TabRequest? = nil) -> ConnectPlan {
         switch mode {
         case .mosh:
             return mosh(w, desk: desk, address: address, paths: paths, moshPath: moshPath,
-                        localeEnvironment: localeEnvironment, path: path)
+                        localeEnvironment: localeEnvironment, path: path, tab: tab)
         case .tabs:
-            return ssh(w, desk: desk, address: address, paths: paths, control: true,
+            return ssh(w, desk: desk, address: address, paths: paths, control: true, tab: tab,
                        intro: "Opening \"\(desk.value)\" on \(w.name) as iTerm2 tabs. If the connection drops, the tabs close and this tab keeps trying.")
         case .ssh:
-            return ssh(w, desk: desk, address: address, paths: paths, control: false,
+            return ssh(w, desk: desk, address: address, paths: paths, control: false, tab: tab,
                        intro: "Opening \"\(desk.value)\" on \(w.name) over plain ssh. If the connection drops, this tab ends; your work keeps running.")
         }
     }
@@ -48,9 +53,17 @@ public enum ConnectPlanner {
     // MARK: - The three lines
 
     /// The line from sitting 1: mosh with the pinned-key ssh, the one-week timeout and the script's
-    /// `attach`. The desk name is passed as `$1`, never pasted into the remote shell's text.
+    /// `attach`. The desk name is passed as `$1`, never pasted into the remote shell's text. With `tab`, the
+    /// label, the option and the desk name are passed as `"$@"`, each its own argument.
     private static func mosh(_ w: Workhorse, desk: DeskName, address: String, paths: Paths, moshPath: String,
-                             localeEnvironment: [String: String], path: String?) -> ConnectPlan {
+                             localeEnvironment: [String: String], path: String?, tab: TabRequest?) -> ConnectPlan {
+        let remote: [String]
+        if let tab {
+            remote = ["/bin/sh", "-c", "exec \"$HOME/.macmosh/macmosh-host\" attach \"$@\"", "macmosh-host"]
+                + tab.attachArguments + [desk.value]
+        } else {
+            remote = ["/bin/sh", "-c", "exec \"$HOME/.macmosh/macmosh-host\" attach \"$1\"", "macmosh-host", desk.value]
+        }
         let argv = [
             moshPath,
             "--predict=\(w.prediction.rawValue)",
@@ -58,8 +71,7 @@ public enum ConnectPlanner {
             "--server=MOSH_SERVER_NETWORK_TMOUT=\(moshServerTimeout) PATH=\"$PATH:/opt/homebrew/bin:/usr/local/bin\" mosh-server",
             "\(w.user)@\(address)",
             "--",
-            "/bin/sh", "-c", "exec \"$HOME/.macmosh/macmosh-host\" attach \"$1\"", "macmosh-host", desk.value,
-        ]
+        ] + remote
         var environment: [String: String] = [:]
         if let withMosh = pathWithFolderOf(moshPath, in: path) { environment["PATH"] = withMosh }
         if let name = localeVariableToSet(localeEnvironment) { environment[name] = "en_US.UTF-8" }
@@ -69,8 +81,8 @@ public enum ConnectPlanner {
 
     /// Tabs (`--cc`, iTerm2's control mode, with the retry loop) and plain ssh share one shape.
     private static func ssh(_ w: Workhorse, desk: DeskName, address: String, paths: Paths, control: Bool,
-                            intro: String) -> ConnectPlan {
-        let attach = (control ? ["attach", "--cc"] : ["attach"]) + [desk.value]
+                            tab: TabRequest?, intro: String) -> ConnectPlan {
+        let attach = (control ? ["attach", "--cc"] : ["attach"]) + (tab?.attachArguments ?? []) + [desk.value]
         let argv = SSHInvocation.argv(for: w, address: address, paths: paths, batch: false, tty: true,
                                       extraOptions: SSHInvocation.noPasswordOptions + keepAliveOptions,
                                       remote: SSHInvocation.hostCommand(attach))
