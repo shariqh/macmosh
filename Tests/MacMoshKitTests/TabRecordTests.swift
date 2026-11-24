@@ -122,3 +122,100 @@ private func mode(_ url: URL) throws -> Int {
         #expect(TabRecord.Terminal(environment: [:]) == .unknown)
     }
 }
+
+/// A stand-in for the two system calls: which process numbers exist, and each one's start time.
+struct FakeProcessProbe: ProcessProbe {
+    var running: [Int32: Int64]
+    func exists(_ pid: Int32) -> Bool { running[pid] != nil }
+    func startTime(of pid: Int32) -> Int64? { running[pid] }
+}
+
+/// When a record is trusted (menu design 8.2): only while its process exists and started when it says.
+@Suite struct TabRecordLivenessTests {
+    private func store(_ running: [Int32: Int64]) throws -> TabRecordStore {
+        TabRecordStore(paths: try temporaryPaths(), probe: FakeProcessProbe(running: running))
+    }
+
+    private func fileExists(_ store: TabRecordStore, _ label: String) -> Bool {
+        FileManager.default.fileExists(atPath: store.folder.appendingPathComponent("\(label).json").path)
+    }
+
+    @Test func aRecordWhoseProcessRunsIsLive() throws {
+        let s = try store([4242: 1_800_000_000_123_456])
+        try s.write(sampleTabRecord(pid: 4242, started: 1_800_000_000_123_456))
+        #expect(s.liveRecords().map(\.label) == ["0123456789abcdef"])
+        #expect(fileExists(s, "0123456789abcdef"))
+    }
+
+    @Test func aRecordWhoseProcessIsGoneIsDroppedAndRemoved() throws {
+        let s = try store([:])
+        try s.write(sampleTabRecord(pid: 4242))
+        #expect(s.liveRecords().isEmpty)
+        #expect(!fileExists(s, "0123456789abcdef"))
+    }
+
+    /// The same number given to a later process: the start time differs, so the record is not trusted.
+    @Test func aRecordWhoseProcessNumberWasReusedIsDroppedAndRemoved() throws {
+        let s = try store([4242: 1_800_000_999_000_000])
+        try s.write(sampleTabRecord(pid: 4242, started: 1_800_000_000_123_456))
+        #expect(s.liveRecords().isEmpty)
+        #expect(!fileExists(s, "0123456789abcdef"))
+    }
+
+    @Test func aRecordWhoseStartTimeCantBeReadIsNotTrusted() throws {
+        struct NoStartTime: ProcessProbe {
+            func exists(_ pid: Int32) -> Bool { true }
+            func startTime(of pid: Int32) -> Int64? { nil }
+        }
+        let s = TabRecordStore(paths: try temporaryPaths(), probe: NoStartTime())
+        try s.write(sampleTabRecord())
+        #expect(s.liveRecords().isEmpty)
+    }
+
+    /// 0 and below name a process group to kill(2), never one process.
+    @Test(arguments: [Int32(0), -1, -4242])
+    func aProcessNumberBelowOneIsNeverLive(_ pid: Int32) throws {
+        let s = try store([pid: 1_800_000_000_123_456])
+        try s.write(sampleTabRecord(pid: pid, started: 1_800_000_000_123_456))
+        #expect(s.liveRecords().isEmpty)
+    }
+
+    @Test func liveAndDeadRecordsAreSorted() throws {
+        let s = try store([1: 10, 2: 20])
+        try s.write(sampleTabRecord(label: "aaaaaaaaaaaaaaaa", pid: 1, started: 10))
+        try s.write(sampleTabRecord(label: "bbbbbbbbbbbbbbbb", pid: 2, started: 99))
+        try s.write(sampleTabRecord(label: "cccccccccccccccc", pid: 3, started: 30))
+        #expect(s.liveRecords().map(\.label) == ["aaaaaaaaaaaaaaaa"])
+        #expect(s.records().map(\.label) == ["aaaaaaaaaaaaaaaa"])
+    }
+
+    @Test func aFileThatIsNotARecordIsNotRemoved() throws {
+        let s = try store([:])
+        try s.write(sampleTabRecord())
+        try Data("not json".utf8).write(to: s.folder.appendingPathComponent("cccccccccccccccc.json"))
+        #expect(s.liveRecords().isEmpty)
+        #expect(fileExists(s, "cccccccccccccccc"))
+    }
+
+    // MARK: The real calls
+
+    @Test func theRealProbeSeesThisProcessAndItsStartTime() throws {
+        let probe = SystemProcessProbe()
+        let me = getpid()
+        #expect(probe.exists(me))
+        let started = try #require(probe.startTime(of: me))
+        #expect(probe.startTime(of: me) == started)
+        let now = Int64(Date().timeIntervalSince1970 * 1_000_000)
+        #expect(started <= now && started > now - 86_400 * 1_000_000)
+    }
+
+    @Test func theRealProbeDoesNotSeeAProcessThatEnded() throws {
+        let child = Process()
+        child.executableURL = URL(fileURLWithPath: "/usr/bin/true")
+        try child.run()
+        child.waitUntilExit()
+        let probe = SystemProcessProbe()
+        #expect(!probe.exists(child.processIdentifier))
+        #expect(probe.startTime(of: child.processIdentifier) == nil)
+    }
+}

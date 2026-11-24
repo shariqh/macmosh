@@ -83,9 +83,27 @@ public enum TabRecordError: Error, Equatable {
 /// then renamed into place, so a reader never sees half a record.
 public struct TabRecordStore: Sendable {
     public let folder: URL
+    private let probe: any ProcessProbe
 
-    public init(paths: Paths) {
+    public init(paths: Paths, probe: any ProcessProbe = SystemProcessProbe()) {
         self.folder = paths.tabsDir
+        self.probe = probe
+    }
+
+    /// The records that can be trusted, oldest opened first (menu design 8.2): those whose process still
+    /// exists and started when the record says. Every other record is removed. The terminal device alone is
+    /// never trusted, because nothing says a later tab can't get the same one.
+    public func liveRecords() -> [TabRecord] {
+        records().filter { record in
+            if isLive(record) { return true }
+            remove(label: record.label)
+            return false
+        }
+    }
+
+    func isLive(_ record: TabRecord) -> Bool {
+        // 0 and below name a process group to kill(2), never one process.
+        record.pid > 0 && probe.exists(record.pid) && probe.startTime(of: record.pid) == record.started
     }
 
     /// Writes (or replaces) the record's file.
