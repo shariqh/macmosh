@@ -4,6 +4,9 @@
 #   scripts/build-app.sh            signs with the certificate named in MACMOSH_SIGN_IDENTITY,
 #                                   or ad hoc when that variable is unset or empty
 #   scripts/build-app.sh --adhoc    signs ad hoc whatever the variable says
+#   scripts/build-app.sh --debug    a debug build in dist/debug/MacMosh.app, signed ad hoc, for CI's
+#                                   pictures of the menu (.github/workflows/menu-pictures.yml). Only a
+#                                   debug build can show a sample menu (MACMOSH_SAMPLE_MENU).
 #
 # The certificate's name comes only from that environment variable. It is never written to a
 # file, a log or this script's output.
@@ -12,11 +15,16 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 adhoc=0
+config=release
 case "${1:-}" in
     "") ;;
     --adhoc) adhoc=1 ;;
+    --debug)
+        adhoc=1
+        config=debug
+        ;;
     *)
-        echo "usage: scripts/build-app.sh [--adhoc]" >&2
+        echo "usage: scripts/build-app.sh [--adhoc | --debug]" >&2
         exit 2
         ;;
 esac
@@ -25,6 +33,9 @@ if [ -z "${MACMOSH_SIGN_IDENTITY:-}" ]; then
 fi
 
 app="dist/MacMosh.app"
+if [ "$config" = debug ]; then
+    app="dist/debug/MacMosh.app"
+fi
 entitlements="App/MacMosh.entitlements"
 
 # The version is read from the source, the same constant that `macmosh --version` prints.
@@ -34,10 +45,10 @@ if [ -z "$version" ]; then
     exit 1
 fi
 
-echo "build-app.sh: swift build -c release (version $version)"
-swift build -c release --product MacMoshApp
-swift build -c release --product macmosh
-bin=$(swift build -c release --show-bin-path)
+echo "build-app.sh: swift build -c $config (version $version)"
+swift build -c "$config" --product MacMoshApp
+swift build -c "$config" --product macmosh
+bin=$(swift build -c "$config" --show-bin-path)
 
 echo "build-app.sh: making $app"
 rm -rf "$app"
@@ -62,6 +73,23 @@ if ! cmp -s "$bin/MacMoshApp" "$app/Contents/MacOS/MacMosh"; then
 fi
 if ! cmp -s "$bin/macmosh" "$app/Contents/Helpers/macmosh"; then
     echo "build-app.sh: FAILED: Contents/Helpers/macmosh is not the macmosh build" >&2
+    exit 1
+fi
+
+# The sample menus CI takes pictures of are compiled into debug builds only (#if DEBUG in
+# Sources/MacMoshKit/Menu/SampleMenu.swift and the app). A release app must not even contain the name
+# of the variable that picks one; a debug app must, which shows that this search finds it.
+sample_variable=MACMOSH_SAMPLE_MENU
+if [ "$config" = release ]; then
+    for file in "$app/Contents/MacOS/MacMosh" "$app/Contents/Helpers/macmosh"; do
+        if grep -qaF "$sample_variable" "$file"; then
+            echo "build-app.sh: FAILED: the release build $file contains $sample_variable: sample menus must stay in debug builds" >&2
+            exit 1
+        fi
+    done
+    echo "build-app.sh: no sample menu in the release build ($sample_variable is not in either binary)"
+elif ! grep -qaF "$sample_variable" "$app/Contents/MacOS/MacMosh"; then
+    echo "build-app.sh: FAILED: the debug app does not contain $sample_variable, so the release check proves nothing" >&2
     exit 1
 fi
 
