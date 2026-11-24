@@ -314,7 +314,7 @@ six_desks() {
 
     # Check now asks for a check, through the same path as the menu's line.
     since=$(moment)
-    if click_id "button.menu"; then
+    if click_id "button.checkNow"; then
         expect_ran "Check now asks for a check" "$since" "refresh"
     else
         result NOT-SHOWN "Check now asks for a check" "no Check now button"

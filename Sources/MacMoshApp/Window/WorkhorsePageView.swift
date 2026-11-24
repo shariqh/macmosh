@@ -45,6 +45,7 @@ struct WorkhorsePageView: View {
                     Text(verbatim: checked).foregroundStyle(.secondary)
                 }
                 Button { run(page.checkNow) } label: { Text(verbatim: page.checkNow.title) }
+                    .accessibilityIdentifier(WindowMarks.button(page.checkNow))
             }
             if let hint = page.hint {
                 Text(verbatim: hint).fixedSize(horizontal: false, vertical: true)

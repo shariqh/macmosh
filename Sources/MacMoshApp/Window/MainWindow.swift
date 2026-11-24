@@ -79,6 +79,7 @@ enum WindowMarks {
         case .window(.remove): return "button.remove"
         case .window(.openAllWithoutTab): return "button.openAllWithoutTab"
         case .window(.startAgain), .window(.forget): return "button.ended"
+        case .menu(.refresh): return "button.checkNow"
         case .menu(let action): return (["button.menu"] + action.words).joined(separator: ".")
         }
     }
