@@ -34,6 +34,38 @@ private final class SavedList: @unchecked Sendable {
     }
 }
 
+/// A saved list whose reads can be held: after `holdNext`, each read takes the list as it is then and
+/// waits until `release`, like a slow disk.
+private final class GatedList: @unchecked Sendable {
+    private let condition = NSCondition()
+    private var list: [Workhorse]
+    private var holding = false
+    private var released = false
+    private var held = 0
+    init(_ list: [Workhorse]) { self.list = list }
+    /// A new list; the reads after this one are not held.
+    func set(_ list: [Workhorse]) { condition.withLock { self.list = list; holding = false } }
+    func holdNext() { condition.withLock { holding = true; released = false } }
+    func release() { condition.withLock { released = true; condition.broadcast() } }
+    func load() -> [Workhorse] {
+        condition.lock()
+        defer { condition.unlock() }
+        let taken = list
+        guard holding else { return taken }
+        held += 1
+        while !released { condition.wait() }
+        return taken
+    }
+    /// Returns once a read is being held, or fails after two seconds.
+    func waitUntilHeld() async throws {
+        for _ in 0..<200 {
+            if condition.withLock({ held > 0 }) { return }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        Issue.record("no read was held")
+    }
+}
+
 private final class Lines: @unchecked Sendable {
     private let lock = NSLock()
     private var lines: [String] = []
@@ -145,6 +177,25 @@ private func locked(_ w: Workhorse = attic) -> Gathered {
         #expect(screen.board.workhorses.last?.headline == "Den · Still checking…")
         saved.breakIt()
         await screen.reloadList()
+        #expect(screen.board.workhorses.map(\.id) == ["attic", "den"])
+    }
+
+    /// A slow read of the saved list that started before a later one was shown can't put the older list back.
+    @Test func aSlowEarlierReadDoesNotReplaceALaterOne() async throws {
+        let saved = GatedList([attic])
+        let refresher = MenuRefresher(load: { [attic] }, gather: { _ in [] }, save: { _ in }, log: { _ in },
+                                      pause: { _ in })
+        let screen = BoardOnScreen(refresher: refresher, load: { saved.load() }, log: { _ in }, now: { formatNow },
+                                   timeZone: formatZone)
+        await screen.reloadList()
+        saved.holdNext()
+        let slow = Task { await screen.reloadList() }
+        try await saved.waitUntilHeld()
+        saved.set([attic, den])
+        await screen.reloadList()
+        #expect(screen.board.workhorses.map(\.id) == ["attic", "den"])
+        saved.release()
+        await slow.value
         #expect(screen.board.workhorses.map(\.id) == ["attic", "den"])
     }
 
