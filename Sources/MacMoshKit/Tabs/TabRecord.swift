@@ -51,6 +51,16 @@ public struct TabRecord: Codable, Sendable, Equatable {
         self.terminal = terminal
         self.openedAt = openedAt
     }
+
+    /// True for `/dev/ttys` followed by one or more digits 0 to 9, the shape of a terminal tab's device. Only
+    /// such a device is handed to a terminal to find its tab; anything else counts as a tab that has gone.
+    /// Compared one Unicode scalar at a time, so no look-alike or combining mark passes.
+    public static func isTerminalDevice(_ tty: String) -> Bool {
+        let prefix = Array("/dev/ttys".unicodeScalars)
+        let scalars = Array(tty.unicodeScalars)
+        guard scalars.count > prefix.count, Array(scalars.prefix(prefix.count)) == prefix else { return false }
+        return scalars.dropFirst(prefix.count).allSatisfy { ("0"..."9").contains($0) }
+    }
 }
 
 extension JSONEncoder {
