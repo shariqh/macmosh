@@ -71,6 +71,17 @@ enum WindowMarks {
     static func desk(_ name: String) -> String { "desk.\(name)" }
     static func open(_ name: String) -> String { "desk.\(name).open" }
     static func strip(_ name: String) -> String { "desk.\(name).strip" }
+    /// A button by what it does: `button.openAllWithoutTab`, `button.menu.connect.attic.api`.
+    static func button(_ b: BoardButton) -> String {
+        switch b.action {
+        case .window(.newDesk): return "button.newDesk"
+        case .window(.rename): return "button.rename"
+        case .window(.remove): return "button.remove"
+        case .window(.openAllWithoutTab): return "button.openAllWithoutTab"
+        case .window(.startAgain), .window(.forget): return "button.ended"
+        case .menu(let action): return (["button.menu"] + action.words).joined(separator: ".")
+        }
+    }
     static let headline = "page.headline"
     static let addMac = "page.addMac"
 }
@@ -115,6 +126,7 @@ struct ButtonRow: View {
         HStack(spacing: 8) {
             ForEach(Array(buttons.enumerated()), id: \.offset) { _, button in
                 Button { run(button) } label: { Text(verbatim: button.title) }
+                    .accessibilityIdentifier(WindowMarks.button(button))
             }
         }
     }

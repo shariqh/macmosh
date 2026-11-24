@@ -1,7 +1,10 @@
 name: Menu pictures
 
 # Starts a debug build of the app with each sample menu (issue #113), opens its menu and submenus
-# with posted pointer events, and uploads a picture of each step with the app's log. It fails only
+# with posted pointer events, and uploads a picture of each step with the app's log. Then it opens the
+# MacMosh window from the menu on four samples (issue #125), clicks in it and closes it
+# (scripts/ci/drive-window.sh, which fails when the window shows at launch or does not open, a click
+# runs the wrong button, or closing the window ends the app). It fails only
 # when the app does not start, the menu does not open, a click runs the wrong row or none, an open
 # submenu closes under the pointer, or a held change is shown before the clicked row ran (and, in the
 # "changing" sample, when the hold could not be tested); never on how a picture looks.
@@ -52,10 +55,20 @@ jobs:
           codesign --force --sign - dist/debug/menutool
 
       - name: Drive the menu
+        id: menu
         timeout-minutes: 12
         env:
           MENU_OUT: ${{ runner.temp }}/menu-pictures
         run: scripts/ci/drive-menu.sh
+
+      # The MacMosh window (issue #125): opened from the menu's Open MacMosh line, clicked in, closed.
+      # It runs when the menu's step failed too, so one failure does not hide the other's pictures.
+      - name: Drive the window
+        if: ${{ !cancelled() && (steps.menu.outcome == 'success' || steps.menu.outcome == 'failure') }}
+        timeout-minutes: 12
+        env:
+          MENU_OUT: ${{ runner.temp }}/menu-pictures/window
+        run: scripts/ci/drive-window.sh
 
       - name: Upload the pictures and logs
         if: always()

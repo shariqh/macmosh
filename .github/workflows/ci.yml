@@ -67,6 +67,13 @@ jobs:
             exit 1
           fi
 
+          # The MacMosh window never opens at launch, only from the menu's Open MacMosh line (issue #125).
+          if grep -qF 'window opened' "$support/app-log.txt"; then
+            echo "the app logged 'window opened' at launch:" >&2
+            cat "$support/app-log.txt" >&2
+            exit 1
+          fi
+
           # Nobody has opened the menu yet, so the log must not say that anyone did.
           if grep -qF 'menu opened' "$support/app-log.txt"; then
             echo "the app logged 'menu opened' before anyone opened the menu:" >&2
