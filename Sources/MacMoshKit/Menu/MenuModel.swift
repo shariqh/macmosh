@@ -133,75 +133,66 @@ public enum MenuModel {
             if i > 0 { separator() }
             switch entry {
             case .checked(let result):
-                if waitingForDeskServer.contains(result.workhorse.id), result.state == .notSetUp(.deskServerDown) {
-                    entries.append(deskServerWaitBlock(result))
-                } else {
-                    states.append(result.state)
-                    entries.append(block(for: result, now: now, timeZone: timeZone))
-                }
+                let block = WorkhorseBlock.of(result, waitingForDeskServer: waitingForDeskServer, now: now,
+                                              timeZone: timeZone)
+                if block.kind != .waitingForDeskServer { states.append(result.state) }
+                entries.append(self.entry(for: block, workhorse: result.workhorse.id))
             case .stillChecking(let w):
-                let id = workhorseID(w)
-                entries.append(MenuEntry(id: id, title: "\(w.name) · Still checking…",
-                                         children: [.button(ButtonRules.checklist(w.id), under: id)]))
+                entries.append(self.entry(for: .stillChecking(w), workhorse: w.id))
             }
         }
         separator()
         entries.append(.button(ButtonRules.addAMac, under: "top"))
         entries.append(.button(ButtonRules.checkNow, under: "top"))
-        let symbol = mostUrgent(states).map(symbol(for:)) ?? stillCheckingSymbol
-        return MenuLines(symbol: symbol, entries: entries)
+        return MenuLines(symbol: symbol(forAll: states), entries: entries)
+    }
+
+    /// The menu's icon for the states of the workhorses that answered (a workhorse still being checked,
+    /// or waiting for its desk server, adds nothing): the most urgent one's, or "Still checking" for none.
+    public static func symbol(forAll states: [WorkhorseState]) -> String {
+        mostUrgent(states).map(symbol(for:)) ?? stillCheckingSymbol
     }
 
     // MARK: One workhorse
 
     /// Under "Waiting for the desk server". Every clause is true when it is shown (issue #88).
-    static let waitingForDeskServerHint = "Someone has logged in and the desk server isn't running yet. MacMosh's login agent starts it after a login; if it still isn't running in a minute, this menu says so."
+    static let waitingForDeskServerHint = WorkhorseBlock.waitingForDeskServerHint
 
-    private static func workhorseID(_ w: Workhorse) -> String { "wh:\(w.id)" }
-
-    /// A headline, the hint, and the checklist. No "Finish setting up…": the login agent is about to do it.
-    private static func deskServerWaitBlock(_ r: CheckResult) -> MenuEntry {
-        let id = workhorseID(r.workhorse)
-        return MenuEntry(id: id, title: "\(r.workhorse.name) · Waiting for the desk server", children: [
-            MenuEntry(id: "\(id):hint", title: waitingForDeskServerHint),
-            .button(ButtonRules.checklist(r.workhorse.id), under: id),
-        ])
-    }
-
-    /// The headline, and under it: the hint (a Ready workhorse with sign-ins working has none) and the
-    /// state's own button. Every state but Ready then has the checklist under it, flat.
+    /// One workhorse's block (`WorkhorseBlock` decides what is in it): the headline, and under it the
+    /// hint (a Ready workhorse with sign-ins working has none) and the state's own button. Every block
+    /// but a Ready one then has the checklist under it, flat.
     ///
     /// A Ready headline opens a submenu of the lines used rarely (issue #107), and has its desks and
     /// New desk… under it at the top level, after the hint and Fix…: a problem is never in a submenu.
-    private static func block(for r: CheckResult, now: Date, timeZone: TimeZone) -> MenuEntry {
-        let id = workhorseID(r.workhorse)
+    private static func entry(for block: WorkhorseBlock, workhorse: String) -> MenuEntry {
+        let id = "wh:\(workhorse)"
         var children: [MenuEntry] = []
-        if let hint = StatusFormat.hint(r, now: now, timeZone: timeZone) {
+        if let hint = block.hint {
             children.append(MenuEntry(id: "\(id):hint", title: hint))
         }
-        children += ButtonRules.forState(r).map { .button($0, under: id) }
-        guard case .ready = r.state else {
-            children.append(.button(ButtonRules.checklist(r.workhorse.id), under: id))
-            return MenuEntry(id: id, title: StatusFormat.headline(r), children: children)
+        children += block.stateButtons.map { .button($0, under: id) }
+        guard block.kind == .ready else {
+            children.append(.button(block.checklist, under: id))
+            return MenuEntry(id: id, title: block.headline, children: children)
         }
-        children += deskEntries(r)
-        children.append(.button(ButtonRules.newDesk(r.workhorse.id), under: id))
-        return MenuEntry(id: id, title: StatusFormat.headline(r), submenu: headlineSubmenu(r, under: id),
+        children += block.desks.map { deskEntry(workhorse: workhorse, $0) }
+        children += block.newDesk.map { [.button($0, under: id)] } ?? []
+        return MenuEntry(id: id, title: block.headline, submenu: headlineSubmenu(block, under: id),
                          children: children)
     }
 
     /// Share screen, a laptop's lid-closed switch, Restart…; then the summary line and the home-address
     /// light, as text; then the checklist. A separator between each group that has lines.
-    private static func headlineSubmenu(_ r: CheckResult, under id: String) -> [MenuEntry] {
+    private static func headlineSubmenu(_ block: WorkhorseBlock, under id: String) -> [MenuEntry] {
         var texts: [MenuEntry] = []
-        if let status = r.status {
-            texts.append(MenuEntry(id: "\(id):summary", title: StatusFormat.summaryLine(status)))
+        if let summary = block.summary {
+            texts.append(MenuEntry(id: "\(id):summary", title: summary))
         }
-        if let reachable = r.homeReachable {
-            texts.append(MenuEntry(id: "\(id):home", title: "Home address reachable from here: \(reachable ? "yes" : "no")"))
+        if let reachable = block.homeReachable {
+            texts.append(MenuEntry(id: "\(id):home", title: WorkhorseBlock.homeLine(reachable)))
         }
-        let groups = [ButtonRules.forHeadline(r).map { MenuEntry.button($0, under: id) }, texts,
-                      [.button(ButtonRules.checklist(r.workhorse.id), under: id)]]
+        let groups = [block.rareButtons.map { MenuEntry.button($0, under: id) }, texts,
+                      [.button(block.checklist, under: id)]]
         return joined(groups.filter { !$0.isEmpty }, under: id)
     }
 
@@ -215,37 +206,16 @@ public enum MenuModel {
         return lines
     }
 
-    /// One row per desk: the open desks as the report lists them, then each closed permanent desk.
-    private static func deskEntries(_ r: CheckResult) -> [MenuEntry] {
-        let id = r.workhorse.id
-        var entries: [MenuEntry] = []
-        let definitions = r.status?.definitions ?? []
-        let desks = r.status?.desks ?? []
-        let kept = Set(definitions.filter(\.keep).map(\.name.value))
-        let permanent = Set(definitions.filter(\.permanent).map(\.name.value))
-        for desk in desks {
-            let name = desk.name.value
-            entries.append(deskEntry(workhorse: id, desk: name, isOpen: true,
-                                     title: deskTitle(desk, kept: kept.contains(name), permanent: permanent.contains(name))))
-        }
-        // A permanent desk whose last shell exited stays, closed; connect makes it again. Any other
-        // definition with no desk is a leftover the workhorse clears up, so it gets no line.
-        let open = Set(desks.map(\.name.value))
-        for definition in definitions where definition.permanent && !open.contains(definition.name.value) {
-            let name = definition.name.value
-            entries.append(deskEntry(workhorse: id, desk: name, isOpen: false, title: "\(name) (closed)"))
-        }
-        return entries
-    }
-
-    /// A desk's row opens it when clicked (its primary action), and opens its submenu when the pointer
-    /// rests on it: Open <desk>, New window, then Rename… and Remove….
-    private static func deskEntry(workhorse id: String, desk name: String, isOpen: Bool, title: String) -> MenuEntry {
-        let deskID = "desk:\(id):\(name)"
-        let buttons = ButtonRules.forDesk(workhorse: id, desk: name, isOpen: isOpen)
+    /// A desk's row (`ButtonRules.desks` says which desks have one) opens it when clicked (its primary
+    /// action), and opens its submenu when the pointer rests on it: Open <desk>, New window, then
+    /// Rename… and Remove….
+    private static func deskEntry(workhorse id: String, _ desk: DeskLine) -> MenuEntry {
+        let deskID = "desk:\(id):\(desk.name)"
+        let title = desk.session.map { deskTitle($0, kept: desk.isKept, permanent: desk.isPermanent) }
+            ?? "\(desk.name) (closed)"
         let asksFirst: Set = ["rename", "remove"]
-        let groups = [buttons.filter { !asksFirst.contains($0.key) }, buttons.filter { asksFirst.contains($0.key) }]
-        return MenuEntry(id: deskID, title: title, action: ButtonRules.connect(workhorse: id, desk: name),
+        let groups = [desk.buttons.filter { !asksFirst.contains($0.key) }, desk.buttons.filter { asksFirst.contains($0.key) }]
+        return MenuEntry(id: deskID, title: title, action: ButtonRules.connect(workhorse: id, desk: desk.name),
                          submenu: joined(groups.map { $0.map { .button($0, under: deskID) } }, under: deskID))
     }
 

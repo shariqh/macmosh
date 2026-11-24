@@ -15,9 +15,10 @@ public struct ActionButton: Sendable, Equatable {
     }
 }
 
-/// Which buttons go with which state. The menu reads these rules, and the window will read the
-/// same ones, so the two can't drift apart (main window design, section 7.2). Every argument is a
-/// workhorse id or a desk name, both plain words.
+/// Which buttons go with which state, and which desks a Ready workhorse shows. The menu (`MenuModel`)
+/// and the window's board (`BoardModel`) both read these rules, through `WorkhorseBlock`, so the two
+/// can't drift apart (main window design, section 7.2). Every argument is a workhorse id or a desk
+/// name, both plain words.
 public enum ButtonRules {
     /// The button right under a workhorse's hint, if its state has one: Fix… when sign-ins are off,
     /// Log in…, Unlock disk… (only on a Mac that can be unlocked over ssh), Pair… or Finish setting up….
@@ -44,8 +45,8 @@ public enum ButtonRules {
     }
 
     /// Every button a Ready workhorse has besides its desks', in the menu's order (issue #107): New desk…,
-    /// then the headline's submenu (Share screen, a laptop's lid-closed switch, Restart…). The window
-    /// reads this so its buttons come in the menu's order. None in any other state.
+    /// then the headline's submenu (Share screen, a laptop's lid-closed switch, Restart…). None in any
+    /// other state. The order both faces use is `WorkhorseBlock.buttons`; a test holds this list to it.
     public static func forReady(_ r: CheckResult) -> [ActionButton] {
         guard case .ready = r.state else { return [] }
         return [newDesk(r.workhorse.id)] + forHeadline(r)
@@ -98,6 +99,33 @@ public enum ButtonRules {
         return buttons
     }
 
+    /// Which desks a Ready workhorse shows, in the menu's order: every open desk as the report lists it,
+    /// then each permanent desk whose session is gone, closed (connect makes it again). Any other
+    /// definition with no session is a leftover the workhorse clears up, so it gets nothing. A session
+    /// with no definition (a desk made by hand with tmux) is there, with no definition. The menu's
+    /// lines and the window's rows both come from this list (main window design, section 7.2).
+    public static func desks(_ r: CheckResult) -> [DeskLine] {
+        let id = r.workhorse.id
+        let definitions = r.status?.definitions ?? []
+        let sessions = r.status?.desks ?? []
+        let kept = Set(definitions.filter(\.keep).map(\.name.value))
+        let permanent = Set(definitions.filter(\.permanent).map(\.name.value))
+        func definition(_ name: String) -> HostStatus.Definition? { definitions.first { $0.name.value == name } }
+        var lines = sessions.map { session in
+            let name = session.name.value
+            return DeskLine(name: name, session: session, definition: definition(name), isKept: kept.contains(name),
+                            isPermanent: permanent.contains(name),
+                            buttons: forDesk(workhorse: id, desk: name, isOpen: true))
+        }
+        let open = Set(sessions.map(\.name.value))
+        for closed in definitions where closed.permanent && !open.contains(closed.name.value) {
+            let name = closed.name.value
+            lines.append(DeskLine(name: name, session: nil, definition: closed, isKept: kept.contains(name),
+                                  isPermanent: true, buttons: forDesk(workhorse: id, desk: name, isOpen: false)))
+        }
+        return lines
+    }
+
     /// Every workhorse's last button, in every state.
     public static func checklist(_ id: String) -> ActionButton {
         ActionButton(key: "checklist", title: "Run the checklist…", action: .tab(["prepare", id, "--pause"]))
@@ -105,4 +133,30 @@ public enum ButtonRules {
 
     public static let addAMac = ActionButton(key: "add", title: "Add a Mac…", action: .tab(["pair"]))
     public static let checkNow = ActionButton(key: "check", title: "Check now", action: .refresh)
+}
+
+/// One desk of a Ready workhorse, as `ButtonRules.desks` gives it: its session from the report (nil
+/// when it is closed), its saved definition (nil for a desk made by hand), and its buttons.
+public struct DeskLine: Sendable, Equatable {
+    public var name: String
+    public var session: HostStatus.Desk?
+    public var definition: HostStatus.Definition?
+    /// A definition with this name has the keep-running flag.
+    public var isKept: Bool
+    /// A definition with this name is permanent.
+    public var isPermanent: Bool
+    /// `ButtonRules.forDesk`: Open, New window when open, Rename…, Remove….
+    public var buttons: [ActionButton]
+
+    public var isOpen: Bool { session != nil }
+
+    public init(name: String, session: HostStatus.Desk?, definition: HostStatus.Definition?, isKept: Bool,
+                isPermanent: Bool, buttons: [ActionButton]) {
+        self.name = name
+        self.session = session
+        self.definition = definition
+        self.isKept = isKept
+        self.isPermanent = isPermanent
+        self.buttons = buttons
+    }
 }

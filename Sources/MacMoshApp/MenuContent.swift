@@ -25,8 +25,11 @@ struct MenuContent: View {
     }
 
     /// Does what a line or a row asks, then checks again.
-    private func run(_ action: MenuAction, _ title: String) {
-        let refresher = screen.refresher, actions = actions
+    private func run(_ action: MenuAction, _ row: MenuRow) {
+        #if DEBUG
+        SampleMenu.rowRan(row.id)   // a sample menu's log line for CI (issue #113); nothing otherwise
+        #endif
+        let refresher = screen.refresher, actions = actions, title = row.title
         Task { await refresher.perform(action, title: title, using: actions) }
     }
 }
@@ -43,7 +46,7 @@ struct MenuContent: View {
 /// click on it did nothing. None of this has been tried in MacMosh itself on a real Mac yet.
 struct MenuRows: View {
     let rows: [MenuRow]
-    let run: @MainActor (MenuAction, String) -> Void
+    let run: @MainActor (MenuAction, MenuRow) -> Void
 
     var body: some View {
         ForEach(rows) { row in
@@ -53,12 +56,12 @@ struct MenuRows: View {
             case .text:
                 Text(verbatim: row.label)
             case .button(let action):
-                Button { run(action, row.title) } label: { Text(verbatim: row.label) }
+                Button { run(action, row) } label: { Text(verbatim: row.label) }
             case .submenu(let lines, nil):
                 Menu { MenuRows(rows: lines, run: run) } label: { Text(verbatim: row.label) }
             case .submenu(let lines, let primary?):
                 Menu { MenuRows(rows: lines, run: run) } label: { Text(verbatim: row.label) } primaryAction: {
-                    run(primary, row.title)
+                    run(primary, row)
                 }
             }
         }

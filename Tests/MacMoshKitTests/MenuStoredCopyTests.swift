@@ -100,7 +100,10 @@ func allActions(_ entries: [MenuEntry]) -> [MenuAction] {
 /// Menus `everySampleMenu()` doesn't reach: the wait for the desk server, open, kept, permanent,
 /// closed and leftover desks, a laptop with lid-closed mode on, no home-address light, a time in a
 /// hint, an older Mac that can't be unlocked over ssh, and two workhorses with a desk of the same name.
-func moreSampleMenus() -> [MenuLines] {
+func moreSampleMenus() -> [MenuLines] { moreSampleInputs().map(\.menu) }
+
+/// What `moreSampleMenus()` is built from, in its order.
+func moreSampleInputs() -> [SampleMenuInput] {
     var desks = HostStatus.sampleWithDesk
     desks.power.disableSleep = 1
     desks.desks.append(.init(name: DeskName("notes")!, windows: [.init(index: 0, name: "zsh")],
@@ -118,13 +121,13 @@ func moreSampleMenus() -> [MenuLines] {
     let seen = CheckResult.sample(.cantReach(.nothingAnswers), workhorse: .sample(lastSeen: utcDate(2027, 1, 15, 14, 2)))
     let old = Workhorse.sample(osVersion: "15.6", arch: "arm64")
     return [
-        MenuModel.build([.checked(serverDown)], waitingForDeskServer: ["mbp"]),
-        MenuModel.build([.checked(serverDown)]),
-        MenuModel.build([.checked(.sample(.ready(signIns: true), status: desks, homeReachable: true))]),
-        MenuModel.build([.checked(.sample(.ready(signIns: true), status: desktop))]),
-        MenuModel.build([.checked(seen)], now: formatNow, timeZone: formatZone),
-        MenuModel.build([.checked(.sample(.locked, workhorse: old))]),
-        MenuModel.build([
+        SampleMenuInput(gathered: [.checked(serverDown)], waitingForDeskServer: ["mbp"]),
+        SampleMenuInput(gathered: [.checked(serverDown)]),
+        SampleMenuInput(gathered: [.checked(.sample(.ready(signIns: true), status: desks, homeReachable: true))]),
+        SampleMenuInput(gathered: [.checked(.sample(.ready(signIns: true), status: desktop))]),
+        SampleMenuInput(gathered: [.checked(seen)], now: formatNow, timeZone: formatZone),
+        SampleMenuInput(gathered: [.checked(.sample(.locked, workhorse: old))]),
+        SampleMenuInput(gathered: [
             .checked(.sampleReady(id: "workhorse", name: "Workhorse")),
             .checked(.sampleReady(id: "daily-mac", name: "Daily Mac")),
             .stillChecking(.sample(id: "attic", name: "Attic")),
