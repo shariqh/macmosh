@@ -532,62 +532,90 @@ Otherwise it uses shape (b).
 
 ### 8.4 The select scripts
 
-Two new launcher scripts, sent as today's are, through `osascript`, the macOS command that runs AppleScript (`osascript -e <script> <tty>`, `TerminalLauncher.swift:40`). Each returns `ok` or `gone`. Neither has been run yet (section 11).
+Two launcher scripts, sent as today's are, through `osascript`, the macOS command that runs AppleScript (`osascript -e <script> <tty>`, `TerminalLauncher.swift`). Each answers one line: `ok`; `gone` when no tab has that device; or `failed <step> <error number>`.
 
-(changed 2026-11-23) The scripts below are as merged in pull request #123, which changed them after review. A loop variable in `repeat with … in` is a reference by position, and both terminals list their windows front to back, so once a window is raised, the same reference names another window. So each script holds a reference that does not move before it changes anything (iTerm2: `contents of` the window, tab and session; Terminal: the window's `id`), selects the tab before the window, and un-minimizes the window.
+(changed 2026-11-23, issue #129) **What went wrong, and the rule from now on.** The scripts merged in pull request #123 had been read against the dictionaries but never run. On the daily Mac (iTerm2 3.7.8) going to a tab failed every time with error -1728: inside `tell application "iTerm2"`, `contents of w` is iTerm2's own session property, "The currently visible contents of the session.", not AppleScript's. From now on a script that drives a terminal app is not merged until it has run against that app: CI's "Terminal scripts" job (`.github/workflows/terminal-scripts.yml`, `scripts/ci/try-select.sh`) runs the two scripts the build sends against a real iTerm2 and Terminal on macOS 15 and 26 and reads back which tab is in front.
+
+The scripts as of issue #129 work in three steps. Each step searches again by the device, does one thing to what it finds and returns, so no reference is used after a command that can change the order of windows (a loop variable is a reference by position, and both terminals list their windows front to back). Step A un-minimizes the window that holds the tab; step B brings that window to the front; step C selects the tab (and, in iTerm2, the session) and activates the app. Each step runs inside its own `try`, so a failure names its step. `TabOpener.select` reads the answer: `ok` is selected, `gone` is gone, a `failed` line is a failure whose log summary is `tab not selected (step B, error -1728)` and whose notice is "Couldn't bring that tab forward." with a short reason. A step that answers error -1743 is still the Automation refusal, worded as before.
 
 iTerm2:
 
 ```applescript
 on run argv
-  set wanted to item 1 of argv
-  tell application "iTerm2"
-    repeat with w in windows
-      repeat with t in tabs of w
-        repeat with s in sessions of t
-          if (tty of s) is wanted then
-            set theWindow to contents of w
-            set theTab to contents of t
-            set theSession to contents of s
-            select theTab
-            select theSession
-            if miniaturized of theWindow then set miniaturized of theWindow to false
-            select theWindow
-            activate
-            return "ok"
-          end if
-        end repeat
-      end repeat
+    repeat with i from 1 to 3
+        set step to character i of "ABC"
+        try
+            if not atStep(step, item 1 of argv) then return "gone"
+        on error number n
+            return "failed " & step & " " & n
+        end try
     end repeat
-  end tell
-  return "gone"
+    return "ok"
 end run
+
+on atStep(step, wanted)
+    tell application "iTerm2"
+        repeat with w in windows
+            repeat with t in tabs of w
+                repeat with s in sessions of t
+                    if (tty of s) is wanted then
+                        if step is "A" then
+                            if miniaturized of w then set miniaturized of w to false
+                        else if step is "B" then
+                            select w
+                        else
+                            select t
+                            select s
+                            activate
+                        end if
+                        return true
+                    end if
+                end repeat
+            end repeat
+        end repeat
+    end tell
+    return false
+end atStep
 ```
 
 Terminal:
 
 ```applescript
 on run argv
-  set wanted to item 1 of argv
-  tell application "Terminal"
-    repeat with w in windows
-      repeat with t in tabs of w
-        if (tty of t) is wanted then
-          set theWindowID to id of w
-          set selected of t to true
-          if miniaturized of window id theWindowID then set miniaturized of window id theWindowID to false
-          set index of window id theWindowID to 1
-          activate
-          return "ok"
-        end if
-      end repeat
+    repeat with i from 1 to 3
+        set step to character i of "ABC"
+        try
+            if not atStep(step, item 1 of argv) then return "gone"
+        on error number n
+            return "failed " & step & " " & n
+        end try
     end repeat
-  end tell
-  return "gone"
+    return "ok"
 end run
+
+on atStep(step, wanted)
+    tell application "Terminal"
+        repeat with w in windows
+            repeat with t in tabs of w
+                if (tty of t) is wanted then
+                    if step is "A" then
+                        if miniaturized of w then set miniaturized of w to false
+                    else if step is "B" then
+                        set index of w to 1
+                    else
+                        set selected of t to true
+                        activate
+                    end if
+                    return true
+                end if
+            end repeat
+        end repeat
+    end tell
+    return false
+end atStep
 ```
 
-Every property these scripts use is in the dictionaries (section 4.3): iTerm2's window, tab and session `select`, session `tty` and window `miniaturized`; Terminal's tab `tty` and `selected`, and window `index`, `miniaturized` and `id` (changed 2026-11-23: iTerm2's `miniaturized` and Terminal's `id` came with the review in pull request #123). What setting them does with several windows, a minimized window or a window on another Space is not documented, and is tried on the daily Mac.
+Every word these scripts send is in the installed dictionaries (section 4.3): iTerm2's window, tab and session `select`, session `tty` and window `miniaturized`; Terminal's tab `tty` and `selected`, and window `index` and `miniaturized`. Neither says `contents` or names an object by `id`. On pull request #131 the CI job ran them with iTerm2 3.7.7 and Terminal 2.14 (macOS 15) and 2.15 (macOS 26): a tab that was not selected in a window behind another, a tab in a minimized window, the tab already in front, and a device no tab has. Every case ended with the wanted tab in front, unminimized, its app frontmost, and `gone` for the last. A window on another Space is tried on the daily Mac.
 
 **Which terminal.** The record's `terminal` value decides. When it is `unknown`, the rule `TabOpener` uses today applies: the setting, else iTerm2 if it is installed, else Terminal.
 
@@ -702,7 +730,7 @@ The agent builds a test copy of the app and reads the app's log over ssh itself.
 
 1. **A tap and a press on a desk's row.** Shariq rests on one desk's row and taps it (tap-to-click), then rests on another and press-clicks it. Then he does both again, clicking as soon as the pointer reaches the row, before its submenu opens. Last, he opens the menu, moves the highlight to a desk's row with the arrow keys, waits for its submenu to open, and presses Return. Expect: every click, and the Return, opens (or goes to) that desk, and the menu closes.
 2. **A background check with a submenu open.** Shariq opens the menu, rests on a desk so its submenu opens, moves into the submenu and waits there for a minute while the agent changes something the check will see (a scratch desk it makes and removes). Expect: the submenu stays open and unchanged; the next time he opens the menu, it shows the change.
-3. **iTerm2 brings the right tab forward.** With tabs on three windows of a scratch desk spread over two iTerm2 windows, one window minimized and one on another Space, Shariq clicks each window line. Expect: each click shows that tab, unminimizes or switches Space as needed, and no new permission prompt appears. (changed 2026-11-23) Two cases are tried on their own as well: two or more iTerm2 windows with the wanted one not in front, and the wanted window minimized.
+3. **iTerm2 brings the right tab forward.** With tabs on three windows of a scratch desk spread over two iTerm2 windows, one window minimized and one on another Space, Shariq clicks each window line. Expect: each click shows that tab, unminimizes or switches Space as needed, and no new permission prompt appears. (changed 2026-11-23, issue #129) Three cases are tried on their own as well, the ones CI's "Terminal scripts" job runs first (section 8.4): the wanted tab not the selected one in its window, its window behind another, and its window minimized.
 4. **The tab's own record.** In a tab MacMosh opened, the agent reads the tab record. Expect: `terminal` is `iterm2`, and its `tty` equals the `tty` iTerm2 reports for that tab's session.
 5. **A tab on one window, over mosh.** The agent opens a tab with `--window` and another with `--new-window` on a scratch desk. Expect: each tab shows its own window, the first tab doesn't move, and closing either tab ends its view within seconds (the next report has no `view` line for it).
 6. **Tabs mode.** On a scratch desk in a session group, Shariq opens the desk in iTerm2's Tabs mode. Expect: the windows show as iTerm2 tabs, as they do today.
