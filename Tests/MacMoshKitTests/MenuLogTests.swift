@@ -31,6 +31,14 @@ private final class Lines: @unchecked Sendable {
                 == "menu refreshed: symbol=plus.circle workhorses=0 lines=2")
     }
 
+    /// Issue #107: a change held back while the menu is open with a submenu, and when it was shown.
+    @Test func theHeldChangeLinesAreFixedWords() {
+        #expect(MenuLog.held(.open) == "menu held a change: open with a submenu")
+        #expect(MenuLog.held(.closing) == "menu held a change: closing with a submenu")
+        #expect(MenuLog.heldShown(.closed) == "menu showed the held change: closed")
+        #expect(MenuLog.heldShown(.opened) == "menu showed the held change: opened")
+    }
+
     @Test func theTrackingLineNamesTheMenuInOneOfFourFixedWords() {
         #expect(MenuLog.tracking(.mainMenu) == "menu tracking: object=mainMenu")
         #expect(MenuLog.tracking(.statusMenu) == "menu tracking: object=statusMenu")
