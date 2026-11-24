@@ -61,7 +61,7 @@ private func titles(_ buttons: [BoardButton]) -> [String] { buttons.map(\.title)
         #expect(titles(w.buttons) == ["Open the 2 not in a tab", "New desk…", "Share screen",
                                       "Turn off lid-closed mode…", "Restart…", "Run the checklist…"])
         #expect(w.buttons.map(\.action) == [
-            .window(.openAllWithoutTab(workhorse: "attic", desks: ["garden", "recipes"])),
+            .window(.openAllWithoutTab(workhorse: "attic", tabs: [["connect", "attic", "garden"], ["connect", "attic", "recipes"]])),
             .window(.newDesk(workhorse: "attic")),
             .menu(.run(["screen", "attic"])),
             .menu(.tab(["power", "attic", "lid", "off"])),
@@ -143,7 +143,8 @@ private func titles(_ buttons: [BoardButton]) -> [String] { buttons.map(\.title)
         let one = try boardReport { $0.replacingOccurrences(of: "desk\tgarden\t1\t0", with: "desk\tgarden\t1\t1") }
         let w1 = try #require(board([result(.ready(signIns: true), status: one)]).workhorses.first)
         #expect(w1.buttons.first == BoardButton(title: "Open the 1 not in a tab",
-                                                action: .window(.openAllWithoutTab(workhorse: "attic", desks: ["recipes"]))))
+                                                action: .window(.openAllWithoutTab(workhorse: "attic",
+                                                                                   tabs: [["connect", "attic", "recipes"]]))))
     }
 
     @Test func readyWithSignInsOffHasTheHintAndFixFirst() throws {
@@ -328,6 +329,165 @@ private func titles(_ buttons: [BoardButton]) -> [String] { buttons.map(\.title)
                         action: .window(.startAgain(workhorse: "attic", desk: "shop", keepIt: true))),
             BoardButton(title: "Forget", action: .window(.forget(workhorse: "attic", desk: "shop"))),
         ])
+    }
+
+    // MARK: With this Mac's tabs, as the menu's last build saw them (issue #134)
+
+    /// Attic's block from the menu design's example report (`Fixtures/status/desks-windows.txt`), with the
+    /// records and the time the menu's build got: website's claude and zsh and notes are in tabs this Mac
+    /// opened, shop's web in a tab it can't find.
+    private func withTabs(_ status: HostStatus = windowsReport(), mode: ConnectionMode = .mosh,
+                          records: [TabRecord] = windowsRecords, terminal: TerminalApp = .iterm2) throws -> BoardWorkhorse {
+        let w = Workhorse.sample(id: "attic", name: "Attic", user: "alex", mode: mode)
+        let r = CheckResult.sample(.ready(signIns: true), workhorse: w, status: status, homeReachable: true,
+                                   checkedAt: checkedAt)
+        let b = BoardModel.build(latest: ["attic": r], lastReady: [:], checking: [], order: [w], waitingForDeskServer: [],
+                                 tabs: TabsSeen(tabs: TabsOnThisMac(records: records, terminal: terminal), at: windowsNow),
+                                 now: formatNow, timeZone: formatZone)
+        return try #require(b.workhorses.first)
+    }
+
+    private func deskOf(_ w: BoardWorkhorse, _ name: String) throws -> BoardDesk {
+        try #require(w.desks.first { $0.name == name })
+    }
+
+    private func onWindow(_ desk: String, _ id: String) -> [String] { ["connect", "attic", desk, "--window", id] }
+
+    /// Some windows in tabs this Mac can find, one in none: Open runs the menu's first line, and each window
+    /// carries the menu's words and action for it. New window opens a tab of its own.
+    @Test func aDeskWithAWindowNotInATabOpensThatOneAndListsItsWindows() throws {
+        let website = try deskOf(try withTabs(), "website")
+        #expect(website.open == BoardButton(title: "Open the 1 window not in a tab",
+                                            action: .menu(.tabs([onWindow("website", "@3")]))))
+        #expect(website.windows.map(\.button) == [
+            BoardButton(title: "claude (in a tab)",
+                        action: .menu(.focus(label: "3f9a2c71e5b7d4a6", orOpen: onWindow("website", "@1")))),
+            BoardButton(title: "zsh (in a tab)",
+                        action: .menu(.focus(label: "b04e5d12c3a4f5e6", orOpen: onWindow("website", "@2")))),
+            BoardButton(title: "vim", action: .menu(.tab(onWindow("website", "@3")))),
+        ])
+        #expect(website.windowNames == ["claude", "zsh", "vim"])
+        // The report says no tab is attached to the desk's own session; the tabs are on its windows.
+        #expect(website.tabsOpen == 2)
+        #expect(website.buttons == [
+            BoardButton(title: "New window", action: .menu(.tab(["connect", "attic", "website", "--new-window"]))),
+            BoardButton(title: "Rename website…", action: .window(.rename(workhorse: "attic", desk: "website"))),
+            BoardButton(title: "Remove website…", action: .window(.remove(workhorse: "attic", desk: "website"))),
+        ])
+    }
+
+    /// No window in a tab: a tab on each, in order; a desk with one window opens it.
+    @Test func aDeskWithNoTabOpensATabOnEachWindow() throws {
+        let w = try withTabs()
+        let api = try deskOf(w, "api")
+        #expect(api.open == BoardButton(title: "Open api in 2 tabs",
+                                        action: .menu(.tabs([onWindow("api", "@5"), onWindow("api", "@6")]))))
+        #expect(api.windows.map(\.button) == [BoardButton(title: "server", action: .menu(.tab(onWindow("api", "@5")))),
+                                              BoardButton(title: "tests", action: .menu(.tab(onWindow("api", "@6"))))])
+        #expect(api.tabsOpen == 0)
+        let blog = try deskOf(w, "blog")
+        #expect(blog.open == BoardButton(title: "Open blog", action: .menu(.tab(onWindow("blog", "@8")))))
+        // One window: its first line does that window's job, as in the menu.
+        #expect(blog.windows.map(\.button) == [nil])
+    }
+
+    /// Its one window in a tab this Mac can find: Open goes to that tab and opens none.
+    @Test func aDeskWhoseTabCanBeFoundGoesToIt() throws {
+        let notes = try deskOf(try withTabs(), "notes")
+        #expect(notes.open == BoardButton(title: "Go to notes",
+                                          action: .menu(.focus(label: "c1d2e3f4a5b6c7d8", orOpen: onWindow("notes", "@7")))))
+        #expect(notes.tabsOpen == 1)
+    }
+
+    /// Every window in a tab, at least one findable: go to the lowest-numbered such window's tab.
+    @Test func everyWindowInATabGoesToTheFirstFindableOne() throws {
+        let status = windowsReport()
+        let all = try HostStatus.parse(fixture("status/desks-windows.txt")
+            .replacingOccurrences(of: "windowinfo\twebsite\t2\t@3\t0\t0", with: "windowinfo\twebsite\t2\t@3\t0\t1"))
+        #expect(all != status)
+        let website = try deskOf(try withTabs(all), "website")
+        #expect(website.open == BoardButton(title: "Go to website",
+                                            action: .menu(.focus(label: "3f9a2c71e5b7d4a6", orOpen: onWindow("website", "@1")))))
+        #expect(website.windows.last?.button == BoardButton(title: "vim (open in another tab)",
+                                                            action: .menu(.tab(onWindow("website", "@3")))))
+        #expect(website.tabsOpen == 3)
+    }
+
+    /// Windows whose only tabs this Mac can't find: one new tab of its own, as the menu does; a window with
+    /// no tab beside them is opened instead.
+    @Test func onlyTabsThisMacCantFindOpenANewTab() throws {
+        let shop = try deskOf(try withTabs(), "shop")
+        #expect(shop.open == BoardButton(title: "Open the 1 window not in a tab", action: .menu(.tabs([onWindow("shop", "@10")]))))
+        #expect(shop.windows.map(\.button) == [BoardButton(title: "web (open in another tab)", action: .menu(.tab(onWindow("shop", "@9")))),
+                                               BoardButton(title: "db", action: .menu(.tab(onWindow("shop", "@10"))))])
+        let both = try HostStatus.parse(fixture("status/desks-windows.txt")
+            .replacingOccurrences(of: "windowinfo\tshop\t1\t@10\t0\t0", with: "windowinfo\tshop\t1\t@10\t0\t1"))
+        let unfindable = try deskOf(try withTabs(both), "shop")
+        #expect(unfindable.open == BoardButton(title: "Open shop in a new tab",
+                                               action: .menu(.tab(["connect", "attic", "shop", "--view"]))))
+        #expect(unfindable.tabsOpen == 2)
+    }
+
+    /// A closed permanent desk is made again and opened in a tab of its own, as the menu's line does.
+    @Test func aClosedPermanentDeskOpensWithATabOfItsOwn() throws {
+        let garden = try deskOf(try withTabs(), "garden")
+        #expect(!garden.isOpen && garden.tabsOpen == 0)
+        #expect(garden.open == BoardButton(title: "Open garden", action: .menu(.tab(["connect", "attic", "garden", "--view"]))))
+        #expect(garden.buttons.map(\.title) == ["Rename garden…", "Remove garden…"])
+    }
+
+    /// When the menu's gate fails (an older script, iTerm2's Tabs mode, or a report with no window details), a
+    /// desk keeps today's buttons, as the menu keeps today's lines.
+    @Test func aDeskThatFailsTheGateKeepsTodaysButtons() throws {
+        let today = try #require(board([result(.ready(signIns: true), status: windowsReport(version: "0.1.0"))]).workhorses.first)
+        for w in [try withTabs(windowsReport(version: "0.7.0")), try withTabs(mode: .tabs)] {
+            #expect(w.desks == today.desks)
+            let website = try deskOf(w, "website")
+            #expect(website.open == BoardButton(title: "Open website", action: .menu(.tab(["connect", "attic", "website"]))))
+            #expect(website.windows.allSatisfy { $0.button == nil })
+            #expect(website.buttons.first == BoardButton(title: "New window",
+                                                         action: .menu(.run(["desk", "window", "attic", "website"]))))
+        }
+        // Tabs mode is Tabs mode only in iTerm2: in Apple's Terminal the gate passes.
+        #expect(try deskOf(try withTabs(mode: .tabs, terminal: .appleTerminal), "notes").open?.title == "Go to notes")
+        // In a 0.8.0 report, a desk with no window details keeps today's buttons beside one that has them.
+        let mixed = try withTabs(try boardReport())
+        #expect(try deskOf(mixed, "garden").open == BoardButton(title: "Open garden", action: .menu(.tab(["connect", "attic", "garden"]))))
+        #expect(try deskOf(mixed, "website").open?.title == "Open the 1 window not in a tab")
+    }
+
+    /// "Open the N not in a tab" opens a tab on every window no tab shows, on every running desk, in the
+    /// board's order; a desk that fails the gate gets one plain tab when it has none. N counts the tabs.
+    @Test func openTheOnesNotInATabOpensEveryWindowWithNoTab() throws {
+        let w = try withTabs()
+        #expect(w.buttons.first == BoardButton(title: "Open the 5 not in a tab", action: .window(.openAllWithoutTab(
+            workhorse: "attic",
+            tabs: [onWindow("api", "@5"), onWindow("api", "@6"), onWindow("blog", "@8"), onWindow("shop", "@10"),
+                   onWindow("website", "@3")]))))
+        // garden (0.8.0, no window details, no tab) and recipes (the same) get a plain tab each; website and api
+        // get their windows with no tab; blog (a tab attached, no details) gets none.
+        let mixed = try withTabs(try boardReport())
+        #expect(mixed.buttons.first == BoardButton(title: "Open the 4 not in a tab", action: .window(.openAllWithoutTab(
+            workhorse: "attic",
+            tabs: [onWindow("api", "@6"), ["connect", "attic", "garden"], ["connect", "attic", "recipes"],
+                   onWindow("website", "@3")]))))
+        // Every window in a tab: the button is not there.
+        let none = try HostStatus.parse(fixture("status/desks-windows.txt")
+            .replacingOccurrences(of: "windowinfo\twebsite\t2\t@3\t0\t0", with: "windowinfo\twebsite\t2\t@3\t0\t1")
+            .replacingOccurrences(of: "windowinfo\tapi\t0\t@5\t1\t0", with: "windowinfo\tapi\t0\t@5\t1\t1")
+            .replacingOccurrences(of: "windowinfo\tapi\t1\t@6\t0\t0", with: "windowinfo\tapi\t1\t@6\t0\t1")
+            .replacingOccurrences(of: "windowinfo\tblog\t0\t@8\t1\t0", with: "windowinfo\tblog\t0\t@8\t1\t1")
+            .replacingOccurrences(of: "windowinfo\tshop\t1\t@10\t0\t0", with: "windowinfo\tshop\t1\t@10\t0\t1"))
+        #expect(try withTabs(none).buttons.first?.title == "New desk…")
+    }
+
+    /// A tab opened a minute ago that the report doesn't list yet counts, as in the menu: no second tab on it.
+    @Test func aTabOpenedAMomentAgoIsNotOpenedAgain() throws {
+        let w = try withTabs(records: windowsRecords + [atticRecord("9f3a1c2e5b7d4a60", asked: "@5", minutesAgo: 1)])
+        let api = try deskOf(w, "api")
+        #expect(api.open == BoardButton(title: "Open the 1 window not in a tab", action: .menu(.tabs([onWindow("api", "@6")]))))
+        #expect(api.tabsOpen == 1)
+        #expect(w.buttons.first?.title == "Open the 4 not in a tab")
     }
 
     // MARK: The short folder

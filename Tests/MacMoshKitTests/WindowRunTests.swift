@@ -36,10 +36,12 @@ import Testing
         }
     }
 
-    @Test func openTheOnesNotInATabOpensOnePlainConnectTabForEach() {
-        #expect(WindowRun.menuAction(for: .window(.openAllWithoutTab(workhorse: "attic", desks: ["api", "blog"])))
-                == .tabs([["connect", "attic", "api"], ["connect", "attic", "blog"]]))
-        #expect(WindowRun.menuAction(for: .window(.openAllWithoutTab(workhorse: "attic", desks: ["api"])))
+    /// The tabs the board worked out, in its order, through the menu's own `.tabs` (and so its guard against a
+    /// second tab on a window that has one).
+    @Test func openTheOnesNotInATabOpensTheTabsTheBoardListed() {
+        let tabs = [["connect", "attic", "api", "--window", "@5"], ["connect", "attic", "blog"]]
+        #expect(WindowRun.menuAction(for: .window(.openAllWithoutTab(workhorse: "attic", tabs: tabs))) == .tabs(tabs))
+        #expect(WindowRun.menuAction(for: .window(.openAllWithoutTab(workhorse: "attic", tabs: [["connect", "attic", "api"]])))
                 == .tabs([ButtonRules.connect(workhorse: "attic", desk: "api").words]))
     }
 
@@ -54,7 +56,8 @@ import Testing
     @Test func everyMappedActionUsesPlainWords() {
         let all: [WindowAction] = [.newDesk(workhorse: "attic"), .rename(workhorse: "attic", desk: "website"),
                                    .remove(workhorse: "attic", desk: "website"),
-                                   .openAllWithoutTab(workhorse: "attic", desks: ["api", "blog"])]
+                                   .openAllWithoutTab(workhorse: "attic", tabs: [["connect", "attic", "api"],
+                                                                                 ["connect", "attic", "blog", "--window", "@8"]])]
         for action in all {
             let words = WindowRun.menuAction(for: .window(action))?.words ?? []
             #expect(!words.isEmpty && words.allSatisfy(PlainWords.isPlain))

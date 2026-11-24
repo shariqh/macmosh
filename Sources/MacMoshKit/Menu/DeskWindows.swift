@@ -15,6 +15,20 @@ public struct TabsOnThisMac: Sendable, Equatable {
     }
 }
 
+/// What the menu's last build knew about this Mac's tabs, and the time it built with: the same records, the
+/// same terminal and the same time, so the window's board makes exactly the menu's choices (issue #134).
+/// `MenuRefresher` publishes it after each build; `BoardModel.build` takes it as a value.
+public struct TabsSeen: Sendable, Equatable {
+    public var tabs: TabsOnThisMac
+    /// The `now` the menu's build was given, which dates the records.
+    public var at: Date
+
+    public init(tabs: TabsOnThisMac, at: Date) {
+        self.tabs = tabs
+        self.at = at
+    }
+}
+
 /// Whether a desk gets a line per window (menu design 6.1 (a) and 8.3). All three must hold:
 /// 1. the workhorse's script is 0.8.0 or newer (`HostInstaller.isAtLeast`, the installer's comparison), so
 ///    `attach` takes `--label`, `--window` and `--new-window`;
