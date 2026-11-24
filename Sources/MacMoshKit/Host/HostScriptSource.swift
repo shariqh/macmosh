@@ -10,7 +10,7 @@ enum HostScriptSource {
 # Plain bash 3.2 (what macOS ships at /bin/bash): no associative arrays, no mapfile, no ${var,,}.
 set -u
 
-MACMOSH_HOST_VERSION=0.9.0
+MACMOSH_HOST_VERSION=0.10.0
 MACMOSH_PROTOCOL=1
 AGENT_LABEL=io.github.shariqh.macmosh.host
 
@@ -823,7 +823,8 @@ cmd_window_new() {
 # rename, prefix and $, renames the view a tab shows), so the tag keeps a view out of every desk lookup
 # (mm_session_id) and the record keeps its closing from counting as a desk's (desk-closed).
 # A view ends with its tab (destroy-unattached on, set once the tab is attached), and status sweeps
-# a view that never got a tab, or whose desk's own session is gone (mm_sweep_views). Seen with tmux 3.8 on
+# a view that never got a tab, or whose desk's own session is gone (mm_sweep_views). Since 0.10.0 a view
+# also ends when the window it shows closes (mm_view_rule). Seen with tmux 3.8 on
 # a throwaway socket: when a desk's last shell exits, every session of its group closes, and the
 # session-closed hook runs for each name.
 # A view can carry a label (@macmosh-label, from attach --label): a short word the daily Mac makes up for
@@ -959,6 +960,7 @@ mm_open_view() {
         mm_log attach "$name: window $wid has closed"
         return 4
     fi
+    mm_view_rule "$vid"
     mm_release_lock
     MM_VIEW_ID="$vid"
     MM_VIEW_WINDOW="$wid"
@@ -1021,6 +1023,44 @@ mm_view_bar() {
     if [ "$(mm_tmux show-options -t "$1" -v status-left 2>/dev/null)" != "$bar" ]; then
         mm_tmux set-option -u -t "$1" status-left >/dev/null 2>&1
     fi
+    return 0
+}
+
+# --- A view ends with the window it shows (issue 139, 0.10.0).
+#
+# tmux moves a session to another window of its group when the window it shows closes, so a tab on one
+# window whose window closed went on to show a window another tab already showed. Now the view ends,
+# and its tab closes with it. Seen with tmux 3.8 on a throwaway socket (WindowCloseHookTests): each
+# session of the group that showed the closed window gets session-window-changed, and by the time the
+# hook runs the window is gone from that session's windows; a session that showed another window gets
+# none; the person switching windows runs it for that session only, and the window left is still one
+# of its windows; the group's last window closing runs it for no session (every session closes, as
+# before).
+# So the view remembers the window it shows (the option @macmosh-window) and has one hook of its own,
+# both set by the view's id: when its current window changes, it ends if the window it remembers is no
+# longer one of its windows, and otherwise remembers the new one. That follows the person when he
+# switches windows inside the tab. The hook decides with tmux's formats alone (if-shell -F runs no
+# shell), so a window switch starts no process.
+# It ends the view by detaching its tab's client, never with kill-session: a session that a command
+# run from a hook kills runs no session-closed hook (seen with tmux 3.8), so desk-closed would never
+# clear the view's record. Detached, the client exits, the view has no client left, and its own
+# destroy-unattached ends it after the hook, exactly as when the tab closes: session-closed runs and
+# desk-closed ignores it by its record, as for any view. That closes only windows no other session of
+# the group shows, so it is done only while another session is in the group: a view left alone in its
+# group (its desk's session killed by hand) holds the desk's windows, and keeps today's behaviour. A
+# view with no tab is left to the sweep in status. A tmux too old for these formats reads them as
+# empty, which keeps the view.
+# Limits: a hook of the view's own takes the place of the global hook of the same name for that view
+# (seen with tmux 3.8), so a session-window-changed hook in the person's own tmux settings doesn't run
+# for a tab on one window. A view made by a script before 0.10.0 has no such hook, and keeps today's
+# behaviour until its tab closes. Errors are ignored: a view without the rule behaves as before.
+MM_VIEW_GONE='#{&&:#{@macmosh-window},#{&&:#{e|>:#{session_group_size},1},#{!:#{W:#{?#{==:#{window_id},#{@macmosh-window}},1,}}}}}'
+
+mm_view_rule() {
+    mm_tmux set-option -F -t "$1" @macmosh-window '#{window_id}' \; \
+        set-hook -t "$1" 'session-window-changed[1089]' \
+        "if-shell -F -t '$1' '$MM_VIEW_GONE' { detach-client -s '$1' } { set-option -F -t '$1' @macmosh-window '#{window_id}' }" \
+        >/dev/null 2>&1
     return 0
 }
 
