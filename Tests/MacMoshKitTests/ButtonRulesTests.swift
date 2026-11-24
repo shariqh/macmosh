@@ -104,6 +104,84 @@ import Testing
         #expect(ButtonRules.checkNow == ActionButton(key: "check", title: "Check now", action: .refresh))
     }
 
+    // MARK: Which desks, and the block of one workhorse (main window, step 2)
+
+    /// The open desks in the report's order, then each closed permanent desk. A definition with no
+    /// session that is not permanent is a leftover and gets nothing; a session with no definition
+    /// (made by hand) is there, with no definition.
+    @Test func theDesksAreTheOpenOnesThenTheClosedPermanentOnes() {
+        var s = HostStatus.sampleWithDesk
+        s.desks.append(.init(name: DeskName("byhand")!, windows: [.init(index: 0, name: "zsh")],
+                             windowCount: 1, attached: 0))
+        s.definitions = [
+            .init(name: DeskName("notes")!, reopen: true, keep: false, folder: "/Users/alex/notes", command: "",
+                  permanent: true),
+            .init(name: DeskName("website")!, reopen: true, keep: true, folder: "/Users/alex/site", command: "npm run dev"),
+            .init(name: DeskName("shop")!, reopen: true, keep: false, folder: "/Users/alex/shop", command: ""),
+        ]
+        let desks = ButtonRules.desks(.sample(.ready(signIns: true), status: s))
+        #expect(desks.map(\.name) == ["website", "byhand", "notes"])
+        #expect(desks.map(\.isOpen) == [true, true, false])
+        #expect(desks[0].definition?.folder == "/Users/alex/site")
+        #expect(desks[0].isKept && !desks[0].isPermanent)
+        #expect(desks[1].definition == nil && desks[1].session?.windowCount == 1)
+        #expect(desks[2].session == nil && desks[2].isPermanent)
+        #expect(desks[0].buttons == ButtonRules.forDesk(workhorse: "mbp", desk: "website", isOpen: true))
+        #expect(desks[2].buttons == ButtonRules.forDesk(workhorse: "mbp", desk: "notes", isOpen: false))
+        #expect(ButtonRules.desks(.sample(.ready(signIns: true), status: nil)).isEmpty)
+    }
+
+    /// A Ready workhorse's buttons, desks aside, in the order both faces show them: the state's, New
+    /// desk…, the rarer ones, the checklist.
+    @Test func aReadyBlockHasItsButtonsInTheMenusOrder() {
+        let r = CheckResult.sample(.ready(signIns: false), status: .sampleWithDesk, homeReachable: false)
+        let block = WorkhorseBlock.of(r, waitingForDeskServer: [], now: formatNow, timeZone: formatZone)
+        #expect(block.kind == .ready)
+        #expect(block.headline == StatusFormat.headline(r))
+        #expect(block.hint == StatusFormat.hint(r))
+        #expect(titles(block.buttons) == ["Fix…", "New desk…", "Share screen", "Turn on lid-closed mode…",
+                                         "Restart…", "Run the checklist…"])
+        #expect(block.buttons == ButtonRules.forState(r) + ButtonRules.forReady(r) + [ButtonRules.checklist("mbp")])
+        #expect(block.desks.map(\.name) == ["website"])
+        #expect(block.summary == StatusFormat.summaryLine(.sampleWithDesk))
+        #expect(block.homeReachable == false)
+        #expect(WorkhorseBlock.homeLine(false) == "Home address reachable from here: no")
+    }
+
+    @Test func aBlockThatIsNotReadyHasItsStatesButtonAndTheChecklistOnly() {
+        let able = Workhorse.sample(osVersion: "27.3", arch: "arm64")
+        let r = CheckResult.sample(.locked, workhorse: able, status: .sampleWithDesk, homeReachable: true)
+        let block = WorkhorseBlock.of(r, waitingForDeskServer: [], now: formatNow, timeZone: formatZone)
+        #expect(block.kind == .other)
+        #expect(titles(block.buttons) == ["Unlock disk…  (you type the Mac's password)", "Run the checklist…"])
+        #expect(block.desks.isEmpty && block.newDesk == nil && block.rareButtons.isEmpty)
+        #expect(block.summary == nil && block.homeReachable == nil)
+    }
+
+    /// Waiting for the desk server: its own headline and hint, and only the checklist; only when the
+    /// state is "Desk server is off" and the id is in the set.
+    @Test func theDeskServerWaitHasItsOwnHeadlineAndOnlyTheChecklist() {
+        let down = CheckResult.sample(.notSetUp(.deskServerDown), status: .sampleReady)
+        let block = WorkhorseBlock.of(down, waitingForDeskServer: ["mbp"], now: formatNow, timeZone: formatZone)
+        #expect(block.kind == .waitingForDeskServer)
+        #expect(block.headline == "MacBook Pro · Waiting for the desk server")
+        #expect(block.hint == MenuModel.waitingForDeskServerHint)
+        #expect(titles(block.buttons) == ["Run the checklist…"])
+        #expect(WorkhorseBlock.isWaitingForDeskServer(down, ["mbp"]))
+        #expect(!WorkhorseBlock.isWaitingForDeskServer(down, []))
+        #expect(!WorkhorseBlock.isWaitingForDeskServer(.sampleReady(), ["mbp"]))
+        let notWaiting = WorkhorseBlock.of(down, waitingForDeskServer: [], now: formatNow, timeZone: formatZone)
+        #expect(titles(notWaiting.buttons) == ["Finish setting up…", "Run the checklist…"])
+    }
+
+    @Test func aWorkhorseThatHasNotAnsweredHasTheChecklistOnly() {
+        let block = WorkhorseBlock.stillChecking(.sample(id: "attic", name: "Attic"))
+        #expect(block.kind == .stillChecking)
+        #expect(block.headline == "Attic · Still checking…")
+        #expect(block.hint == nil)
+        #expect(block.buttons == [ButtonRules.checklist("attic")])
+    }
+
     @Test func noTwoButtonsInOneGroupShareAKey() {
         var lid = HostStatus.sampleWithDesk
         lid.power.disableSleep = 1
