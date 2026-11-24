@@ -1011,9 +1011,9 @@ mm_bar_with_desk() {
 # to change that option (mm_name_views). The name is never pasted into the bar, and even read through
 # the option it could do no harm in a format or in a #() shell command: mm_valid_desk_name lets it hold
 # only letters, digits, - and _.
-# tmux changes a command-line argument that ends in ";" (seen with tmux 3.8), so the bar is read back,
-# and one that didn't come through as written is taken off again. A bar is only for show, so nothing
-# here makes the tab fail.
+# tmux reads a trailing ";" on an argument as a command separator (man tmux, COMMANDS), so the bar
+# is read back, and one that didn't come through as written is taken off again. A bar is only for
+# show, so nothing here makes the tab fail.
 mm_view_bar() {
     local bar
     bar=$(mm_bar_with_desk "$(mm_tmux show-options -gv status-left 2>/dev/null)") || return 0

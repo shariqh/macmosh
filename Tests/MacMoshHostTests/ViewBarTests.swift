@@ -114,8 +114,9 @@ extension HostScriptTests {
     // MARK: - What tmux 3.8 does
 
     /// Pinned before the script relied on it: tmux 3.8's own status-left names the session through
-    /// `#{session_name}` (the manual still says `[#S] `); `E:` in a list-sessions format expands it for
-    /// each session; and a status-left set on one session of a group stays with that session.
+    /// `#{session_name}` (the manual says only "by default the session name" and shows `[#S]` in an
+    /// example); `E:` in a list-sessions format expands it for each session; and a status-left set on
+    /// one session of a group stays with that session.
     @Test func tmuxKeepsASessionsOwnBarToThatSessionOfTheGroup() throws {
         let h = try HostHarness(); defer { h.cleanUp() }
         _ = h.run(["start"])
@@ -246,9 +247,9 @@ extension HostScriptTests {
         #expect(ownBar(h, web) == "")
         #expect(globalBar(h) == set + "\n")
 
-        #expect(h.run(["desk-rename", "website", "garden"]).exitCode == 0)
+        #expect(h.run(["desk-rename", "website", "my-site_2"]).exitCode == 0)
         #expect(bar(h, v) == bar(h, web))
-        #expect(bar(h, web)?.contains("garden") == true)
+        #expect(bar(h, web)?.contains("my-site_2") == true)
     }
 
     /// A bar with neither form is left alone: the view gets no bar of its own, only the name.
@@ -256,17 +257,17 @@ extension HostScriptTests {
         let h = try HostHarness(); defer { h.cleanUp() }
         try writeUserTmuxConf(h, "set -g status-left '[#{host_short}] #{session_windows} ##{session_name} '\n")
         _ = h.run(["start"])
-        let (web, ids) = try deskWithWindows(h, "website", 2)
-        try openTab(h, "one", ["--window", ids[1], "website"])
+        let (web, ids) = try deskWithWindows(h, "my-site_2", 2)
+        try openTab(h, "one", ["--window", ids[1], "my-site_2"])
         try wait(h) { h.clients().count == 1 && views(h, of: web).count == 1 }
         let v = try view(h, of: web, showing: ids[1])
         #expect(ownBar(h, v) == "")
-        #expect(h.sessionFormat(v, "#{@macmosh-desk}") == "website")
+        #expect(h.sessionFormat(v, "#{@macmosh-desk}") == "my-site_2")
         #expect(bar(h, v) == bar(h, web))
     }
 
-    /// tmux changes a command-line argument that ends in ";" (seen with tmux 3.8), so such a bar can't
-    /// be set as written; the view is then left with the server's bar rather than a changed one.
+    /// tmux reads a trailing ";" on an argument as a command separator (man tmux, COMMANDS), so such a
+    /// bar can't be set as written; the view is then left with the server's bar rather than a changed one.
     @Test func aBarTmuxWouldChangeOnTheWayInIsLeftAlone() throws {
         let h = try HostHarness(); defer { h.cleanUp() }
         try writeUserTmuxConf(h, "set -g status-left '[#S] ;'\n")
