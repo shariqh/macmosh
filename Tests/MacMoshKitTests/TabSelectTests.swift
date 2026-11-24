@@ -75,10 +75,10 @@ import Testing
                         if step is "A" then
                             if miniaturized of w then set miniaturized of w to false
                         else if step is "B" then
-                            set index of w to 1
+                            activate
                         else
                             set selected of t to true
-                            activate
+                            set index of w to 1
                         end if
                         return true
                     end if
@@ -113,8 +113,10 @@ import Testing
 
     /// A loop variable over `windows` is a reference by position ("item 2 of windows"), and both terminals list
     /// their windows front to back. So each step searches again, and a step that matches does its one thing
-    /// and returns: no reference outlives a command that can move a window. Step A un-minimizes, B raises
-    /// the window, C selects the tab (and iTerm2's session) and activates the app.
+    /// and returns: no reference outlives a command that can move a window. In iTerm2, step A un-minimizes,
+    /// B raises the window, C selects the tab and the session and activates iTerm2. In Terminal, A un-minimizes,
+    /// B activates Terminal, C selects the tab and raises its window (activating last let Terminal put its
+    /// previous front window back on top in CI).
     @Test func eachStepSearchesAgainAndDoesOneThing() {
         func branches(_ script: String) -> [String] {
             let lines = script.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
@@ -129,8 +131,8 @@ import Testing
         ])
         #expect(branches(AppleTerminalLauncher.selectScript) == [
             "if step is \"A\" then", "if miniaturized of w then set miniaturized of w to false",
-            "else if step is \"B\" then", "set index of w to 1",
-            "else", "set selected of t to true", "activate",
+            "else if step is \"B\" then", "activate",
+            "else", "set selected of t to true", "set index of w to 1",
             "end if",
         ])
         for script in [ITermLauncher.selectScript, AppleTerminalLauncher.selectScript] {

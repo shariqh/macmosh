@@ -20,8 +20,12 @@ public struct AppleTerminalLauncher: TerminalLauncher {
     /// that device; or `failed <step> <error number>` when a step stopped (`TabOpener.select`).
     ///
     /// Three steps, each a fresh search by the device, as iTerm2's script does: A un-minimizes the tab's window,
-    /// B brings that window to the front, C selects the tab and activates Terminal. Terminal lists its windows
-    /// front to back, so after a command that can move a window a step returns at once.
+    /// B activates Terminal, C selects the tab and puts its window first. Terminal lists its windows front to
+    /// back, so after a command that can move a window a step returns at once. Terminal is activated before
+    /// the window is raised, not after: on the CI runners, with Finder in front, raising a window that had
+    /// been minimized and then activating Terminal brought Terminal's previous front window back on top
+    /// (pull request #131). `set selected` comes before `set index`, so no reference is used after the
+    /// command that moves the window; that selecting a tab does not move its window is relied on, not shown.
     ///
     /// Every term is in Terminal's installed dictionary (`sdef`, 2.15): a tab's `tty`, "The tab's TTY device.",
     /// and `selected`, "Whether the tab is selected."; a window's `miniaturized`, "Whether the window is
@@ -49,10 +53,10 @@ public struct AppleTerminalLauncher: TerminalLauncher {
                         if step is "A" then
                             if miniaturized of w then set miniaturized of w to false
                         else if step is "B" then
-                            set index of w to 1
+                            activate
                         else
                             set selected of t to true
-                            activate
+                            set index of w to 1
                         end if
                         return true
                     end if

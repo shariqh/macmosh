@@ -19,9 +19,9 @@ public enum LaunchError: Error, Equatable {
 public enum SelectStep: String, Sendable, CaseIterable {
     /// Un-minimizes the tab's window.
     case a = "A"
-    /// Brings that window to the front.
+    /// Brings that window to the front (iTerm2), or activates Terminal so step C can.
     case b = "B"
-    /// Selects the tab (and iTerm2's session) and activates the app.
+    /// Selects the tab and session and activates iTerm2; or selects the tab and raises its window (Terminal).
     case c = "C"
 
     /// What the step does, after "couldn't".
