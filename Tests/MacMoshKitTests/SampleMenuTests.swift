@@ -55,6 +55,45 @@ import Testing
         }
     }
 
+    /// The sample CI takes pictures of for issue #124: a script-0.8.0 report with window details and labels,
+    /// and stand-in records for its tabs, so website has a window in a tab, one open in another tab and one
+    /// with no tab.
+    @Test func theWindowsSampleHasEveryKindOfWindowLine() {
+        let menu = MenuModel.build(SampleMenu.windows.gathered(change: 0),
+                                   tabs: TabsOnThisMac(records: SampleMenu.windowRecords(openedAt: Date()), terminal: .iterm2))
+        let block = menu.entries[0]
+        #expect(([block] + block.children).map(\.title) == [
+            "Workhorse · Ready", "website · 3 windows, 2 in tabs", "api · 2 windows", "notes · 1 window, in a tab",
+            "blog · 1 window", "shop · 2 windows, 1 in a tab", "garden (closed)", "New desk…",
+        ])
+        let website = entry(menu.entries, "desk:workhorse:website")?.submenu ?? []
+        #expect(website.map(\.title) == [
+            "Open the 1 window not in a tab", "", "claude (in a tab)", "zsh (open in another tab)", "vim", "",
+            "New window", "", "Rename website…", "Remove website…", "kept running, permanent",
+        ])
+        // The rows the CI job clicks: a window with no tab, and one in a tab.
+        #expect(entry(menu.entries, "desk:workhorse:website:win:@3")?.action
+                == .tab(["connect", "workhorse", "website", "--window", "@3"]))
+        guard case .focus(let label, _)? = entry(menu.entries, "desk:workhorse:website:win:@1")?.action else {
+            Issue.record("claude's line should bring its tab forward"); return
+        }
+        #expect(SampleMenu.windowRecords(openedAt: Date()).contains { $0.label == label })
+        #expect(entry(menu.entries, "desk:workhorse:shop")?.submenu.map(\.title).prefix(4)
+                == ["Open the 1 window not in a tab", "", "web (in 2 tabs)", "web (window 1)"])
+        // The workhorse's submenu: the summary one fact per line.
+        #expect(block.submenu.filter { $0.id.contains(":summary:") }.map(\.title)
+                == ["Sign-ins working", "Awake on power", "Lid-closed mode off", "On power, 82%"])
+    }
+
+    /// The stand-in records are live by the sample's own stand-in, never by this Mac's processes.
+    @Test func theWindowsSamplesRecordsAreLiveByTheStandIn() {
+        let probe = SampleAlive()
+        for record in SampleMenu.windowRecords(openedAt: Date()) {
+            #expect(probe.exists(record.pid) && probe.startTime(of: record.pid) == record.started)
+            #expect(TabLabel.isValid(record.label) && TabRecord.isTerminalDevice(record.tty))
+        }
+    }
+
     @Test func aSampleRunsNothingReal() async {
         let outcome = await SampleMenu.actions.outcome(of: .tab(["connect", "workhorse", "website"]), title: "website")
         #expect(outcome == ActionOutcome(summary: "tab opened", notice: nil))

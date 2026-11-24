@@ -12,6 +12,7 @@ on:
       - 'Sources/MacMoshApp/**'
       - 'Sources/MacMoshKit/Menu/**'
       - 'Sources/MacMoshKit/Board/**'
+      - 'Sources/MacMoshKit/Tabs/**'
       - 'scripts/ci/**'
       - 'scripts/build-app.sh'
       - '.github/workflows/menu-pictures.yml'
