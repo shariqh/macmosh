@@ -27,18 +27,36 @@ private final class Moments: @unchecked Sendable {
     private var asked: [Duration] = []
     private var gates: [Int: CheckedContinuation<Void, Never>] = [:]
     private var endedEarly: Set<Int> = []
+    private var askedWatchers: [(count: Int, ready: CheckedContinuation<Void, Never>)] = []
     var durations: [Duration] { lock.withLock { asked } }
 
     func sleep(_ duration: Duration) async {
         await withCheckedContinuation { (gate: CheckedContinuation<Void, Never>) in
-            let now: Bool = lock.withLock {
+            let (now, ready): (Bool, [CheckedContinuation<Void, Never>]) = lock.withLock {
                 let number = asked.count
                 asked.append(duration)
-                if endedEarly.remove(number) != nil { return true }
+                let ready = askedWatchers.filter { $0.count <= asked.count }.map(\.ready)
+                askedWatchers.removeAll { $0.count <= asked.count }
+                if endedEarly.remove(number) != nil { return (true, ready) }
                 gates[number] = gate
+                return (false, ready)
+            }
+            ready.forEach { $0.resume() }
+            if now { gate.resume() }
+        }
+    }
+
+    /// Returns once `count` waits have been asked for. Each timer task's wait reaches this stand-in
+    /// off the main actor, so two timers started back to back can ask in either order; a test that
+    /// ends waits by number awaits this between them to fix which timer holds which number.
+    func asked(_ count: Int) async {
+        await withCheckedContinuation { (ready: CheckedContinuation<Void, Never>) in
+            let now: Bool = lock.withLock {
+                if asked.count >= count { return true }
+                askedWatchers.append((count, ready))
                 return false
             }
-            if now { gate.resume() }
+            if now { ready.resume() }
         }
     }
 
@@ -158,8 +176,11 @@ private func locked(at offset: TimeInterval = 0) -> Gathered {
         let watch = screen.objectWillChange.sink { _ in published += 1 }
         screen.menuBegan()
         screen.menuEnded()
+        #expect(screen.closing != nil)
         moments.end(0)
         await screen.closing?.value
+        #expect(moments.durations == [.milliseconds(300)])
+        #expect(screen.closing == nil)
         #expect(screen.shown == first)
         #expect(published == 0)
         #expect(log.all.isEmpty)
@@ -202,6 +223,7 @@ private func locked(at offset: TimeInterval = 0) -> Gathered {
         await r.refresh()
         screen.menuEnded()
         let earlier = screen.closing
+        await moments.asked(1)   // the earlier close's wait is number 0
         screen.menuEnded()
         let later = screen.closing
         #expect(earlier?.isCancelled == true)

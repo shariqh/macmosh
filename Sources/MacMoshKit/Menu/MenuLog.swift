@@ -46,7 +46,7 @@ public enum MenuLog {
     }
 
     /// The menu on screen had a submenu, and a different menu or notice was held back (`HoldStill`):
-    /// `menu held a change: open with a submenu`.
+    /// `menu held a change: open with a submenu` or `menu held a change: closing with a submenu`.
     static func held(_ when: HeldWhen) -> String {
         "menu held a change: \(when.rawValue)"
     }
