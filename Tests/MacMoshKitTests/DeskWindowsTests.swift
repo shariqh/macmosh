@@ -85,6 +85,15 @@ private let a = "aaaaaaaaaaaaaaaa", b = "bbbbbbbbbbbbbbbb", c = "ccccccccccccccc
         #expect(windowsOf(detailed) != nil)
     }
 
+    /// An open desk whose window details name no usable window id keeps today's shape, though it passes the gate.
+    @Test func anOpenDeskWithNoUsableWindowIdKeepsTodaysShape() {
+        let desk = detailedDesk("blog", [detailedWindow(0, "@x", "zsh", tabs: 0)])
+        #expect(WindowLinesGate.passes(atticResult([desk]), desk: desk, terminal: .iterm2))
+        #expect(windowsOf(desk) == nil)
+        let menu = MenuModel.build([.checked(atticResult([desk]))], tabs: TabsOnThisMac(), now: windowsNow)
+        #expect(entry(menu.entries, "desk:attic:blog")?.title == "blog (1 window: zsh)")
+    }
+
     /// A closed permanent desk has no windows to detail: the script's version and the connection are enough.
     @Test func aClosedPermanentDeskNeedsOnlyTheVersionAndTheConnection() {
         let closed = { (version: String, mode: ConnectionMode) in
