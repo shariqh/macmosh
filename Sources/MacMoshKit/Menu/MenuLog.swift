@@ -103,6 +103,11 @@ public enum MenuLog {
         "tab gone (\(why.rawValue)), \(then)"
     }
 
+    /// `tab records cleared: 2`: how many tab records the refresher removed after good reports.
+    static func recordsCleared(_ count: Int) -> String {
+        "tab records cleared: \(count)"
+    }
+
     /// `tabs opened: 3`, or `tabs opened: 3 (another way: 1)` when some were opened with a command file.
     static func tabsOpened(_ count: Int, anotherWay: Int) -> String {
         anotherWay == 0 ? "tabs opened: \(count)" : "tabs opened: \(count) (another way: \(anotherWay))"

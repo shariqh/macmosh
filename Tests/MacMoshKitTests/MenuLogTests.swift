@@ -95,6 +95,10 @@ private final class Lines: @unchecked Sendable {
         #expect(MenuLog.selectFailure("") == "tab not selected")
     }
 
+    @Test func clearedRecordsAreCountedNotNamed() {
+        #expect(MenuLog.recordsCleared(2) == "tab records cleared: 2")
+    }
+
     @Test func theTabsSummariesAreNumbersAndFixedWords() {
         #expect(MenuLog.tabsOpened(3, anotherWay: 0) == "tabs opened: 3")
         #expect(MenuLog.tabsOpened(3, anotherWay: 2) == "tabs opened: 3 (another way: 2)")
