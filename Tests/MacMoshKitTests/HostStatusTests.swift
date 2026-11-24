@@ -311,13 +311,15 @@ private func versionLine(in text: String) -> String {
             ["view", "website", "v1", "@x", "1", ""],           // id not @ and digits
             ["view", "website", "v2", "@1", "-1", ""],          // tabs below 0
             ["view", "website", "v3", "@1", "1", "NOT-HEX"],    // label breaks the rule
+            ["view", "website", "v6", "@1", "1", "1\u{301}2\u{301}3\u{301}4\u{301}"], // digits with combining marks
             ["view", "website", "v4"],
             ["view", "ghost", "v5", "@1", "1", "abcd"],
         ]))
         let desk = try #require(s.desks.first)
         #expect(desk.windows.map(\.id) == [nil, nil])
         #expect(!desk.hasWindowInfo)
-        #expect(desk.views == [HostStatus.View(name: "v3", windowId: "@1", tabs: 1, label: nil)])
+        #expect(desk.views == [HostStatus.View(name: "v3", windowId: "@1", tabs: 1, label: nil),
+                               HostStatus.View(name: "v6", windowId: "@1", tabs: 1, label: nil)])
     }
 
     /// A record type this version doesn't know is still skipped.

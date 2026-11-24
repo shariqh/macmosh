@@ -122,6 +122,14 @@ import Testing
         #expect(TabLabel.make() != real)
     }
 
+    /// The script's rule is "each a digit or a letter from a to f", so a digit carrying a combining mark (one
+    /// character to Swift, two scalars) breaks it.
+    @Test(arguments: ["1\u{301}2\u{301}3\u{301}4\u{301}", "abcdé", "ABCD", "abc", String(repeating: "a", count: 33)])
+    func aLabelIsOnlyPlainDigitsAndAToF(_ word: String) {
+        #expect(!TabLabel.isValid(word))
+        #expect(TabLabel.isValid("abcd") && TabLabel.isValid(String(repeating: "0", count: 32)))
+    }
+
     // MARK: Running connect
 
     private func check(_ status: HostStatus? = nil) -> CheckResult {
@@ -218,6 +226,20 @@ import Testing
                                  interactive: interactive, ui: ui)
         #expect(code == 0 && interactive.calls.count == 1)
         #expect(seen.value.isEmpty)
+        #expect(ui.said.contains("MacMosh couldn't note this tab, so the menu may not find it later."))
+    }
+
+    /// When `tabs/` can't be written (here a plain file sits in its place), the tab still opens with its
+    /// label and the person is told the menu may not find it.
+    @Test func aRecordThatCantBeWrittenStillOpensTheTab() async throws {
+        let paths = try temporaryPaths()
+        try FileManager.default.createDirectory(at: paths.supportDir, withIntermediateDirectories: true)
+        try Data("not a folder".utf8).write(to: paths.tabsDir)
+        let interactive = FakeInteractive(); let ui = ScriptedInteraction()
+        let code = await connect(check(), mode: .ssh, tab: .view, noting: noting(paths),
+                                 interactive: interactive, ui: ui)
+        #expect(code == 0 && interactive.calls.count == 1)
+        #expect(interactive.calls.first?.last == "~/.macmosh/macmosh-host attach --label \(Self.label) website")
         #expect(ui.said.contains("MacMosh couldn't note this tab, so the menu may not find it later."))
     }
 

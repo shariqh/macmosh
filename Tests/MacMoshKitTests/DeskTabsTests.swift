@@ -74,6 +74,15 @@ import Testing
         #expect(build(d, [record("aaaaaaaaaaaaaaaa", asked: "@1", secondsAgo: 119.9)]).first?.labels == ["aaaaaaaaaaaaaaaa"])
     }
 
+    /// A record dated after "now" (the clock moved back) is fresh only within two minutes either way, so a
+    /// large step back can't keep it fresh for longer.
+    @Test(arguments: [(-30.0, true), (-119.9, true), (-120.0, false), (-3600.0, false)])
+    func aRecordDatedAfterNowIsFreshOnlyWithinTwoMinutes(_ secondsAgo: Double, _ counts: Bool) {
+        let d = desk([window(1, "@1", tabs: 0)])
+        let labels = build(d, [record("aaaaaaaaaaaaaaaa", asked: "@1", secondsAgo: secondsAgo)]).first?.labels
+        #expect(labels == (counts ? ["aaaaaaaaaaaaaaaa"] : []))
+    }
+
     /// A fresh tab that asked for a new window or a view asked for no window, so it counts nowhere yet.
     @Test func aFreshRecordThatAskedForNoWindowCountsNowhere() {
         let d = desk([window(0, "@0", tabs: 1)])

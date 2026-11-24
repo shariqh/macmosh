@@ -218,4 +218,27 @@ struct FakeProcessProbe: ProcessProbe {
         #expect(!probe.exists(child.processIdentifier))
         #expect(probe.startTime(of: child.processIdentifier) == nil)
     }
+
+    /// kill(2) fails with EPERM for a process of another user, such as launchd (process 1, run by root). A
+    /// record is only written by the person's own `connect`, so "not ours" means "not live".
+    @Test func aProcessOfAnotherUserIsNotLive() {
+        #expect(!SystemProcessProbe().exists(1))
+    }
+
+    /// A process that has ended but not yet been collected by its parent (a zombie) still has its number and
+    /// start time, so its start time is not given and its record is not trusted.
+    @Test func anEndedProcessNotYetCollectedHasNoStartTime() throws {
+        var pid: pid_t = 0
+        let argv: [UnsafeMutablePointer<CChar>?] = [strdup("/usr/bin/true"), nil]
+        defer { argv.forEach { free($0) } }
+        #expect(posix_spawn(&pid, "/usr/bin/true", nil, nil, argv, nil) == 0)
+        // Waits for it to end but leaves it uncollected (WNOWAIT), then collects it.
+        var info = siginfo_t()
+        #expect(waitid(P_PID, id_t(pid), &info, WEXITED | WNOWAIT) == 0)
+        let probe = SystemProcessProbe()
+        let started = probe.startTime(of: pid)
+        var status: Int32 = 0
+        #expect(waitpid(pid, &status, 0) == pid)
+        #expect(started == nil)
+    }
 }

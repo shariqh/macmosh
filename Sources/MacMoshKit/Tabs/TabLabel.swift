@@ -5,8 +5,10 @@ import Foundation
 /// report's `view` line.
 public enum TabLabel {
     /// The workhorse script's rule (`attach --label`): 4 to 32 characters, each a digit or a letter from a to f.
+    /// Checked on Unicode scalars, so a digit carrying a combining mark doesn't pass as a digit.
     public static func isValid(_ word: String) -> Bool {
-        (4...32).contains(word.count) && word.allSatisfy { ("0"..."9").contains($0) || ("a"..."f").contains($0) }
+        (4...32).contains(word.unicodeScalars.count)
+            && word.unicodeScalars.allSatisfy { ("0"..."9").contains($0) || ("a"..."f").contains($0) }
     }
 
     /// A new label: 8 random bytes as 16 lowercase hex characters. `fill` fills the bytes; by default it is

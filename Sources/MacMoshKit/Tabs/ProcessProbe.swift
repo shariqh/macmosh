@@ -23,14 +23,16 @@ public struct SystemProcessProbe: ProcessProbe {
     /// The `kern.proc.pid.<pid>` entry of sysctl(3). The SDK's `sys/sysctl.h` documents `KERN_PROC` as
     /// "struct: process entries" and `KERN_PROC_PID` as "by process id", returning `struct kinfo_proc`;
     /// `sys/proc.h` documents its `kp_proc.p_un.__p_starttime` as "process start time" (a `struct timeval`).
-    /// A process that doesn't exist gives back no entry, so the length read is 0.
+    /// A process that doesn't exist gives back no entry, so the length read is 0. A process whose `p_stat`
+    /// ("process status") is `SZOMB` ("Awaiting collection by parent", `sys/proc.h`) has ended, so it gives nil
+    /// too, though it still has its number and entry.
     public func startTime(of pid: Int32) -> Int64? {
         guard pid > 0 else { return nil }
         var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
         var info = kinfo_proc()
         var size = MemoryLayout<kinfo_proc>.stride
         guard sysctl(&mib, u_int(mib.count), &info, &size, nil, 0) == 0,
-              size == MemoryLayout<kinfo_proc>.stride else { return nil }
+              size == MemoryLayout<kinfo_proc>.stride, info.kp_proc.p_stat != SZOMB else { return nil }
         let started = info.kp_proc.p_un.__p_starttime
         return Int64(started.tv_sec) * 1_000_000 + Int64(started.tv_usec)
     }

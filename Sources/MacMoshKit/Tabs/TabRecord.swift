@@ -119,6 +119,8 @@ public struct TabRecordStore: Sendable {
 
         let data = try JSONEncoder.tabRecord.encode(record)
         let final = file(for: record.label)
+        // A process killed between open and rename leaves this file behind. It is never read (records() reads
+        // only `.json`) and stays small; nothing removes it yet.
         let temporary = folder.appendingPathComponent(".\(record.label).\(UUID().uuidString).tmp")
         let fd = open(temporary.path, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0o600)
         guard fd >= 0 else { throw TabRecordError.writeFailed("open", errno) }
@@ -127,15 +129,16 @@ public struct TabRecordStore: Sendable {
         if fchmod(fd, 0o600) != 0 { failure = .writeFailed("fchmod", errno) }
         if failure == nil {
             data.withUnsafeBytes { raw in
+                guard let base = raw.baseAddress else { return }
                 var offset = 0
                 while offset < raw.count {
-                    let n = Darwin.write(fd, raw.baseAddress! + offset, raw.count - offset)
+                    let n = Darwin.write(fd, base + offset, raw.count - offset)
                     if n > 0 {
                         offset += n
                     } else if n < 0 && errno == EINTR {
                         continue
                     } else {
-                        failure = .writeFailed("write", errno)
+                        failure = .writeFailed("write", n == 0 ? EIO : errno)
                         break
                     }
                 }

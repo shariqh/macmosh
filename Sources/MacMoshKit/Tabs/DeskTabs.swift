@@ -32,7 +32,7 @@ public enum DeskTabs {
     /// - A window's findable tabs are `workhorse`'s records whose label is on a `view` line for that window.
     ///   The join is by label only, never by the desk's name, so a rename can't break it.
     /// - A record whose label is on no `view` line of the desk yet, whose `askedWindow` is that window and
-    ///   which opened less than `freshFor` ago, counts too.
+    ///   which opened less than `freshFor` from `now` (either way, in case the clock moved back), counts too.
     /// - Records of another workhorse are ignored.
     public static func build(desk: HostStatus.Desk, workhorse: String, records: [TabRecord], now: Date) -> [WindowTabs] {
         let mine = records.filter { $0.workhorse == workhorse }
@@ -44,7 +44,7 @@ public enum DeskTabs {
             let found = mine.filter { record in
                 if onWindow.contains(record.label) { return true }
                 return !labelsInReport.contains(record.label) && record.askedWindow == id
-                    && now.timeIntervalSince(record.openedAt) < freshFor
+                    && abs(now.timeIntervalSince(record.openedAt)) < freshFor // either way, if the clock moved back
             }
             return WindowTabs(windowId: id, index: window.index, labels: found.map(\.label),
                               newest: found.last?.label, others: max(0, (window.tabs ?? 0) - found.count))
