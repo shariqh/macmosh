@@ -42,8 +42,10 @@ now() { perl -MTime::HiRes=time -e 'printf "%.3f", time'; }
 say() { printf '%s drv %s\n' "$(now)" "$*" | tee -a "$LOG"; }
 # lim <seconds> <command...>: the command, stopped by SIGALRM after that many seconds.
 lim() { perl -e 'alarm shift @ARGV; exec @ARGV or die "exec failed"' "$@"; }
-# A moment for `log show --start`: lines from this second on.
-moment() { date '+%Y-%m-%d %H:%M:%S'; }
+# A moment for `log show --start`: lines from the second before this one on. The log's timestamps
+# run about 0.1 s behind this clock and --start takes whole seconds, so a line written just after
+# this moment can carry the previous second (a run on macOS 15 missed 'sample menu: changing' so).
+moment() { date -v-1S '+%Y-%m-%d %H:%M:%S'; }
 # The time now as the app's log writes it (local time, to the millisecond), to bound lines exactly.
 stamp_ms() { perl -MTime::HiRes=time -MPOSIX=strftime -e '$t = time; printf "%s.%03d", strftime("%Y-%m-%d %H:%M:%S", localtime $t), ($t - int $t) * 1000'; }
 # between <from stamp> <to stamp>: the log lines on stdin written from the first to the second.
