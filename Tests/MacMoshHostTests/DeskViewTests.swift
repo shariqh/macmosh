@@ -355,7 +355,7 @@ extension HostScriptTests {
         #expect(out.contains("\nwindowinfo\twebsite\t0\t\(ids[0])\t1\t1\n"), "\(out)")
         #expect(out.contains("\nwindowinfo\twebsite\t1\t\(ids[1])\t0\t1\n"), "\(out)")
         #expect(out.contains("\nwindowinfo\twebsite\t2\t\(ids[2])\t0\t0\n"), "\(out)")
-        #expect(out.contains("\nview\twebsite\t\(view)\t\(ids[1])\t1\n"), "\(out)")
+        #expect(out.contains("\nview\twebsite\t\(view)\t\(ids[1])\t1\t\n"), "\(out)")
         // A view is never a desk.
         #expect(!out.contains("\ndesk\twebsite+"))
         #expect(out.split(separator: "\n").filter { $0.hasPrefix("desk\t") }.count == 1)
@@ -363,7 +363,7 @@ extension HostScriptTests {
         // After a rename the view's line names the desk by its new name.
         #expect(h.run(["desk-rename", "website", "notes"]).exitCode == 0)
         let renamed = h.run(["status"]).stdout
-        #expect(renamed.contains("\nview\tnotes\t\(view)\t\(ids[1])\t1\n"), "\(renamed)")
+        #expect(renamed.contains("\nview\tnotes\t\(view)\t\(ids[1])\t1\t\n"), "\(renamed)")
         #expect(renamed.contains("\ndesk\tnotes\t3\t2\n"))
     }
 

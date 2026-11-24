@@ -4,7 +4,7 @@
 # Plain bash 3.2 (what macOS ships at /bin/bash): no associative arrays, no mapfile, no ${var,,}.
 set -u
 
-MACMOSH_HOST_VERSION=0.7.0
+MACMOSH_HOST_VERSION=0.8.0
 MACMOSH_PROTOCOL=1
 AGENT_LABEL=io.github.shariqh.macmosh.host
 
@@ -818,13 +818,26 @@ cmd_window_new() {
 # a view that never got a tab, or whose desk's own session is gone (mm_sweep_views). Seen with tmux 3.8 on
 # a throwaway socket: when a desk's last shell exits, every session of its group closes, and the
 # session-closed hook runs for each name.
+# A view can carry a label (@macmosh-label, from attach --label): a short word the daily Mac makes up for
+# one of its terminal tabs, so that it can match the tab to the view's line in the status report. It is
+# set by the view's id with the tag, and only on views; the script never looks a view up by it.
 
-# Makes a view of a desk showing one window: the given one, or a new one made with -d so that no other
-# tab moves. Under the desk list's lock, which every maker of a desk's session also holds. Sets MM_VIEW_ID
-# and MM_VIEW_WINDOW. Returns 4 when the desk or the window is gone, 1 when the view can't be made.
+# True when $1 is a label: 4 to 32 characters, each a digit or a letter from a to f. The letters are
+# listed one by one, because a range such as a-f can take in other letters in some locales.
+mm_valid_label() {
+    case "$1" in
+        '' | *[!0123456789abcdef]*) return 1 ;;
+    esac
+    [ "${#1}" -ge 4 ] && [ "${#1}" -le 32 ]
+}
+
+# Makes a view of a desk showing one window: the given one, a new one made with -d so that no other tab
+# moves, or, with neither, the one the desk's own session shows at that moment. Under the desk list's
+# lock, which every maker of a desk's session also holds. Sets MM_VIEW_ID and MM_VIEW_WINDOW. Returns 4
+# when the desk or the window is gone, 1 when the view can't be made.
 mm_open_view() {
-    # $1 desk name, $2 window id (@n) or empty, $3 1 for a new window
-    local name="$1" wid="$2" sid grouped group vid
+    # $1 desk name, $2 window id (@n) or empty, $3 1 for a new window, $4 label or empty
+    local name="$1" wid="$2" label="${4:-}" sid grouped group vid check want
     MM_VIEW_ID="" MM_VIEW_WINDOW=""
     if ! mm_lock; then
         echo "macmosh-host: could not lock the desk list" >&2
@@ -870,16 +883,26 @@ mm_open_view() {
     esac
     # The tag and the record by the view's own id: a command with no target acts on the session of
     # the pane it is run from (TMUX_PANE), not on the session just made with -d. The record on the
-    # server outlives the view, for desk-closed.
-    if [ -n "$vid" ]; then
+    # server outlives the view, for desk-closed. The label, when there is one, goes in the same call.
+    if [ -n "$vid" ] && [ -n "$label" ]; then
+        mm_tmux set-option -t "$vid" @macmosh-view "$sid" \; \
+            set-option -s "@macmosh-view-${vid#\$}" "$sid" \; \
+            set-option -t "$vid" @macmosh-label "$label" >/dev/null 2>&1
+    elif [ -n "$vid" ]; then
         mm_tmux set-option -t "$vid" @macmosh-view "$sid" \; \
             set-option -s "@macmosh-view-${vid#\$}" "$sid" >/dev/null 2>&1
     fi
     trap 'exit 130' INT HUP
     trap 'exit 143' TERM
     group=$(mm_session_field "$sid" '#{session_group}')
-    if [ -z "$vid" ] || [ -z "$group" ] ||
-        [ "$(mm_session_field "$vid" "#{@macmosh-view}$TAB#{session_group}")" != "$sid$TAB$group" ]; then
+    # The tag, the group and the label (when one was given) are read back, so a view that didn't get
+    # them is never used.
+    if [ -n "$label" ]; then
+        check="#{@macmosh-view}$TAB#{session_group}$TAB#{@macmosh-label}" want="$sid$TAB$group$TAB$label"
+    else
+        check="#{@macmosh-view}$TAB#{session_group}" want="$sid$TAB$group"
+    fi
+    if [ -z "$vid" ] || [ -z "$group" ] || [ "$(mm_session_field "$vid" "$check")" != "$want" ]; then
         if [ -n "$vid" ]; then mm_tmux kill-session -t "$vid" >/dev/null 2>&1; fi
         mm_release_lock
         echo "macmosh-host: could not open a tab on the desk $name" >&2
@@ -897,6 +920,20 @@ mm_open_view() {
                 echo "macmosh-host: could not add a window" >&2
                 mm_log attach "failed: no window for $name"
                 return 1
+                ;;
+        esac
+    elif [ -z "$wid" ]; then
+        # Neither option: the window the desk's own session shows now, read as late as possible. A new
+        # view starts on the group's lowest window (seen with tmux 3.8), so it is moved there below.
+        wid=$(mm_session_field "$sid" '#{window_id}')
+        case "$wid" in
+            @[0-9]*) ;;
+            *)
+                mm_tmux kill-session -t "$vid" >/dev/null 2>&1
+                mm_release_lock
+                echo "macmosh-host: no such desk: $name" >&2
+                mm_log attach "no such desk: $name"
+                return 4
                 ;;
         esac
     fi
@@ -923,8 +960,13 @@ mm_kill_views() {
     return 0
 }
 
+MM_LABEL_RULE="--label needs a word of 4 to 32 characters, each a digit or a letter from a to f"
+
+# attach --label gives the tab's view a label (see mm_open_view). With --window or --new-window it goes
+# on that view; with neither, the tab gets a view on the window the desk shows now, not the desk's own
+# session. A dry run checks the label as it checks the window, and makes no view.
 cmd_attach() {
-    local name="" cc=0 dry=0 npos=0 line sid window="" newwin=0 vid="" code
+    local name="" cc=0 dry=0 npos=0 line sid window="" newwin=0 vid="" code label="" labelled=0
     while [ $# -gt 0 ]; do
         case "$1" in
             --cc) cc=1 ;;
@@ -935,6 +977,12 @@ cmd_attach() {
                 shift
                 ;;
             --new-window) newwin=1 ;;
+            --label)
+                [ $# -ge 2 ] || mm_usage_error attach "$MM_LABEL_RULE"
+                label="$2"
+                labelled=1
+                shift
+                ;;
             --*) mm_usage_error attach "unknown option $1" ;;
             *)
                 npos=$((npos + 1))
@@ -944,7 +992,13 @@ cmd_attach() {
         esac
         shift
     done
-    [ "$npos" -eq 1 ] || mm_usage_error attach "usage: attach [--cc] [--window @<id> | --new-window] [--dry-run] <desk>"
+    [ "$npos" -eq 1 ] || mm_usage_error attach "usage: attach [--cc] [--window @<id> | --new-window] [--label <word>] [--dry-run] <desk>"
+    if [ "$labelled" = 1 ] && ! mm_valid_label "$label"; then
+        mm_usage_error attach "$MM_LABEL_RULE"
+    fi
+    if [ "$labelled" = 1 ] && [ "$cc" = 1 ]; then
+        mm_usage_error attach "--cc can't be used with --label"
+    fi
     case "$window" in
         '') ;;
         @[0-9]*)
@@ -1008,15 +1062,16 @@ cmd_attach() {
         mm_log attach "dry run $name"
         return 0
     fi
-    if [ -n "$window" ] || [ "$newwin" = 1 ]; then
+    if [ -n "$window" ] || [ "$newwin" = 1 ] || [ "$labelled" = 1 ]; then
         code=0
-        mm_open_view "$name" "$window" "$newwin" || code=$?
+        mm_open_view "$name" "$window" "$newwin" "$label" || code=$?
         [ "$code" = 0 ] || return "$code"
         vid="$MM_VIEW_ID"
+        if [ "$labelled" = 1 ]; then label=", label $label"; fi
         if [ "$newwin" = 1 ]; then
-            mm_log attach "$name (new window $MM_VIEW_WINDOW)"
+            mm_log attach "$name (new window $MM_VIEW_WINDOW$label)"
         else
-            mm_log attach "$name (window $MM_VIEW_WINDOW)"
+            mm_log attach "$name (window $MM_VIEW_WINDOW$label)"
         fi
     else
         # By id, looked up last: a desk that closed since the check above is no desk to attach to.
@@ -1524,11 +1579,13 @@ mm_window_records() {
 
 # Which windows of one desk a tab shows, after its window records: one "windowinfo" line per window
 # (desk, index, window id, 1 when the desk's own session shows it, the number of tabs showing it) and
-# one "view" line per view (desk, the view's name, the window it shows, its tabs). window_active_clients
-# counts the tabs of every session in the group (seen with tmux 3.8). An older app skips both records.
-# $1 is the desk's name, $2 its session id, $3 the list of every session (id, tag, tabs, window, name).
+# one "view" line per view (desk, the view's name, the window it shows now, its tabs, its label or
+# nothing). window_active_clients counts the tabs of every session in the group (seen with tmux 3.8).
+# An older app skips both records.
+# $1 is the desk's name, $2 its session id, $3 the list of every session (id, tag, tabs, window, label,
+# name).
 mm_window_info_records() {
-    local desk="$1" sid="$2" index wid active tabs tag view
+    local desk="$1" sid="$2" index wid active tabs tag view label
     mm_tmux list-windows -t "$sid:" -F '#{window_index}|#{window_id}|#{window_active}|#{window_active_clients}' 2>/dev/null |
         while IFS='|' read -r index wid active tabs; do
             case "$index$active$tabs" in
@@ -1536,12 +1593,13 @@ mm_window_info_records() {
             esac
             printf 'windowinfo\t%s\t%s\t%s\t%s\t%s\n' "$desk" "$index" "$wid" "$active" "$tabs"
         done
-    printf '%s\n' "$3" | while IFS='|' read -r _ tag tabs wid view; do
+    printf '%s\n' "$3" | while IFS='|' read -r _ tag tabs wid label view; do
         [ -n "$tag" ] && [ "$tag" = "$sid" ] || continue
         case "$tabs" in
             '' | *[!0-9]*) continue ;;
         esac
-        printf 'view\t%s\t%s\t%s\t%s\n' "$desk" "$(mm_clean "$view")" "$wid" "$tabs"
+        mm_valid_label "$label" || label=""
+        printf 'view\t%s\t%s\t%s\t%s\t%s\n' "$desk" "$(mm_clean "$view")" "$wid" "$tabs" "$label"
     done
 }
 
@@ -1552,7 +1610,9 @@ mm_desk_records() {
     # view (a session tagged @macmosh-view). The windows are listed by the session's id, never by "=name"
     # (see mm_session_id). A desk's tabs are those of every session in its group, its views' included.
     text=$(mm_tmux list-sessions -F '#{session_id}|#{@macmosh-view}|#{session_windows}|#{?session_grouped,#{session_group_attached},#{session_attached}}|#{session_name}' 2>/dev/null)
-    sessions=$(mm_tmux list-sessions -F '#{session_id}|#{@macmosh-view}|#{session_attached}|#{window_id}|#{session_name}' 2>/dev/null)
+    # A view's label is given only when it is all digits and letters from a to f, so a label set by hand
+    # can't hold the | that separates the fields; mm_window_info_records checks its length.
+    sessions=$(mm_tmux list-sessions -F '#{session_id}|#{@macmosh-view}|#{session_attached}|#{window_id}|#{?#{m/r:^[0-9a-f]+$,#{@macmosh-label}},#{@macmosh-label},}|#{session_name}' 2>/dev/null)
     printf '%s\n' "$text" | while IFS= read -r line; do
         sid="${line%%|*}"
         line="${line#*|}"
@@ -1722,9 +1782,11 @@ usage: macmosh-host <subcommand>
   version   print the script version
   start     start the desk server if it is down
   status    print the status report
-  attach [--cc] [--window @<id> | --new-window] [--dry-run] <desk>
+  attach [--cc] [--window @<id> | --new-window] [--label <word>] [--dry-run] <desk>
             --window opens this tab on one window of the desk, --new-window on a new one;
-            other tabs on the desk stay where they are
+            other tabs on the desk stay where they are. --label names the tab for the
+            status report (4 to 32 of 0-9 and a-f); with neither window option, the tab
+            opens on the window the desk shows now
   desk-new <name> <folder> [--no-reopen] [--permanent] [--keep] [--command <text>]
             a new desk comes back after a restart unless --no-reopen, and is removed
             when its last shell exits unless --permanent

@@ -384,8 +384,10 @@ extension HostScriptTests {
         let version = h.run(["version"])
         #expect(version.exitCode == 0)
         #expect(version.stdout == h.scriptVersion + "\n")
-        #expect(version.stdout == "0.7.0\n")
-        #expect(h.run([]).exitCode == 2)
+        #expect(version.stdout == "0.8.0\n")
+        let usage = h.run([])
+        #expect(usage.exitCode == 2)
+        #expect(usage.stderr.contains("attach [--cc] [--window @<id> | --new-window] [--label <word>] [--dry-run] <desk>"))
         #expect(h.run(["nonsense"]).exitCode == 2)
     }
 
