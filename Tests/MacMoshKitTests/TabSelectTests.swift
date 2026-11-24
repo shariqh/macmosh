@@ -193,6 +193,52 @@ import Testing
         }
     }
 
+    /// A step that stopped (issue #129): `failed <step> <error number>`, the step A, B or C.
+    @Test func aStepThatStoppedIsNamedWithItsErrorNumber() async throws {
+        let iTerm = FakeRunner { _ in FakeRunner.ok("failed A -1728\n") }
+        await #expect(throws: LaunchError.selectStopped(.iterm2, step: .a, error: -1728)) {
+            try await opener(runner: iTerm).select(tty: "/dev/ttys004", terminal: .iterm2)
+        }
+        let terminal = FakeRunner { _ in FakeRunner.ok("failed B -1719") }
+        await #expect(throws: LaunchError.selectStopped(.appleTerminal, step: .b, error: -1719)) {
+            try await opener(runner: terminal).select(tty: "/dev/ttys004", terminal: .terminal)
+        }
+        let last = FakeRunner { _ in FakeRunner.ok("failed C -10006\n") }
+        await #expect(throws: LaunchError.selectStopped(.iterm2, step: .c, error: -10006)) {
+            try await opener(runner: last).select(tty: "/dev/ttys004", terminal: .iterm2)
+        }
+    }
+
+    /// Each step runs inside its own `try`, so a refusal comes back as a step's answer, not as osascript's
+    /// error: it is still a refusal, worded as before.
+    @Test func aRefusalInsideAStepIsStillARefusal() async throws {
+        for step in ["A", "B", "C"] {
+            let runner = FakeRunner { _ in FakeRunner.ok("failed \(step) -1743\n") }
+            await #expect(throws: LaunchError.automationDenied(.iterm2)) {
+                try await opener(runner: runner).select(tty: "/dev/ttys004", terminal: .iterm2)
+            }
+        }
+    }
+
+    @Test(arguments: ["failed", "failed A", "failed D -1728", "failed a -1728", "failed A -17x28", "failed A -1728 more",
+                      "failed  A -1728", "failedA -1728", "ok then", "OK", "Gone"])
+    func aMisshapenAnswerIsAFailure(_ said: String) async throws {
+        let runner = FakeRunner { _ in FakeRunner.ok(said + "\n") }
+        await #expect(throws: LaunchError.failed("iTerm2 gave an answer MacMosh doesn't know.")) {
+            try await opener(runner: runner).select(tty: "/dev/ttys004", terminal: .iterm2)
+        }
+    }
+
+    /// The sentence for a stopped step: the app, what the step was doing, and the error number.
+    @Test func aStoppedStepHasAPlainReason() {
+        #expect(LaunchError.stoppedReason(.iterm2, step: .a, error: -1728)
+                == "iTerm2 couldn't un-minimize the tab's window (error -1728).")
+        #expect(LaunchError.stoppedReason(.appleTerminal, step: .b, error: -1719)
+                == "Terminal couldn't bring the tab's window to the front (error -1719).")
+        #expect(LaunchError.stoppedReason(.iterm2, step: .c, error: -10006)
+                == "iTerm2 couldn't select the tab (error -10006).")
+    }
+
     @Test func aRefusalIsNamedForTheTerminal() async throws {
         let runner = FakeRunner { _ in FakeRunner.failed(1, stderr: Self.denied) }
         await #expect(throws: LaunchError.automationDenied(.appleTerminal)) {

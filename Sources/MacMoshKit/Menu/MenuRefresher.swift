@@ -203,15 +203,16 @@ public final class MenuRefresher: ObservableObject {
     }
 
     /// Does what a menu item asks, keeps the sentence it gives back as the `notice`, and checks again.
-    /// The notice from the action before is cleared first.
+    /// The notice from the action before is cleared first. An item is a line.
     public func perform(_ item: MenuItem, using actions: MenuActionRunner) async {
-        await perform(item.action, title: item.title, using: actions)
+        await perform(item.action, title: item.title, from: .line, using: actions)
     }
 
-    /// The same for one action and the title of its line: a row's primary action, or a line in a submenu.
-    public func perform(_ action: MenuAction, title: String, using actions: MenuActionRunner) async {
+    /// The same for one action and the title of its line or row: a row's primary action (`.row`), or a line
+    /// (`.line`), which the log says.
+    public func perform(_ action: MenuAction, title: String, from click: MenuClick, using actions: MenuActionRunner) async {
         notice = nil
-        log(MenuLog.asked(action))
+        log(MenuLog.asked(action, from: click))
         let outcome = await actions.outcome(of: action, title: title)
         log(MenuLog.finished(action, summary: outcome.summary))
         notice = outcome.notice

@@ -210,26 +210,69 @@ finish() {
 
 say "$name $(defaults read "$bundle/Contents/Info.plist" CFBundleShortVersionString) on $os ($(sw_vers -productVersion))"
 say "select script: $(printf '%s' "$select_script" | shasum -a 256 | cut -d' ' -f1), $(printf '%s' "$select_script" | wc -c | tr -d ' ') bytes"
+bundle_id=$(defaults read "$bundle/Contents/Info.plist" CFBundleIdentifier)
 lim 20 open -a "$bundle"
 sleep 8
 snap started
 
-# The first Apple event: if macOS refuses (-1743) or a consent window waits for a click (the call is
-# stopped after 30 s), nothing else can run.
-osa 30 "tell application \"$name\" to return version"
-if [ "$STATUS" -ne 0 ]; then
-    snap refused
-    if [ "$STATUS" -eq 142 ]; then
-        result SKIPPED "osascript drives $name" "no answer in 30 s (a consent window may be waiting)"
-    else
-        result SKIPPED "osascript drives $name" "osascript exit $STATUS: $ERR"
+# tcc_log <step>: what macOS's privacy service (TCC) said about Apple events in the last 3 minutes.
+tcc_log() {
+    lim 60 /usr/bin/log show --last 3m --style compact --predicate 'subsystem == "com.apple.TCC"' 2>/dev/null \
+        | grep -E "AppleEvents|$bundle_id" | tail -n 60 > "$OUT/$app-tcc-$1.txt"
+    say "TCC log ($1): $(wc -l < "$OUT/$app-tcc-$1.txt" | tr -d ' ') lines in $app-tcc-$1.txt"
+    grep -m 5 -oE "(responsible|attribution)[^}]{0,200}" "$OUT/$app-tcc-$1.txt" | sed 's/^/  /' | tee -a "$LOG"
+}
+
+# probe <step>: one real Apple event (AppleScript answers an app's `version` without one). True when it answered.
+probe() {
+    osa 20 "tell application \"$name\" to count windows"
+    snap "probe-$1"
+    tcc_log "$1"
+    if [ "$STATUS" -eq 0 ]; then
+        result PASS "osascript drives $name ($1)" "$name counted $ANSWER window(s)"
+        return 0
     fi
-    finish
+    if [ "$STATUS" -eq 142 ]; then
+        result NOTE "osascript drives $name ($1)" "no answer in 20 s (a consent window may be waiting; see probe-$1.png)"
+    else
+        result NOTE "osascript drives $name ($1)" "osascript exit $STATUS: $ERR"
+    fi
+    return 1
+}
+
+# grant: what GitHub's runner images do to let a process send Apple events (actions/runner-images,
+# images/macos/scripts/build/configure-tccdb-macos.sh: a kTCCServiceAppleEvents row in the user's and the
+# system's TCC.db with sqlite3), for this app's bundle id and the clients the image names.
+grant() {
+    local ts client row
+    ts=$(date +%s)
+    for client in /opt/hca/hosted-compute-agent /usr/bin/osascript /bin/bash; do
+        row="'kTCCServiceAppleEvents','$client',1,2,3,1,NULL,NULL,0,'$bundle_id',NULL,NULL,$ts,NULL,NULL,'UNUSED',$ts"
+        lim 20 sqlite3 "$HOME/Library/Application Support/com.apple.TCC/TCC.db" "INSERT OR REPLACE INTO access VALUES($row);" >> "$LOG" 2>&1
+        say "user TCC.db: $client -> $bundle_id: exit $?"
+        lim 20 sudo sqlite3 "/Library/Application Support/com.apple.TCC/TCC.db" "INSERT OR REPLACE INTO access VALUES($row);" >> "$LOG" 2>&1
+        say "system TCC.db: $client -> $bundle_id: exit $?"
+    done
+    say "restart the privacy service: user $(killall tccd 2>&1; echo "exit $?"), system $(sudo killall tccd 2>&1; echo "exit $?")"
+    sleep 3
+}
+
+if ! probe as-is; then
+    say "osascript could not drive $name as the runner comes; adding the runner image's kind of privacy rows"
+    grant
+    if ! probe after-grant; then
+        result SKIPPED "osascript drives $name" "the runner would not let osascript control $name, as it comes or with the runner image's privacy rows; see $app-driver.log and $app-tcc-*.txt"
+        finish
+    fi
 fi
-result PASS "osascript drives $name" "$name answered: version $ANSWER"
 
 osa 60 "$make_windows"
-[ "$STATUS" -eq 0 ] || { result FAIL "make windows" "osascript exit $STATUS: $ERR"; finish; }
+if [ "$STATUS" -ne 0 ]; then
+    snap make-windows
+    tcc_log make-windows
+    result FAIL "make windows" "osascript exit $STATUS: $ERR"
+    finish
+fi
 # Wait until every tab has its terminal device.
 for _ in $(seq 1 20); do
     show_layout

@@ -267,7 +267,7 @@ private func locked(at offset: TimeInterval = 0) -> Gathered {
         let actions = MenuActionRunner(macmoshPath: "/Applications/MacMosh.app/Contents/Helpers/macmosh",
                                        tabs: RecordingTabs(), runner: fake, records: scratchTabRecords())
         screen.menuBegan()
-        await r.perform(.run(["screen", "mbp"]), title: "Share screen", using: actions)
+        await r.perform(.run(["screen", "mbp"]), title: "Share screen", from: .line, using: actions)
         #expect(r.notice == "no screen sharing")
         #expect(screen.shown.notice == nil)
         screen.menuEnded()

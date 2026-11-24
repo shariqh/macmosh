@@ -122,12 +122,8 @@ public struct MenuActionRunner: Sendable {
             do {
                 if try await tabs.select(tty: record.tty, terminal: record.terminal) == .selected { return .alreadyOpen }
                 records.remove(label: record.label)
-            } catch LaunchError.automationDenied(let app) {
-                return .failed(ActionOutcome(summary: "not allowed to control the terminal app", notice: Self.notAllowed(app)))
-            } catch LaunchError.failed(let reason) {
-                return .failed(ActionOutcome(summary: MenuLog.selectFailure(reason), notice: "Couldn't bring that tab forward. \(reason)"))
             } catch {
-                return .failed(ActionOutcome(summary: MenuLog.selectFailure(""), notice: "Couldn't bring that tab forward."))
+                return .failed(Self.notSelected(error))
             }
         }
         let command: TabCommand
@@ -211,12 +207,26 @@ public struct MenuActionRunner: Sendable {
                 records.remove(label: label)
                 return await reopen(orOpen, .notInTerminal)
             }
-        } catch LaunchError.automationDenied(let app) {
-            return ActionOutcome(summary: "not allowed to control the terminal app", notice: Self.notAllowed(app))
-        } catch LaunchError.failed(let reason) {
-            return ActionOutcome(summary: MenuLog.selectFailure(reason), notice: "Couldn't bring that tab forward. \(reason)")
         } catch {
-            return ActionOutcome(summary: MenuLog.selectFailure(""), notice: "Couldn't bring that tab forward.")
+            return Self.notSelected(error)
+        }
+    }
+
+    /// What a select that threw comes to, for a focus and for a tab opened a moment ago alike: a refusal says
+    /// what opening a tab says; a step that stopped, which step and the error number (issue #129); anything
+    /// else, the terminal's own text for the person and only its error number for the log.
+    private static func notSelected(_ error: Error) -> ActionOutcome {
+        let sorry = "Couldn't bring that tab forward."
+        switch error {
+        case LaunchError.automationDenied(let app):
+            return ActionOutcome(summary: "not allowed to control the terminal app", notice: notAllowed(app))
+        case LaunchError.selectStopped(let app, let step, let number):
+            return ActionOutcome(summary: MenuLog.selectStopped(step, error: number),
+                                 notice: "\(sorry) \(LaunchError.stoppedReason(app, step: step, error: number))")
+        case LaunchError.failed(let reason):
+            return ActionOutcome(summary: MenuLog.selectFailure(reason), notice: "\(sorry) \(reason)")
+        default:
+            return ActionOutcome(summary: MenuLog.selectFailure(""), notice: sorry)
         }
     }
 

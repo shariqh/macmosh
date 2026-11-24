@@ -52,7 +52,12 @@ jobs:
 
       - name: Install iTerm2
         timeout-minutes: 8
-        run: brew install --cask iterm2
+        # Without the quarantine mark removed, macOS asks "“iTerm” is an app downloaded from the Internet.
+        # Are you sure you want to open it?" and iTerm2 never starts (seen on the first run).
+        run: |
+          set -euo pipefail
+          brew install --cask iterm2
+          xattr -dr com.apple.quarantine /Applications/iTerm.app
 
       - name: The terminal versions
         timeout-minutes: 1
