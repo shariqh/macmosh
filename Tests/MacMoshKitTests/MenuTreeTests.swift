@@ -126,9 +126,13 @@ private func twoWithTheSameDesk() -> MenuLines {
         #expect(block.title == "MacBook Pro · Ready")
         #expect(block.action == .none)   // the headline's row has no primary action
         #expect(block.submenu.map(\.id) == [
-            "wh:mbp:share", "wh:mbp:lid", "wh:mbp:restart", "wh:mbp:sep1", "wh:mbp:summary", "wh:mbp:home",
-            "wh:mbp:sep2", "wh:mbp:checklist",
+            "wh:mbp:share", "wh:mbp:lid", "wh:mbp:restart", "wh:mbp:sep1", "wh:mbp:summary:1", "wh:mbp:summary:2",
+            "wh:mbp:summary:3", "wh:mbp:summary:4", "wh:mbp:home", "wh:mbp:sep2", "wh:mbp:checklist",
         ])
+        // Changed on purpose for issue #124: the summary is drawn one fact per line, as grey text.
+        #expect(block.submenu.filter { $0.id.contains(":summary:") }.map(\.title)
+                == ["Sign-ins working", "Awake on power", "Lid-closed mode off", "On power, 82%"])
+        #expect(block.submenu.filter { $0.id.contains(":summary:") }.allSatisfy { $0.action == .none && $0.submenu.isEmpty })
         #expect(block.children.map(\.id) == ["desk:mbp:website", "wh:mbp:newDesk"])
         #expect(m.entries[1].isSeparator)
         #expect(m.entries[2].title == "Add a Mac…" && m.entries[3].title == "Check now")

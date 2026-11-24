@@ -36,6 +36,35 @@ import Testing
         #expect(items.contains { $0.inSubmenu && !$0.isSeparator })
     }
 
+    /// Main's copy before issue #124 (`Fixtures/menu/s1-menu.txt`, kept as it was) is every sample's menu now,
+    /// line for line, but for one change made on purpose: the summary line in a Ready workhorse's submenu is
+    /// drawn one fact per line, the same words split where the line joined them with " · ". None of these
+    /// samples passes the gate for a line per window (an older script, or no window details), so nothing else
+    /// may differ.
+    @Test func everyGatedOffMenuIsMainsCopyWithTheSummaryOneFactPerLine() throws {
+        let main = try storedMenus("menu/s1-menu.txt")
+        let now = everySampleMenu() + moreSampleMenus()
+        #expect(main.count == now.count)
+        var split = 0
+        for (i, (was, menu)) in zip(main, now).enumerated() {
+            #expect(menu.symbol == was.symbol, "menu \(i)")
+            var want: [MenuItem] = []
+            for item in was.items {
+                let isSummary = item.inSubmenu && !item.isSeparator && item.action == .none
+                    && (item.title.hasPrefix("Sign-ins working · ") || item.title.hasPrefix("Sign-ins off · "))
+                guard isSummary else { want.append(item); continue }
+                split += 1
+                for fact in item.title.components(separatedBy: " · ") {
+                    var line = item
+                    line.title = fact
+                    want.append(line)
+                }
+            }
+            #expect(menu.items == want, "menu \(i)")
+        }
+        #expect(split == 8)
+    }
+
     /// Every block that is not Ready (every other state, "Still checking…", "Waiting for the desk
     /// server", "No workhorses yet") is exactly step 1's, line for line. A Ready block keeps its headline.
     @Test func onlyTheReadyBlocksChangedSinceStep1() throws {

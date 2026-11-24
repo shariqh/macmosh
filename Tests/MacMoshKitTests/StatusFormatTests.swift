@@ -180,6 +180,24 @@ private func report(replacing target: String? = nil, with new: String = "") thro
         #expect(StatusFormat.summaryLine(lidOn) == "Sign-ins working · Awake on power · Lid-closed mode on · On power, 82%")
     }
 
+    /// The menu draws the summary one fact per line (issue #124): the same words the line joins, split where it
+    /// joins them.
+    @Test func theSummarysFactsAreTheWordsItsLineJoins() throws {
+        let full = try report()
+        #expect(StatusFormat.summaryFacts(full) == ["Sign-ins working", "Awake on power", "Lid-closed mode off", "On power, 82%"])
+        var other = full
+        other.signIns = .no
+        other.power.sleepOnPower = 10
+        other.battery = .init(present: true, onAC: false, percent: nil)
+        var desktop = full
+        desktop.battery = .init(present: false, onAC: nil, percent: nil)
+        for s in [full, other, desktop] {
+            #expect(StatusFormat.summaryLine(s) == StatusFormat.summaryFacts(s).joined(separator: " · "))
+        }
+        #expect(StatusFormat.summaryFacts(other) == ["Sign-ins off", "Sleeps on power", "Lid-closed mode off", "On battery"])
+        #expect(StatusFormat.summaryFacts(desktop) == ["Sign-ins working", "Awake on power", "On power"])
+    }
+
     @Test func aDesktopSaysNothingAboutTheLid() throws {
         var s = try report()
         s.battery = .init(present: false, onAC: nil, percent: nil)

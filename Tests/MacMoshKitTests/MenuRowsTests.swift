@@ -22,12 +22,13 @@ import Testing
         #expect(rows[5].kind == .button(.refresh))
 
         // Inside a submenu nothing is indented.
+        // Changed on purpose for issue #124: the summary is one fact per line, each grey text.
         #expect(head.map(\.label) == ["Share screen", "Turn on lid-closed mode…", "Restart…", "",
-                                      "Sign-ins working · Awake on power · Lid-closed mode off · On power, 82%",
+                                      "Sign-ins working", "Awake on power", "Lid-closed mode off", "On power, 82%",
                                       "Home address reachable from here: yes", "", "Run the checklist…"])
         #expect(head.map(\.kind) == [
             .button(.run(["screen", "mbp"])), .button(.tab(["power", "mbp", "lid", "on"])), .button(.tab(["restart", "mbp"])),
-            .separator, .text, .text, .separator, .button(.tab(["prepare", "mbp", "--pause"])),
+            .separator, .text, .text, .text, .text, .text, .separator, .button(.tab(["prepare", "mbp", "--pause"])),
         ])
         #expect(desk.map(\.label) == ["Open website", "New window", "", "Rename website…", "Remove website…"])
         #expect(desk.first?.kind == .button(.tab(["connect", "mbp", "website"])))

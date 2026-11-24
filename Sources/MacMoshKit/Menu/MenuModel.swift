@@ -181,12 +181,12 @@ public enum MenuModel {
                          children: children)
     }
 
-    /// Share screen, a laptop's lid-closed switch, Restart…; then the summary line and the home-address
-    /// light, as text; then the checklist. A separator between each group that has lines.
+    /// Share screen, a laptop's lid-closed switch, Restart…; then the summary, one fact per line (issue #124:
+    /// the single line was cut in the middle on a small screen), and the home-address light, as text; then
+    /// the checklist. A separator between each group that has lines.
     private static func headlineSubmenu(_ block: WorkhorseBlock, under id: String) -> [MenuEntry] {
-        var texts: [MenuEntry] = []
-        if let summary = block.summary {
-            texts.append(MenuEntry(id: "\(id):summary", title: summary))
+        var texts: [MenuEntry] = block.summaryFacts.enumerated().map { i, fact in
+            MenuEntry(id: "\(id):summary:\(i + 1)", title: fact)
         }
         if let reachable = block.homeReachable {
             texts.append(MenuEntry(id: "\(id):home", title: WorkhorseBlock.homeLine(reachable)))

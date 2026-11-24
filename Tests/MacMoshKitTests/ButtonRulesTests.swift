@@ -144,6 +144,7 @@ import Testing
         #expect(block.buttons == ButtonRules.forState(r) + ButtonRules.forReady(r) + [ButtonRules.checklist("mbp")])
         #expect(block.desks.map(\.name) == ["website"])
         #expect(block.summary == StatusFormat.summaryLine(.sampleWithDesk))
+        #expect(block.summaryFacts == StatusFormat.summaryFacts(.sampleWithDesk))
         #expect(block.homeReachable == false)
         #expect(WorkhorseBlock.homeLine(false) == "Home address reachable from here: no")
     }
@@ -218,7 +219,9 @@ import Testing
                 #expect(block.title == w.headline, "case \(i)")
                 // The text lines the two faces share: the hint, and the headline submenu's summary and home line.
                 #expect(block.children.first { $0.id == "\(block.id):hint" }?.title == w.hint, "case \(i)")
-                #expect(block.submenu.first { $0.id == "\(block.id):summary" }?.title == w.summary, "case \(i)")
+                // The menu draws the summary one fact per line (issue #124); the board keeps the joined line.
+                let facts = block.submenu.filter { $0.id.hasPrefix("\(block.id):summary:") }.map(\.title)
+                #expect((facts.isEmpty ? nil : facts.joined(separator: " · ")) == w.summary, "case \(i)")
                 #expect(block.submenu.first { $0.id == "\(block.id):home" }?.title
                         == w.homeReachable.map(WorkhorseBlock.homeLine), "case \(i)")
                 let menuSide = actionLines(block.children.filter { !$0.id.hasPrefix("desk:") } + block.submenu)

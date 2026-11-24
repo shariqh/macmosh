@@ -2,7 +2,10 @@
 # Cases 0 to 10 are everySampleMenu(), in its order; 11 on are moreSampleMenus() (MenuStoredCopyTests.swift).
 # Made from the code at commit 2b9075b (issue #108). Changed on purpose once, for issue #107: each Ready
 # block took its submenu shape. Every other block is still step 1's, which step-1-menu.txt keeps and a
-# test compares. Never re-recorded: a change here is a change to the menu.
+# test compares. Changed on purpose again for issue #124: the summary line in a Ready workhorse's submenu
+# became one line per fact (eight summary lines, in cases 0, 1, 10 twice, 13, 14 and 17 twice);
+# s1-menu.txt keeps the copy from before, and a test compares. Never re-recorded: a change here is a
+# change to the menu.
 # "menu <n> symbol=<symbol>" starts a case. Each line after it is, separated by tabs:
 #   <indent>  <kind>  <action>  <title>
 # The kind is line or separator at the menu's top level, submenu for a row that opens a submenu (its
@@ -16,7 +19,10 @@ menu 0 symbol=checkmark.circle
 1	sub-line	tab power mbp lid on	Turn on lid-closed mode…
 1	sub-line	tab restart mbp	Restart…
 1	sub-separator	none	
-1	sub-line	none	Sign-ins working · Awake on power · Lid-closed mode off · On power, 82%
+1	sub-line	none	Sign-ins working
+1	sub-line	none	Awake on power
+1	sub-line	none	Lid-closed mode off
+1	sub-line	none	On power, 82%
 1	sub-line	none	Home address reachable from here: yes
 1	sub-separator	none	
 1	sub-line	tab prepare mbp --pause	Run the checklist…
@@ -36,7 +42,10 @@ menu 1 symbol=exclamationmark.circle
 1	sub-line	tab power mbp lid on	Turn on lid-closed mode…
 1	sub-line	tab restart mbp	Restart…
 1	sub-separator	none	
-1	sub-line	none	Sign-ins working · Awake on power · Lid-closed mode off · On power, 82%
+1	sub-line	none	Sign-ins working
+1	sub-line	none	Awake on power
+1	sub-line	none	Lid-closed mode off
+1	sub-line	none	On power, 82%
 1	sub-line	none	Home address reachable from here: no
 1	sub-separator	none	
 1	sub-line	tab prepare mbp --pause	Run the checklist…
@@ -113,7 +122,10 @@ menu 10 symbol=exclamationmark.triangle
 1	sub-line	tab power mbp lid on	Turn on lid-closed mode…
 1	sub-line	tab restart mbp	Restart…
 1	sub-separator	none	
-1	sub-line	none	Sign-ins working · Awake on power · Lid-closed mode off · On power, 82%
+1	sub-line	none	Sign-ins working
+1	sub-line	none	Awake on power
+1	sub-line	none	Lid-closed mode off
+1	sub-line	none	On power, 82%
 1	sub-line	none	Home address reachable from here: yes
 1	sub-separator	none	
 1	sub-line	tab prepare mbp --pause	Run the checklist…
@@ -130,7 +142,10 @@ menu 10 symbol=exclamationmark.triangle
 1	sub-line	tab power mbp lid on	Turn on lid-closed mode…
 1	sub-line	tab restart mbp	Restart…
 1	sub-separator	none	
-1	sub-line	none	Sign-ins working · Awake on power · Lid-closed mode off · On power, 82%
+1	sub-line	none	Sign-ins working
+1	sub-line	none	Awake on power
+1	sub-line	none	Lid-closed mode off
+1	sub-line	none	On power, 82%
 1	sub-line	none	Home address reachable from here: no
 1	sub-separator	none	
 1	sub-line	tab prepare mbp --pause	Run the checklist…
@@ -195,7 +210,10 @@ menu 13 symbol=checkmark.circle
 1	sub-line	tab power mbp lid off	Turn off lid-closed mode…
 1	sub-line	tab restart mbp	Restart…
 1	sub-separator	none	
-1	sub-line	none	Sign-ins working · Awake on power · Lid-closed mode on · On power, 82%
+1	sub-line	none	Sign-ins working
+1	sub-line	none	Awake on power
+1	sub-line	none	Lid-closed mode on
+1	sub-line	none	On power, 82%
 1	sub-line	none	Home address reachable from here: yes
 1	sub-separator	none	
 1	sub-line	tab prepare mbp --pause	Run the checklist…
@@ -225,7 +243,9 @@ menu 14 symbol=checkmark.circle
 1	sub-line	run screen mbp	Share screen
 1	sub-line	tab restart mbp	Restart…
 1	sub-separator	none	
-1	sub-line	none	Sign-ins working · Awake on power · On power
+1	sub-line	none	Sign-ins working
+1	sub-line	none	Awake on power
+1	sub-line	none	On power
 1	sub-separator	none	
 1	sub-line	tab prepare mbp --pause	Run the checklist…
 1	submenu	tab connect mbp website	website (2 windows: zsh, vim, open in 1 tab)
@@ -258,7 +278,10 @@ menu 17 symbol=checkmark.circle
 1	sub-line	tab power workhorse lid on	Turn on lid-closed mode…
 1	sub-line	tab restart workhorse	Restart…
 1	sub-separator	none	
-1	sub-line	none	Sign-ins working · Awake on power · Lid-closed mode off · On power, 82%
+1	sub-line	none	Sign-ins working
+1	sub-line	none	Awake on power
+1	sub-line	none	Lid-closed mode off
+1	sub-line	none	On power, 82%
 1	sub-line	none	Home address reachable from here: yes
 1	sub-separator	none	
 1	sub-line	tab prepare workhorse --pause	Run the checklist…
@@ -275,7 +298,10 @@ menu 17 symbol=checkmark.circle
 1	sub-line	tab power daily-mac lid on	Turn on lid-closed mode…
 1	sub-line	tab restart daily-mac	Restart…
 1	sub-separator	none	
-1	sub-line	none	Sign-ins working · Awake on power · Lid-closed mode off · On power, 82%
+1	sub-line	none	Sign-ins working
+1	sub-line	none	Awake on power
+1	sub-line	none	Lid-closed mode off
+1	sub-line	none	On power, 82%
 1	sub-line	none	Home address reachable from here: yes
 1	sub-separator	none	
 1	sub-line	tab prepare daily-mac --pause	Run the checklist…
