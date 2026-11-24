@@ -107,23 +107,37 @@ struct DeskRowView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 12) {
-                        Text(verbatim: row.name).fontWeight(.semibold)
-                            .frame(width: 110, alignment: .leading)
-                            .accessibilityIdentifier(WindowMarks.desk(row.name))
-                        Text(verbatim: row.windows).foregroundStyle(.secondary).lineLimit(1)
+                // The row is a button, so a click, the keyboard and VoiceOver all open its strip. Apple,
+                // onTapGesture(count:perform:) (https://developer.apple.com/documentation/swiftui/view/ontapgesture(count:perform:)):
+                // "If you create a control that's functionally equivalent to a Button, use ButtonStyle to
+                // create a customized button instead." Apple, PrimitiveButtonStyle.plain (macOS 10.15,
+                // https://developer.apple.com/documentation/swiftui/primitivebuttonstyle/plain): "A button
+                // style that doesn't style or decorate its content while idle". The chevron says it opens;
+                // Image(systemName:) "Creates a system symbol image." (macOS 11.0,
+                // https://developer.apple.com/documentation/swiftui/image/init(systemname:)).
+                Button(action: toggle) {
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        Image(systemName: isOpen ? "chevron.down" : "chevron.right")
+                            .font(.caption).foregroundStyle(.secondary).frame(width: 10)
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 12) {
+                                Text(verbatim: row.name).fontWeight(.semibold)
+                                    .frame(width: 110, alignment: .leading)
+                                Text(verbatim: row.windows).foregroundStyle(.secondary).lineLimit(1)
+                            }
+                            // Wraps rather than cutting: the facts after the folder are what the line is for.
+                            // Apple, fixedSize(horizontal:vertical:) (https://developer.apple.com/documentation/swiftui/view/fixedsize(horizontal:vertical:)):
+                            // "Fixes this view at its ideal size in the specified dimensions."
+                            Text(verbatim: row.second).font(.callout).foregroundStyle(.secondary)
+                                .padding(.leading, 122)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
-                    Text(verbatim: row.second).font(.callout).foregroundStyle(.secondary)
-                        .padding(.leading, 122)
-                        .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                // Apple, onTapGesture(count:perform:) (https://developer.apple.com/documentation/swiftui/view/ontapgesture(count:perform:)):
-                // "Use this method to perform the specified action when the user clicks or taps on the view".
-                // The shape makes the gaps between the texts count as the row too.
-                .contentShape(Rectangle())
-                .onTapGesture(perform: toggle)
+                .buttonStyle(.plain)
+                .accessibilityIdentifier(WindowMarks.desk(row.name))
                 if let tabs = row.tabs {
                     Text(verbatim: tabs).foregroundStyle(.secondary)
                 }
