@@ -3,6 +3,7 @@
 // presses anything: the driver clicks with posted pointer events (menutool). Never run it on your own Mac.
 //
 //   windowtool <pid> windows            how many windows titled MacMosh the app has: "windows 1"
+//   windowtool <pid> front              whether the app is active, and its focused window's title
 //   windowtool <pid> frame              the window's position and size: "frame x y w h"
 //   windowtool <pid> find <identifier>  the centre of the element with that accessibility identifier:
 //                                       "found x y role", or "notfound"
@@ -80,6 +81,16 @@ let windows = ((attribute(app, kAXWindowsAttribute) as? [AXUIElement]) ?? []).fi
 
 if command == "windows" {
     print("windows \(windows.count)")
+    exit(0)
+}
+if command == "front" {
+    // Whether the app is the active one, and the title of its focused window.
+    let active = NSRunningApplication(processIdentifier: pid)?.isActive ?? false
+    var focused = "none"
+    if let raw = attribute(app, kAXFocusedWindowAttribute), CFGetTypeID(raw) == AXUIElementGetTypeID() {
+        focused = text(raw as! AXUIElement, kAXTitleAttribute) ?? "?"   // the type id was checked just above
+    }
+    print("front active=\(active) focused=\(focused)")
     exit(0)
 }
 guard let window = windows.first else {

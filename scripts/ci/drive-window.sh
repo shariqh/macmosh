@@ -226,6 +226,15 @@ open_window() {
         return 1
     fi
     sleep 1.5
+    # Whether Open MacMosh brought the app forward with its window focused, before any click in it:
+    # Apple says activate() is only a request (design, section 11). A finding, never a failure.
+    local front
+    front=$(wax front | grep '^front' | tail -n 1)
+    if [ "$front" = "front active=true focused=MacMosh" ]; then
+        result PASS "Open MacMosh brings the app forward with its window focused" "$front"
+    else
+        result DIFFERS "Open MacMosh brings the app forward with its window focused" "${front:-no answer}"
+    fi
     frame=$(wax frame | grep '^frame' | tail -n 1)
     read -r _ fx fy fw _ <<< "$frame"
     if [ -n "${fw:-}" ]; then
@@ -300,6 +309,15 @@ six_desks() {
             "tabs connect workhorse api connect workhorse blog"
     else
         result NOT-SHOWN "Open the 2 not in a tab runs one connect for each" "no such button"
+    fi
+    sleep 1
+
+    # Check now asks for a check, through the same path as the menu's line.
+    since=$(moment)
+    if click_id "button.menu"; then
+        expect_ran "Check now asks for a check" "$since" "refresh"
+    else
+        result NOT-SHOWN "Check now asks for a check" "no Check now button"
     fi
     sleep 1
     snap after-clicks

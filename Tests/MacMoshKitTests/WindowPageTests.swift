@@ -301,7 +301,7 @@ private func titles(_ buttons: [BoardButton]) -> [String] { buttons.map(\.title)
             "At the other Mac, turn on these two in System Settings > General > Sharing:",
             "Remote Login, so MacMosh can reach it.",
             "Screen Sharing, so you can log in to it after a restart.",
-            "Then click Add a Mac…. It opens a terminal tab, where the first connection asks for the other Mac's password. MacMosh never sees it.",
+            "The button below opens a terminal tab, where the first connection asks for the other Mac's password. MacMosh never sees it.",
         ])
         #expect(p.button == BoardButton(title: "Add a Mac…", action: .menu(.tab(["pair"]))))
         #expect(p.button.title == ButtonRules.addAMac.title)
