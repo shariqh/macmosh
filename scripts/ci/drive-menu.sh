@@ -284,7 +284,7 @@ six_desks() {
         since=$(moment)
         if click_in_submenu "   api" "New window"; then
             expect_row "a click on New window in api's submenu runs that line" "$since" "desk:workhorse:api:window"
-            expect_asked "a click on New window in api's submenu is logged as a line" "$since" "menu action: tab connect (line)"
+            expect_asked "a click on New window in api's submenu is logged as a line" "$since" "menu action: run desk (line)"
         else
             result NOT-SHOWN "a click on New window in api's submenu" "the line was not found"
         fi
