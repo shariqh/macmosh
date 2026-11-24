@@ -418,13 +418,12 @@ long_folder() {
     local t
     start_app long-folder || return
     if ! open_window; then stop_app; return; fi
-    # The row's second line starts with the folder, shown with a tilde for the home folder.
-    # shellcheck disable=SC2088
-    t=$(wax text "~/Development/clients/acme/website-redesign" | grep '^text' | tail -n 1)
+    # The row is a button, so its texts come as one label: the name, the windows, then the second line.
+    t=$(wax value "desk.website-redesign" | grep '^value' | tail -n 1)
     if [[ "$t" == *"Kept when it exits"*"Doesn't come back after a restart"* ]]; then
-        result PASS "a long folder's row still shows its facts" "${t#text }"
+        result PASS "a long folder's row still shows its facts" "${t#value }"
     else
-        result DIFFERS "a long folder's row still shows its facts" "the second line reads: ${t:-not found}"
+        result DIFFERS "a long folder's row still shows its facts" "the row reads: ${t:-not found}"
     fi
     snap long-folder
     if click_id "desk.notes"; then
