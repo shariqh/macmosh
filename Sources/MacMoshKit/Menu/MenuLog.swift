@@ -19,6 +19,8 @@ public enum MenuLog {
     }
 
     static let opened = "menu opened"
+    /// The MacMosh window came on screen (main window design, section 7.3). CI checks it is not there at launch.
+    public static let windowOpened = "window opened"
     static let listUnreadable = "menu refreshed: the saved list can't be read"
 
     /// The app's first line, so one run can be told from the next.
