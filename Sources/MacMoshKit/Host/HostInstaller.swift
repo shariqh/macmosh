@@ -49,6 +49,15 @@ public struct HostInstaller: Sendable {
         return .keep
     }
 
+    /// Whether `version` is `floor` or newer, compared number by number as `decide` compares them. An empty
+    /// version is not (menu design 8.3: the menu's line per window needs script 0.8.0 or newer).
+    public static func isAtLeast(_ version: String, _ floor: String) -> Bool {
+        switch decide(installed: version, builtIn: floor) {
+        case .keep, .tooNew: return true
+        case .install, .replace: return false
+        }
+    }
+
     /// The numbers of a dotted version. A part that doesn't start with digits counts as 0.
     private static func numbers(_ version: String) -> [Int] {
         version.split(separator: ".", omittingEmptySubsequences: false).map { part in

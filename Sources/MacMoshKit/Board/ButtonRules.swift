@@ -104,7 +104,11 @@ public enum ButtonRules {
     /// definition with no session is a leftover the workhorse clears up, so it gets nothing. A session
     /// with no definition (a desk made by hand with tmux) is there, with no definition. The menu's
     /// lines and the window's rows both come from this list (main window design, section 7.2).
-    public static func desks(_ r: CheckResult) -> [DeskLine] {
+    ///
+    /// With `tabs` (the menu gives them; the window's board doesn't), each desk past `WindowLinesGate` also gets
+    /// its line per window (`DeskLine.windows`), joined with this Mac's records at `now`. Its `buttons` stay
+    /// the same either way.
+    public static func desks(_ r: CheckResult, tabs: TabsOnThisMac? = nil, now: Date = Date()) -> [DeskLine] {
         let id = r.workhorse.id
         let definitions = r.status?.definitions ?? []
         let sessions = r.status?.desks ?? []
@@ -123,7 +127,14 @@ public enum ButtonRules {
             lines.append(DeskLine(name: name, session: nil, definition: closed, isKept: kept.contains(name),
                                   isPermanent: true, buttons: forDesk(workhorse: id, desk: name, isOpen: false)))
         }
-        return lines
+        guard let tabs else { return lines }
+        return lines.map { line in
+            var line = line
+            if WindowLinesGate.passes(r, desk: line.session, terminal: tabs.terminal) {
+                line.windows = DeskWindows.of(line, workhorse: id, records: tabs.records, now: now)
+            }
+            return line
+        }
     }
 
     /// Every workhorse's last button, in every state.
@@ -145,18 +156,23 @@ public struct DeskLine: Sendable, Equatable {
     public var isKept: Bool
     /// A definition with this name is permanent.
     public var isPermanent: Bool
-    /// `ButtonRules.forDesk`: Open, New window when open, Rename…, Remove….
+    /// `ButtonRules.forDesk`: Open, New window when open, Rename…, Remove…. The window's board shows these.
     public var buttons: [ActionButton]
+    /// The menu's line per window (issue #124): set only when the menu's tabs were given and the desk is past
+    /// `WindowLinesGate`. The menu then draws its row, first line, window lines, New window and flags from
+    /// this, and Rename… and Remove… from `buttons`.
+    public var windows: DeskWindows?
 
     public var isOpen: Bool { session != nil }
 
     public init(name: String, session: HostStatus.Desk?, definition: HostStatus.Definition?, isKept: Bool,
-                isPermanent: Bool, buttons: [ActionButton]) {
+                isPermanent: Bool, buttons: [ActionButton], windows: DeskWindows? = nil) {
         self.name = name
         self.session = session
         self.definition = definition
         self.isKept = isKept
         self.isPermanent = isPermanent
         self.buttons = buttons
+        self.windows = windows
     }
 }

@@ -133,4 +133,33 @@ import Testing
         let d = desk([HostStatus.Window(index: 0, name: "zsh")])
         #expect(build(d, [record("aaaaaaaaaaaaaaaa", asked: "@0", secondsAgo: 5)]).isEmpty)
     }
+    // MARK: The two cases the join left open, decided in issue #124
+
+    /// The script doesn't check that labels are unique, so a label can be on view lines of two windows. It counts
+    /// for the first of those lines in the report, and on the other window it is one of the other tabs.
+    @Test func aLabelOnViewLinesOfTwoWindowsCountsForTheFirstOnly() {
+        let d = desk([window(0, "@0", tabs: 1), window(1, "@1", tabs: 1)],
+                     views: [view("@1", "aaaaaaaaaaaaaaaa"), view("@0", "aaaaaaaaaaaaaaaa")])
+        let tabs = build(d, [record("aaaaaaaaaaaaaaaa")])
+        #expect(tabs[0].labels == [] && tabs[0].others == 1)
+        #expect(tabs[1].labels == ["aaaaaaaaaaaaaaaa"] && tabs[1].others == 0)
+    }
+
+    /// A view line for a window with no windowinfo line is ignored, as if it were not there: its label is on no
+    /// window, and a fresh record carrying it still counts for the window it asked for.
+    @Test func aViewLineForAWindowWithNoWindowInfoIsIgnored() {
+        let d = desk([window(0, "@0", tabs: 0), window(1, "@1", tabs: 1)],
+                     views: [view("@9", "aaaaaaaaaaaaaaaa"), view("@9", "bbbbbbbbbbbbbbbb"), view("@1", "bbbbbbbbbbbbbbbb")])
+        let old = build(d, [record("aaaaaaaaaaaaaaaa", asked: "@0"), record("bbbbbbbbbbbbbbbb")])
+        #expect(old[0].labels == [] && old[1].labels == ["bbbbbbbbbbbbbbbb"])
+        let fresh = build(d, [record("aaaaaaaaaaaaaaaa", asked: "@0", secondsAgo: 5)])
+        #expect(fresh[0].labels == ["aaaaaaaaaaaaaaaa"])
+    }
+
+    /// A record whose label breaks the label rule is never used: its word would go into an action.
+    @Test func aRecordWithABadLabelIsIgnored() {
+        let d = desk([window(0, "@0", tabs: 0)])
+        let tabs = build(d, [record("not a label", asked: "@0", secondsAgo: 5), record("AAAAAAAAAAAAAAAA", asked: "@0", secondsAgo: 5)])
+        #expect(tabs.first?.labels == [])
+    }
 }

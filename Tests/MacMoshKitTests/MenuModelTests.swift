@@ -14,30 +14,30 @@ private func menu(_ state: WorkhorseState, workhorse: Workhorse = .sample(), sta
 
 @Suite struct MenuModelTests {
     /// Changed on purpose for issue #107: the headline's submenu first, then the desk's row and its
-    /// submenu, then New desk….
+    /// submenu, then New desk…. Changed on purpose for issue #124: the summary is one fact per line.
     @Test func theReadyMenuMatchesTheDesign() {
         let menu = MenuModel.build([.checked(.sampleReady(id: "mbp", name: "MacBook Pro"))])
         let expected: [String] = [
             "MacBook Pro · Ready", "Share screen", "Turn on lid-closed mode…", "Restart…", "",
-            "Sign-ins working · Awake on power · Lid-closed mode off · On power, 82%",
+            "Sign-ins working", "Awake on power", "Lid-closed mode off", "On power, 82%",
             "Home address reachable from here: yes", "", "Run the checklist…",
             "website (2 windows: zsh, vim, open in 1 tab)", "Open website", "New window", "",
             "Rename website…", "Remove website…", "New desk…",
         ]
         #expect(Array(titles(menu).prefix(expected.count)) == expected)
         #expect(menu.symbol == "checkmark.circle")
-        #expect(menu.items[9].action == .tab(["connect", "mbp", "website"]))
-        #expect(menu.items[10].action == .tab(["connect", "mbp", "website"]))
+        #expect(menu.items[12].action == .tab(["connect", "mbp", "website"]))
+        #expect(menu.items[13].action == .tab(["connect", "mbp", "website"]))
     }
 
     /// Changed on purpose for issue #107: the positions are the new ones, and each line says whether it
-    /// opens a submenu or is inside one.
+    /// opens a submenu or is inside one. Changed for issue #124: the summary's three more lines move them.
     @Test func theReadyMenuHasTheDesignsActionsAndIndents() {
         let menu = MenuModel.build([.checked(.sampleReady(id: "mbp"))])
         #expect(menu.items[0].indent == 0 && menu.items[0].opensSubmenu && menu.items[0].action == .none)
-        #expect(menu.items[9].indent == 1 && menu.items[9].opensSubmenu && !menu.items[9].inSubmenu)
-        #expect(menu.items[11].indent == 2 && menu.items[11].inSubmenu)
-        #expect(menu.items[11].action == .run(["desk", "window", "mbp", "website"]))
+        #expect(menu.items[12].indent == 1 && menu.items[12].opensSubmenu && !menu.items[12].inSubmenu)
+        #expect(menu.items[14].indent == 2 && menu.items[14].inSubmenu)
+        #expect(menu.items[14].action == .run(["desk", "window", "mbp", "website"]))
         #expect(item(menu, "New desk…")?.action == .tab(["desk", "new", "mbp"]))
         #expect(item(menu, "New desk…")?.inSubmenu == false)
         #expect(item(menu, "Share screen")?.action == .run(["screen", "mbp"]))

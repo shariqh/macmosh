@@ -121,6 +121,11 @@ public enum StatusFormat {
     /// there for a laptop only: on when the report's value is 1, off when it is 0 or not listed (the
     /// workhorse lists the setting only once it was first turned on).
     public static func summaryLine(_ s: HostStatus) -> String {
+        summaryFacts(s).joined(separator: " · ")
+    }
+
+    /// The facts `summaryLine` joins, one each, in its order: what the menu draws one per line (issue #124).
+    public static func summaryFacts(_ s: HostStatus) -> [String] {
         var parts: [String] = [s.signIns == .yes ? "Sign-ins working" : "Sign-ins off"]
         parts.append(s.power.sleepOnPower == 0 ? "Awake on power" : "Sleeps on power")
         if s.isLaptop { parts.append(s.power.disableSleep == 1 ? "Lid-closed mode on" : "Lid-closed mode off") }
@@ -130,7 +135,7 @@ public enum StatusFormat {
         } else {
             parts.append("On power")
         }
-        return parts.joined(separator: " · ")
+        return parts
     }
 
     // MARK: Desks

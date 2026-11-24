@@ -304,6 +304,102 @@ import Testing
                                          notice: "\(Self.closed) \(other)"))
     }
 
+    // MARK: a tab opened a moment ago (review of #127)
+
+    private static let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+    /// A store with one live record, opened `ago` seconds before `now`, asked with `target`.
+    private func fresh(asked: String = "@3", target: String? = "window", desk: String = "website",
+                       workhorse: String = "mbp", ago: TimeInterval = 5,
+                       running: [Int32: Int64] = [4242: started]) throws -> TabRecordStore {
+        let store = scratchTabRecords(running: running)
+        var record = sampleTabRecord(label: Self.label, workhorse: workhorse, desk: desk, askedWindow: asked,
+                                     pid: 4242, started: Self.started, openedAt: Self.now.addingTimeInterval(-ago))
+        record.target = target
+        try store.write(record)
+        return store
+    }
+
+    private func clocked(_ tabs: RecordingTabs, _ store: TabRecordStore) -> MenuActionRunner {
+        MenuActionRunner(macmoshPath: Self.path, tabs: tabs, runner: FakeRunner { _ in FakeRunner.ok() },
+                         records: store, pause: { tabs.note("pause \($0)") }, now: { Self.now })
+    }
+
+    /// The menu still offers the window until a check sees the new tab; a second click goes to that tab.
+    @Test func aWindowWithATabOpenedAMomentAgoIsBroughtForwardNotOpenedAgain() async throws {
+        let tabs = RecordingTabs()
+        let outcome = await clocked(tabs, try fresh()).outcome(of: .tab(Self.fallback), title: "vim")
+        #expect(tabs.events == ["select /dev/ttys004 iterm2"])
+        #expect(outcome == ActionOutcome(summary: "tab already open, selected", notice: nil))
+    }
+
+    @Test func inSeveralTabsAWindowWithAFreshTabIsBroughtForwardAndCounted() async throws {
+        let tabs = RecordingTabs()
+        let outcome = await clocked(tabs, try fresh(asked: "@2")).outcome(of: .tabs(Self.windows), title: "Open website in 3 tabs")
+        #expect(tabs.events == [
+            "open \(Self.path) connect mbp website --window @1",
+            "pause 0.4 seconds",
+            "select /dev/ttys004 iterm2",
+            "pause 0.4 seconds",
+            "open \(Self.path) connect mbp website --window @3",
+        ])
+        #expect(outcome == ActionOutcome(summary: "tabs opened: 3 (already open: 1)", notice: nil))
+    }
+
+    @Test func aFreshViewTabIsBroughtForwardByASecondViewClick() async throws {
+        let tabs = RecordingTabs()
+        let store = try fresh(asked: "", target: "view", desk: "garden")
+        let outcome = await clocked(tabs, store).outcome(of: .tab(["connect", "mbp", "garden", "--view"]), title: "Open garden")
+        #expect(tabs.events == ["select /dev/ttys004 iterm2"])
+        #expect(outcome.summary == "tab already open, selected")
+    }
+
+    /// Only a tab made by the same option, workhorse and desk, still running, younger than `DeskTabs.freshFor`.
+    @Test(arguments: [
+        ("@4", "window", "website", "mbp", 5.0, true),      // another window
+        ("", "new-window", "garden", "mbp", 5.0, true),     // a New window tab is not the desk's view
+        ("", nil, "garden", "mbp", 5.0, true),              // an older record says nothing of its option
+        ("", "view", "website", "mbp", 5.0, true),          // another desk
+        ("", "view", "garden", "attic", 5.0, true),         // another workhorse
+        ("", "view", "garden", "mbp", 121.0, true),         // too old: the report has it by now
+        ("", "view", "garden", "mbp", 5.0, false),          // its process has ended
+    ] as [(String, String?, String, String, TimeInterval, Bool)])
+    func anyOtherRecordLetsTheTabOpen(_ c: (String, String?, String, String, TimeInterval, Bool)) async throws {
+        let tabs = RecordingTabs()
+        let store = try fresh(asked: c.0, target: c.1, desk: c.2, workhorse: c.3, ago: c.4,
+                              running: c.5 ? [4242: Self.started] : [:])
+        let asked = c.0 == "@4" ? Self.fallback : ["connect", "mbp", "garden", "--view"]
+        let outcome = await clocked(tabs, store).outcome(of: .tab(asked), title: "x")
+        #expect(tabs.events == ["open \(Self.path) \(asked.joined(separator: " "))"])
+        #expect(outcome.summary == "tab opened")
+    }
+
+    @Test func aNewWindowClickAlwaysOpensATab() async throws {
+        let tabs = RecordingTabs()
+        let store = try fresh(asked: "", target: "new-window")
+        _ = await clocked(tabs, store).outcome(of: .tab(["connect", "mbp", "website", "--new-window"]), title: "New window")
+        #expect(tabs.events == ["open \(Self.path) connect mbp website --new-window"])
+    }
+
+    /// The fresh tab has gone from the terminal: its record goes, and the tab opens as asked.
+    @Test func aFreshTabTheTerminalCantFindIsRemovedAndTheTabOpens() async throws {
+        let tabs = RecordingTabs(selection: .success(.gone))
+        let store = try fresh()
+        let outcome = await clocked(tabs, store).outcome(of: .tab(Self.fallback), title: "vim")
+        #expect(tabs.events == ["select /dev/ttys004 iterm2", "open \(Self.path) connect mbp website --window @3"])
+        #expect(outcome.summary == "tab opened")
+        #expect(store.record(label: Self.label) == nil)
+    }
+
+    /// A focus whose own tab has gone goes to a fresh tab on the same window rather than opening a third.
+    @Test func aFocusFallbackGoesToAFreshTabOnTheSameWindow() async throws {
+        let tabs = RecordingTabs()
+        let outcome = await clocked(tabs, try fresh()).outcome(of: .focus(label: "0123456789abcdef", orOpen: Self.fallback),
+                                                                title: "vim (in a tab)")
+        #expect(tabs.events == ["select /dev/ttys004 iterm2"])
+        #expect(outcome == ActionOutcome(summary: "tab gone (no record), selected another tab on its window", notice: nil))
+    }
+
     @Test func theTabTitleIsTheDeskForConnect() {
         #expect(MenuActionRunner.tabTitle(for: ["connect", "mbp", "website"]) == "website")
         #expect(MenuActionRunner.tabTitle(for: ["restart", "mbp"]) == "restart")

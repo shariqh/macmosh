@@ -1,0 +1,408 @@
+# The menus with a line per window (issue #124), as MenuModel.build gives them, flattened (MenuEntry.flatten).
+# The cases are windowSampleInputs() (Support/MenuSamples.swift), in its order: 0 the menu design's example
+# (section 6.1 (a)) from Fixtures/status/desks-windows.txt with this Mac's records; 1 the same in Tabs mode with
+# tabs opening in iTerm2 and 2 the same from script 0.7.0, where the gate keeps today's shape; 3 Tabs mode with
+# tabs opening in Terminal, which connect turns into mosh, so the gate passes; 4 a tab opened on api's server
+# a minute ago that the report doesn't list yet; 5 the example beside a second workhorse with an older script.
+# The format is every-sample-menu.txt's, with two more actions: "tabs <arguments> | <arguments> …" and
+# "focus <label> <arguments>". Never re-recorded: a change here is a change to the menu.
+menu 0 symbol=checkmark.circle
+0	submenu	none	Attic · Ready
+1	sub-line	run screen attic	Share screen
+1	sub-line	tab power attic lid off	Turn off lid-closed mode…
+1	sub-line	tab restart attic	Restart…
+1	sub-separator	none	
+1	sub-line	none	Sign-ins working
+1	sub-line	none	Awake on power
+1	sub-line	none	Lid-closed mode on
+1	sub-line	none	On power, 100%
+1	sub-line	none	Home address reachable from here: yes
+1	sub-separator	none	
+1	sub-line	tab prepare attic --pause	Run the checklist…
+1	submenu	tabs connect attic website --window @3	website · 3 windows, 2 in tabs
+2	sub-line	tabs connect attic website --window @3	Open the 1 window not in a tab
+2	sub-separator	none	
+2	sub-line	focus 3f9a2c71e5b7d4a6 connect attic website --window @1	claude (in a tab)
+2	sub-line	focus b04e5d12c3a4f5e6 connect attic website --window @2	zsh (in a tab)
+2	sub-line	tab connect attic website --window @3	vim
+2	sub-separator	none	
+2	sub-line	tab connect attic website --new-window	New window
+2	sub-separator	none	
+2	sub-line	tab desk rename attic website	Rename website…
+2	sub-line	tab desk remove attic website --ask	Remove website…
+2	sub-line	none	kept running, permanent
+1	submenu	tabs connect attic api --window @5 | connect attic api --window @6	api · 2 windows
+2	sub-line	tabs connect attic api --window @5 | connect attic api --window @6	Open api in 2 tabs
+2	sub-separator	none	
+2	sub-line	tab connect attic api --window @5	server
+2	sub-line	tab connect attic api --window @6	tests
+2	sub-separator	none	
+2	sub-line	tab connect attic api --new-window	New window
+2	sub-separator	none	
+2	sub-line	tab desk rename attic api	Rename api…
+2	sub-line	tab desk remove attic api --ask	Remove api…
+1	submenu	focus c1d2e3f4a5b6c7d8 connect attic notes --window @7	notes · 1 window, in a tab
+2	sub-line	focus c1d2e3f4a5b6c7d8 connect attic notes --window @7	Go to notes
+2	sub-separator	none	
+2	sub-line	tab connect attic notes --new-window	New window
+2	sub-separator	none	
+2	sub-line	tab desk rename attic notes	Rename notes…
+2	sub-line	tab desk remove attic notes --ask	Remove notes…
+1	submenu	tab connect attic blog --window @8	blog · 1 window
+2	sub-line	tab connect attic blog --window @8	Open blog
+2	sub-separator	none	
+2	sub-line	tab connect attic blog --new-window	New window
+2	sub-separator	none	
+2	sub-line	tab desk rename attic blog	Rename blog…
+2	sub-line	tab desk remove attic blog --ask	Remove blog…
+1	submenu	tabs connect attic shop --window @10	shop · 2 windows, 1 in a tab
+2	sub-line	tabs connect attic shop --window @10	Open the 1 window not in a tab
+2	sub-separator	none	
+2	sub-line	tab connect attic shop --window @9	web (open in another tab)
+2	sub-line	tab connect attic shop --window @10	db
+2	sub-separator	none	
+2	sub-line	tab connect attic shop --new-window	New window
+2	sub-separator	none	
+2	sub-line	tab desk rename attic shop	Rename shop…
+2	sub-line	tab desk remove attic shop --ask	Remove shop…
+1	submenu	tab connect attic garden --view	garden (closed)
+2	sub-line	tab connect attic garden --view	Open garden
+2	sub-separator	none	
+2	sub-line	tab desk rename attic garden	Rename garden…
+2	sub-line	tab desk remove attic garden --ask	Remove garden…
+2	sub-line	none	permanent
+1	line	tab desk new attic	New desk…
+0	separator	none	
+0	line	tab pair	Add a Mac…
+0	line	refresh	Check now
+menu 1 symbol=checkmark.circle
+0	submenu	none	Attic · Ready
+1	sub-line	run screen attic	Share screen
+1	sub-line	tab power attic lid off	Turn off lid-closed mode…
+1	sub-line	tab restart attic	Restart…
+1	sub-separator	none	
+1	sub-line	none	Sign-ins working
+1	sub-line	none	Awake on power
+1	sub-line	none	Lid-closed mode on
+1	sub-line	none	On power, 100%
+1	sub-line	none	Home address reachable from here: yes
+1	sub-separator	none	
+1	sub-line	tab prepare attic --pause	Run the checklist…
+1	submenu	tab connect attic website	website (3 windows: claude, zsh, vim, kept running, permanent)
+2	sub-line	tab connect attic website	Open website
+2	sub-line	run desk window attic website	New window
+2	sub-separator	none	
+2	sub-line	tab desk rename attic website	Rename website…
+2	sub-line	tab desk remove attic website --ask	Remove website…
+1	submenu	tab connect attic api	api (2 windows: server, tests)
+2	sub-line	tab connect attic api	Open api
+2	sub-line	run desk window attic api	New window
+2	sub-separator	none	
+2	sub-line	tab desk rename attic api	Rename api…
+2	sub-line	tab desk remove attic api --ask	Remove api…
+1	submenu	tab connect attic notes	notes (1 window: zsh)
+2	sub-line	tab connect attic notes	Open notes
+2	sub-line	run desk window attic notes	New window
+2	sub-separator	none	
+2	sub-line	tab desk rename attic notes	Rename notes…
+2	sub-line	tab desk remove attic notes --ask	Remove notes…
+1	submenu	tab connect attic blog	blog (1 window: zsh)
+2	sub-line	tab connect attic blog	Open blog
+2	sub-line	run desk window attic blog	New window
+2	sub-separator	none	
+2	sub-line	tab desk rename attic blog	Rename blog…
+2	sub-line	tab desk remove attic blog --ask	Remove blog…
+1	submenu	tab connect attic shop	shop (2 windows: web, db, open in 1 tab)
+2	sub-line	tab connect attic shop	Open shop
+2	sub-line	run desk window attic shop	New window
+2	sub-separator	none	
+2	sub-line	tab desk rename attic shop	Rename shop…
+2	sub-line	tab desk remove attic shop --ask	Remove shop…
+1	submenu	tab connect attic garden	garden (closed)
+2	sub-line	tab connect attic garden	Open garden
+2	sub-separator	none	
+2	sub-line	tab desk rename attic garden	Rename garden…
+2	sub-line	tab desk remove attic garden --ask	Remove garden…
+1	line	tab desk new attic	New desk…
+0	separator	none	
+0	line	tab pair	Add a Mac…
+0	line	refresh	Check now
+menu 2 symbol=checkmark.circle
+0	submenu	none	Attic · Ready
+1	sub-line	run screen attic	Share screen
+1	sub-line	tab power attic lid off	Turn off lid-closed mode…
+1	sub-line	tab restart attic	Restart…
+1	sub-separator	none	
+1	sub-line	none	Sign-ins working
+1	sub-line	none	Awake on power
+1	sub-line	none	Lid-closed mode on
+1	sub-line	none	On power, 100%
+1	sub-line	none	Home address reachable from here: yes
+1	sub-separator	none	
+1	sub-line	tab prepare attic --pause	Run the checklist…
+1	submenu	tab connect attic website	website (3 windows: claude, zsh, vim, kept running, permanent)
+2	sub-line	tab connect attic website	Open website
+2	sub-line	run desk window attic website	New window
+2	sub-separator	none	
+2	sub-line	tab desk rename attic website	Rename website…
+2	sub-line	tab desk remove attic website --ask	Remove website…
+1	submenu	tab connect attic api	api (2 windows: server, tests)
+2	sub-line	tab connect attic api	Open api
+2	sub-line	run desk window attic api	New window
+2	sub-separator	none	
+2	sub-line	tab desk rename attic api	Rename api…
+2	sub-line	tab desk remove attic api --ask	Remove api…
+1	submenu	tab connect attic notes	notes (1 window: zsh)
+2	sub-line	tab connect attic notes	Open notes
+2	sub-line	run desk window attic notes	New window
+2	sub-separator	none	
+2	sub-line	tab desk rename attic notes	Rename notes…
+2	sub-line	tab desk remove attic notes --ask	Remove notes…
+1	submenu	tab connect attic blog	blog (1 window: zsh)
+2	sub-line	tab connect attic blog	Open blog
+2	sub-line	run desk window attic blog	New window
+2	sub-separator	none	
+2	sub-line	tab desk rename attic blog	Rename blog…
+2	sub-line	tab desk remove attic blog --ask	Remove blog…
+1	submenu	tab connect attic shop	shop (2 windows: web, db, open in 1 tab)
+2	sub-line	tab connect attic shop	Open shop
+2	sub-line	run desk window attic shop	New window
+2	sub-separator	none	
+2	sub-line	tab desk rename attic shop	Rename shop…
+2	sub-line	tab desk remove attic shop --ask	Remove shop…
+1	submenu	tab connect attic garden	garden (closed)
+2	sub-line	tab connect attic garden	Open garden
+2	sub-separator	none	
+2	sub-line	tab desk rename attic garden	Rename garden…
+2	sub-line	tab desk remove attic garden --ask	Remove garden…
+1	line	tab desk new attic	New desk…
+0	separator	none	
+0	line	tab pair	Add a Mac…
+0	line	refresh	Check now
+menu 3 symbol=checkmark.circle
+0	submenu	none	Attic · Ready
+1	sub-line	run screen attic	Share screen
+1	sub-line	tab power attic lid off	Turn off lid-closed mode…
+1	sub-line	tab restart attic	Restart…
+1	sub-separator	none	
+1	sub-line	none	Sign-ins working
+1	sub-line	none	Awake on power
+1	sub-line	none	Lid-closed mode on
+1	sub-line	none	On power, 100%
+1	sub-line	none	Home address reachable from here: yes
+1	sub-separator	none	
+1	sub-line	tab prepare attic --pause	Run the checklist…
+1	submenu	tabs connect attic website --window @3	website · 3 windows, 2 in tabs
+2	sub-line	tabs connect attic website --window @3	Open the 1 window not in a tab
+2	sub-separator	none	
+2	sub-line	focus 3f9a2c71e5b7d4a6 connect attic website --window @1	claude (in a tab)
+2	sub-line	focus b04e5d12c3a4f5e6 connect attic website --window @2	zsh (in a tab)
+2	sub-line	tab connect attic website --window @3	vim
+2	sub-separator	none	
+2	sub-line	tab connect attic website --new-window	New window
+2	sub-separator	none	
+2	sub-line	tab desk rename attic website	Rename website…
+2	sub-line	tab desk remove attic website --ask	Remove website…
+2	sub-line	none	kept running, permanent
+1	submenu	tabs connect attic api --window @5 | connect attic api --window @6	api · 2 windows
+2	sub-line	tabs connect attic api --window @5 | connect attic api --window @6	Open api in 2 tabs
+2	sub-separator	none	
+2	sub-line	tab connect attic api --window @5	server
+2	sub-line	tab connect attic api --window @6	tests
+2	sub-separator	none	
+2	sub-line	tab connect attic api --new-window	New window
+2	sub-separator	none	
+2	sub-line	tab desk rename attic api	Rename api…
+2	sub-line	tab desk remove attic api --ask	Remove api…
+1	submenu	focus c1d2e3f4a5b6c7d8 connect attic notes --window @7	notes · 1 window, in a tab
+2	sub-line	focus c1d2e3f4a5b6c7d8 connect attic notes --window @7	Go to notes
+2	sub-separator	none	
+2	sub-line	tab connect attic notes --new-window	New window
+2	sub-separator	none	
+2	sub-line	tab desk rename attic notes	Rename notes…
+2	sub-line	tab desk remove attic notes --ask	Remove notes…
+1	submenu	tab connect attic blog --window @8	blog · 1 window
+2	sub-line	tab connect attic blog --window @8	Open blog
+2	sub-separator	none	
+2	sub-line	tab connect attic blog --new-window	New window
+2	sub-separator	none	
+2	sub-line	tab desk rename attic blog	Rename blog…
+2	sub-line	tab desk remove attic blog --ask	Remove blog…
+1	submenu	tabs connect attic shop --window @10	shop · 2 windows, 1 in a tab
+2	sub-line	tabs connect attic shop --window @10	Open the 1 window not in a tab
+2	sub-separator	none	
+2	sub-line	tab connect attic shop --window @9	web (open in another tab)
+2	sub-line	tab connect attic shop --window @10	db
+2	sub-separator	none	
+2	sub-line	tab connect attic shop --new-window	New window
+2	sub-separator	none	
+2	sub-line	tab desk rename attic shop	Rename shop…
+2	sub-line	tab desk remove attic shop --ask	Remove shop…
+1	submenu	tab connect attic garden --view	garden (closed)
+2	sub-line	tab connect attic garden --view	Open garden
+2	sub-separator	none	
+2	sub-line	tab desk rename attic garden	Rename garden…
+2	sub-line	tab desk remove attic garden --ask	Remove garden…
+2	sub-line	none	permanent
+1	line	tab desk new attic	New desk…
+0	separator	none	
+0	line	tab pair	Add a Mac…
+0	line	refresh	Check now
+menu 4 symbol=checkmark.circle
+0	submenu	none	Attic · Ready
+1	sub-line	run screen attic	Share screen
+1	sub-line	tab power attic lid off	Turn off lid-closed mode…
+1	sub-line	tab restart attic	Restart…
+1	sub-separator	none	
+1	sub-line	none	Sign-ins working
+1	sub-line	none	Awake on power
+1	sub-line	none	Lid-closed mode on
+1	sub-line	none	On power, 100%
+1	sub-line	none	Home address reachable from here: yes
+1	sub-separator	none	
+1	sub-line	tab prepare attic --pause	Run the checklist…
+1	submenu	tabs connect attic website --window @3	website · 3 windows, 2 in tabs
+2	sub-line	tabs connect attic website --window @3	Open the 1 window not in a tab
+2	sub-separator	none	
+2	sub-line	focus 3f9a2c71e5b7d4a6 connect attic website --window @1	claude (in a tab)
+2	sub-line	focus b04e5d12c3a4f5e6 connect attic website --window @2	zsh (in a tab)
+2	sub-line	tab connect attic website --window @3	vim
+2	sub-separator	none	
+2	sub-line	tab connect attic website --new-window	New window
+2	sub-separator	none	
+2	sub-line	tab desk rename attic website	Rename website…
+2	sub-line	tab desk remove attic website --ask	Remove website…
+2	sub-line	none	kept running, permanent
+1	submenu	tabs connect attic api --window @6	api · 2 windows, 1 in a tab
+2	sub-line	tabs connect attic api --window @6	Open the 1 window not in a tab
+2	sub-separator	none	
+2	sub-line	focus 9f3a1c2e5b7d4a60 connect attic api --window @5	server (in a tab)
+2	sub-line	tab connect attic api --window @6	tests
+2	sub-separator	none	
+2	sub-line	tab connect attic api --new-window	New window
+2	sub-separator	none	
+2	sub-line	tab desk rename attic api	Rename api…
+2	sub-line	tab desk remove attic api --ask	Remove api…
+1	submenu	focus c1d2e3f4a5b6c7d8 connect attic notes --window @7	notes · 1 window, in a tab
+2	sub-line	focus c1d2e3f4a5b6c7d8 connect attic notes --window @7	Go to notes
+2	sub-separator	none	
+2	sub-line	tab connect attic notes --new-window	New window
+2	sub-separator	none	
+2	sub-line	tab desk rename attic notes	Rename notes…
+2	sub-line	tab desk remove attic notes --ask	Remove notes…
+1	submenu	tab connect attic blog --window @8	blog · 1 window
+2	sub-line	tab connect attic blog --window @8	Open blog
+2	sub-separator	none	
+2	sub-line	tab connect attic blog --new-window	New window
+2	sub-separator	none	
+2	sub-line	tab desk rename attic blog	Rename blog…
+2	sub-line	tab desk remove attic blog --ask	Remove blog…
+1	submenu	tabs connect attic shop --window @10	shop · 2 windows, 1 in a tab
+2	sub-line	tabs connect attic shop --window @10	Open the 1 window not in a tab
+2	sub-separator	none	
+2	sub-line	tab connect attic shop --window @9	web (open in another tab)
+2	sub-line	tab connect attic shop --window @10	db
+2	sub-separator	none	
+2	sub-line	tab connect attic shop --new-window	New window
+2	sub-separator	none	
+2	sub-line	tab desk rename attic shop	Rename shop…
+2	sub-line	tab desk remove attic shop --ask	Remove shop…
+1	submenu	tab connect attic garden --view	garden (closed)
+2	sub-line	tab connect attic garden --view	Open garden
+2	sub-separator	none	
+2	sub-line	tab desk rename attic garden	Rename garden…
+2	sub-line	tab desk remove attic garden --ask	Remove garden…
+2	sub-line	none	permanent
+1	line	tab desk new attic	New desk…
+0	separator	none	
+0	line	tab pair	Add a Mac…
+0	line	refresh	Check now
+menu 5 symbol=checkmark.circle
+0	submenu	none	Attic · Ready
+1	sub-line	run screen attic	Share screen
+1	sub-line	tab power attic lid off	Turn off lid-closed mode…
+1	sub-line	tab restart attic	Restart…
+1	sub-separator	none	
+1	sub-line	none	Sign-ins working
+1	sub-line	none	Awake on power
+1	sub-line	none	Lid-closed mode on
+1	sub-line	none	On power, 100%
+1	sub-line	none	Home address reachable from here: yes
+1	sub-separator	none	
+1	sub-line	tab prepare attic --pause	Run the checklist…
+1	submenu	tabs connect attic website --window @3	website · 3 windows, 2 in tabs
+2	sub-line	tabs connect attic website --window @3	Open the 1 window not in a tab
+2	sub-separator	none	
+2	sub-line	focus 3f9a2c71e5b7d4a6 connect attic website --window @1	claude (in a tab)
+2	sub-line	focus b04e5d12c3a4f5e6 connect attic website --window @2	zsh (in a tab)
+2	sub-line	tab connect attic website --window @3	vim
+2	sub-separator	none	
+2	sub-line	tab connect attic website --new-window	New window
+2	sub-separator	none	
+2	sub-line	tab desk rename attic website	Rename website…
+2	sub-line	tab desk remove attic website --ask	Remove website…
+2	sub-line	none	kept running, permanent
+1	submenu	tabs connect attic api --window @5 | connect attic api --window @6	api · 2 windows
+2	sub-line	tabs connect attic api --window @5 | connect attic api --window @6	Open api in 2 tabs
+2	sub-separator	none	
+2	sub-line	tab connect attic api --window @5	server
+2	sub-line	tab connect attic api --window @6	tests
+2	sub-separator	none	
+2	sub-line	tab connect attic api --new-window	New window
+2	sub-separator	none	
+2	sub-line	tab desk rename attic api	Rename api…
+2	sub-line	tab desk remove attic api --ask	Remove api…
+1	submenu	focus c1d2e3f4a5b6c7d8 connect attic notes --window @7	notes · 1 window, in a tab
+2	sub-line	focus c1d2e3f4a5b6c7d8 connect attic notes --window @7	Go to notes
+2	sub-separator	none	
+2	sub-line	tab connect attic notes --new-window	New window
+2	sub-separator	none	
+2	sub-line	tab desk rename attic notes	Rename notes…
+2	sub-line	tab desk remove attic notes --ask	Remove notes…
+1	submenu	tab connect attic blog --window @8	blog · 1 window
+2	sub-line	tab connect attic blog --window @8	Open blog
+2	sub-separator	none	
+2	sub-line	tab connect attic blog --new-window	New window
+2	sub-separator	none	
+2	sub-line	tab desk rename attic blog	Rename blog…
+2	sub-line	tab desk remove attic blog --ask	Remove blog…
+1	submenu	tabs connect attic shop --window @10	shop · 2 windows, 1 in a tab
+2	sub-line	tabs connect attic shop --window @10	Open the 1 window not in a tab
+2	sub-separator	none	
+2	sub-line	tab connect attic shop --window @9	web (open in another tab)
+2	sub-line	tab connect attic shop --window @10	db
+2	sub-separator	none	
+2	sub-line	tab connect attic shop --new-window	New window
+2	sub-separator	none	
+2	sub-line	tab desk rename attic shop	Rename shop…
+2	sub-line	tab desk remove attic shop --ask	Remove shop…
+1	submenu	tab connect attic garden --view	garden (closed)
+2	sub-line	tab connect attic garden --view	Open garden
+2	sub-separator	none	
+2	sub-line	tab desk rename attic garden	Rename garden…
+2	sub-line	tab desk remove attic garden --ask	Remove garden…
+2	sub-line	none	permanent
+1	line	tab desk new attic	New desk…
+0	separator	none	
+0	submenu	none	Spare · Ready
+1	sub-line	run screen spare	Share screen
+1	sub-line	tab power spare lid on	Turn on lid-closed mode…
+1	sub-line	tab restart spare	Restart…
+1	sub-separator	none	
+1	sub-line	none	Sign-ins working
+1	sub-line	none	Awake on power
+1	sub-line	none	Lid-closed mode off
+1	sub-line	none	On power, 82%
+1	sub-line	none	Home address reachable from here: yes
+1	sub-separator	none	
+1	sub-line	tab prepare spare --pause	Run the checklist…
+1	submenu	tab connect spare website	website (2 windows: zsh, vim, open in 1 tab)
+2	sub-line	tab connect spare website	Open website
+2	sub-line	run desk window spare website	New window
+2	sub-separator	none	
+2	sub-line	tab desk rename spare website	Rename website…
+2	sub-line	tab desk remove spare website --ask	Remove website…
+1	line	tab desk new spare	New desk…
+0	separator	none	
+0	line	tab pair	Add a Mac…
+0	line	refresh	Check now

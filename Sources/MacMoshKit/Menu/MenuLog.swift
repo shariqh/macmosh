@@ -96,6 +96,10 @@ public enum MenuLog {
     /// A focus action that found its tab and brought it forward.
     static let tabSelected = "tab selected"
 
+    /// A tab action that found a tab opened a moment ago for the same window (or view) and brought it
+    /// forward instead of opening another.
+    static let tabAlreadyOpen = "tab already open, selected"
+
     /// Why a focus action counted its tab as gone.
     enum TabGone: String {
         case noRecord = "no record"
@@ -114,9 +118,13 @@ public enum MenuLog {
         "tab records cleared: \(count)"
     }
 
-    /// `tabs opened: 3`, or `tabs opened: 3 (another way: 1)` when some were opened with a command file.
-    static func tabsOpened(_ count: Int, anotherWay: Int) -> String {
-        anotherWay == 0 ? "tabs opened: \(count)" : "tabs opened: \(count) (another way: \(anotherWay))"
+    /// `tabs opened: 3`, then `(another way: 1)` when some were opened with a command file, and
+    /// `(already open: 1)` when some were tabs opened a moment ago and brought forward instead.
+    static func tabsOpened(_ count: Int, anotherWay: Int, alreadyOpen: Int = 0) -> String {
+        var line = "tabs opened: \(count)"
+        if anotherWay > 0 { line += " (another way: \(anotherWay))" }
+        if alreadyOpen > 0 { line += " (already open: \(alreadyOpen))" }
+        return line
     }
 
     /// `tabs opened: 1 of 3, then tab did not open (error -1728)`: `then` is the failed tab's own summary.

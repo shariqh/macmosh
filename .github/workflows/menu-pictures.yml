@@ -7,14 +7,15 @@ name: Menu pictures
 # runs the wrong button, or closing the window ends the app). It fails only
 # when the app does not start, the menu does not open, a click runs the wrong row or none, an open
 # submenu closes under the pointer, or a held change is shown before the clicked row ran (and, in the
-# "changing" sample, when the hold could not be tested); never on how a picture looks.
+# "changing" sample, when the hold could not be tested), and in the "windows" sample when a window
+# line is missing, its click does not reach its action in the app's log, or the workhorse's summary
+# is not one fact per line; never on how a picture looks.
 # scripts/ci/drive-menu.sh says what it checks.
 on:
   pull_request:
     paths:
       - 'Sources/MacMoshApp/**'
-      - 'Sources/MacMoshKit/Menu/**'
-      - 'Sources/MacMoshKit/Board/**'
+      - 'Sources/MacMoshKit/**'
       - 'scripts/ci/**'
       - 'scripts/build-app.sh'
       - '.github/workflows/menu-pictures.yml'

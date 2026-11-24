@@ -28,8 +28,13 @@ public struct TabOpener: Sendable {
 
     /// The setting if there is one; otherwise iTerm2 when it is installed; otherwise Terminal.
     public func terminal() -> TerminalApp {
+        Self.terminal(settings: settings, fileExists: fileExists)
+    }
+
+    /// The same rule, for a caller with no opener: where a new tab opens.
+    public static func terminal(settings: AppSettings, fileExists: (String) -> Bool) -> TerminalApp {
         if let chosen = settings.terminal { return chosen }
-        return fileExists(Self.iTermPath) ? .iterm2 : .appleTerminal
+        return fileExists(iTermPath) ? .iterm2 : .appleTerminal
     }
 
     /// Opens the tab. Returns a sentence for the user when it had to fall back, and nil otherwise.

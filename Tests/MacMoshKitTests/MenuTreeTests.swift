@@ -126,9 +126,13 @@ private func twoWithTheSameDesk() -> MenuLines {
         #expect(block.title == "MacBook Pro · Ready")
         #expect(block.action == .none)   // the headline's row has no primary action
         #expect(block.submenu.map(\.id) == [
-            "wh:mbp:share", "wh:mbp:lid", "wh:mbp:restart", "wh:mbp:sep1", "wh:mbp:summary", "wh:mbp:home",
-            "wh:mbp:sep2", "wh:mbp:checklist",
+            "wh:mbp:share", "wh:mbp:lid", "wh:mbp:restart", "wh:mbp:sep1", "wh:mbp:summary:1", "wh:mbp:summary:2",
+            "wh:mbp:summary:3", "wh:mbp:summary:4", "wh:mbp:home", "wh:mbp:sep2", "wh:mbp:checklist",
         ])
+        // Changed on purpose for issue #124: the summary is drawn one fact per line, as grey text.
+        #expect(block.submenu.filter { $0.id.contains(":summary:") }.map(\.title)
+                == ["Sign-ins working", "Awake on power", "Lid-closed mode off", "On power, 82%"])
+        #expect(block.submenu.filter { $0.id.contains(":summary:") }.allSatisfy { $0.action == .none && $0.submenu.isEmpty })
         #expect(block.children.map(\.id) == ["desk:mbp:website", "wh:mbp:newDesk"])
         #expect(m.entries[1].isSeparator)
         #expect(m.entries[2].title == "Add a Mac…" && m.entries[3].title == "Check now")
@@ -220,7 +224,8 @@ private func twoWithTheSameDesk() -> MenuLines {
                 check(e.children, inSubmenu: inSubmenu)
             }
         }
-        for menu in everySampleMenu() + moreSampleMenus() + [twoWithTheSameDesk(), sixDesks(), sixDesks(signIns: false)] {
+        for menu in everySampleMenu() + moreSampleMenus() + windowSampleInputs().map(\.menu)
+            + [twoWithTheSameDesk(), sixDesks(), sixDesks(signIns: false)] {
             check(menu.entries, inSubmenu: false)
         }
     }
@@ -258,7 +263,8 @@ private func twoWithTheSameDesk() -> MenuLines {
 
     /// No word on screen says view, session, pane or tmux.
     @Test func noTitleNamesTheMachinery() {
-        for menu in everySampleMenu() + moreSampleMenus() + [twoWithTheSameDesk(), sixDesks(), sixDesks(signIns: false)] {
+        for menu in everySampleMenu() + moreSampleMenus() + windowSampleInputs().map(\.menu)
+            + [twoWithTheSameDesk(), sixDesks(), sixDesks(signIns: false)] {
             for e in allEntries(menu.entries) {
                 let words = e.title.lowercased()
                 for bad in ["view", "session", "pane", "tmux"] { #expect(!words.contains(bad), "\(e.title)") }
@@ -269,7 +275,7 @@ private func twoWithTheSameDesk() -> MenuLines {
     /// Every argument of every action in the tree, a row's primary action included, is a plain word.
     @Test func everyActionInTheTreeUsesOnlyPlainWords() {
         var seen = 0
-        for menu in everySampleMenu() + moreSampleMenus() + [twoWithTheSameDesk(), sixDesks()] {
+        for menu in everySampleMenu() + moreSampleMenus() + windowSampleInputs().map(\.menu) + [twoWithTheSameDesk(), sixDesks()] {
             for action in allActions(menu.entries) {
                 switch action {
                 case .tab(let args), .run(let args):
@@ -340,7 +346,8 @@ private func twoWithTheSameDesk() -> MenuLines {
 
     @Test func idsAreUniqueAcrossTheWholeTree() {
         // The last case of `everySampleMenu()` gives all eight workhorses the id `mbp`; it is in too.
-        for menu in everySampleMenu() + moreSampleMenus() + [twoWithTheSameDesk(), everyStateWithItsOwnID()] {
+        for menu in everySampleMenu() + moreSampleMenus() + windowSampleInputs().map(\.menu)
+            + [twoWithTheSameDesk(), everyStateWithItsOwnID()] {
             let ids = allIDs(menu.entries)
             #expect(Set(ids).count == ids.count, "\(ids)")
         }

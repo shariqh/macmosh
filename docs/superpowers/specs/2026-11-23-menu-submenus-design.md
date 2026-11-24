@@ -1,6 +1,6 @@
 # MacMosh menu: submenus, a line per window, and going to the right tab
 
-Status: the design to build for issues #107 and #105 (part 2). Written: 2026-11-23, from Shariq's requests of that day, a trial of submenus on GitHub's macOS 15 and macOS 26 runners, and the coordinating agent's decisions after it. Nothing here is built yet. Section 12 lists the smaller calls the agent made, for Shariq to check. Repo: `shariqh/macmosh`.
+Status: the design to build for issues #107 and #105 (part 2). Written: 2026-11-23, from Shariq's requests of that day, a trial of submenus on GitHub's macOS 15 and macOS 26 runners, and the coordinating agent's decisions after it. (changed 2026-11-23) When first written, nothing here was built. Since built: S1 (pull request #115), the script's labels (#116), the daily Mac's side of a tab on one window (#119), the two tab actions (#123), and S2's menu, a line per window behind the gate, with the summary one fact per line (issue #124); where they differ from the text, the text says so, marked "(changed 2026-11-23)". Section 12 lists the smaller calls the agent made, for Shariq to check. Repo: `shariqh/macmosh`.
 
 This document adds to the v1 design (`docs/superpowers/specs/2026-11-18-macmosh-v1-design.md`, "the v1 design") and to the main-window design (`docs/superpowers/specs/2026-11-23-main-window-design.md`, "the main-window design"). Both carry dated amendments that point here.
 
@@ -261,7 +261,10 @@ Attic · Ready ▸
    Turn off lid-closed mode…                (laptops only; "Turn on lid-closed mode…" when it is off)
    Restart…
    ─────
-   <today's summary line, word for word>    (text)
+   Sign-ins working                         (text; today's summary, one fact per line; changed 2026-11-23)
+   Awake on power                           (text)
+   Lid-closed mode on                       (text; laptops only)
+   On power, 100%                           (text)
    <today's home-address line, word for word>   (text)
    ─────
    Run the checklist…
@@ -291,9 +294,10 @@ notes ▸              blog ▸              shop ▸                           
                                             Remove shop…
 ```
 
+- (changed 2026-11-23) The summary is the same words `StatusFormat.summaryLine` joins with " · ", split where it joins them, one grey line each (`StatusFormat.summaryFacts`), in both shapes (a) and (b). CI's pictures showed the single long line cut in the middle on the runners' 1024 × 768 screen. The window's board keeps the joined line.
 - A desk with one window has no window list; its first line does that job.
 - Two tabs on one window read `zsh (in 2 tabs)`.
-- Two windows with the same name read `zsh` and `zsh (window 3)`, where 3 is that window's number.
+- Two windows with the same name read `zsh` and `zsh (window 3)`, where 3 is that window's number. (changed 2026-11-23) The number comes right after the name, before any tab words: `zsh (window 3) (in a tab)`. A window with no name reads `window <number>`.
 
 With sign-ins off, today's hint and `Fix…` stay at the top level, directly under `Attic · Ready` and above the desks. A problem is never hidden in a submenu.
 
@@ -316,6 +320,8 @@ Attic · Ready                                            ▸   (as in (a))
       Remove garden…
    New desk…
 ```
+
+(changed 2026-11-23) The workhorse's submenu in shape (b) also draws the summary one fact per line; nothing else in it changes.
 
 In Tabs mode iTerm2 already shows each tmux window as its own tab, so today's `New window` already gives the new window a tab, and a window list is not needed.
 
@@ -387,6 +393,7 @@ Terms used in the table:
 | `Open <desk>` (one window, no tab) | `.tab(["connect", id, desk, "--window", "@n"])` |
 | `Open <desk> in K tabs` (every window has no tab) | `.tabs`: one `connect … --window @n` per window, in window order |
 | `Open the K window(s) not in a tab` (some windows have no tab, others have one) | `.tabs`: one `connect … --window @n` per window with no tab |
+| `Open the 1 window not in a tab` (changed 2026-11-23: the exact words for one) | `.tabs` with that one window's `connect … --window @n` |
 | `Go to <desk>` (every window has a tab, at least one findable) | `.focus(label: <the tab on the lowest-numbered F window>, orOpen: ["connect", id, desk, "--window", "@n"])` |
 | `Open <desk> in a new tab` (every window has a tab, none findable) | `.tab(["connect", id, desk, "--view"])` |
 | `Open garden` (a closed permanent desk) | `.tab(["connect", id, desk, "--view"])`; the script makes the desk, then a view on it |
@@ -396,6 +403,7 @@ Terms used in the table:
 | `New window` (0.8.0 or newer, mosh or ssh) | `.tab(["connect", id, desk, "--new-window"])`. Tabs that are already open keep what they show. |
 | `New window` (older script or Tabs mode) | Today's `.run(["desk", "window", id, desk])` |
 | `Open <desk>` (older script or Tabs mode) | Today's `.tab(["connect", id, desk])` |
+| (changed 2026-11-23) The window's board | Keeps its buttons as they were: `Open <desk>` with today's `connect`, and `New window` with today's `desk window`. Only the menu has the first-line forms, the window lines, `New window` in a tab of its own and the flags line; the test that compares the two faces names these as the menu's own. |
 | Rename… and Remove… (Remove still with `--ask`), New desk…, Restart…, the lid-closed line, Run the checklist…, Fix…, Unlock disk…, Log in…, Pair…, Finish setting up…, Share screen, Add a Mac…, Check now | Unchanged |
 | Text lines | Nothing |
 
@@ -409,7 +417,7 @@ Terms used in the table:
    - Automation denied: today's notice, word for word.
    - Any other failure: the notice `Couldn't bring that tab forward. <reason>`.
 
-`.tabs` opens its tabs in order and stops at the first denial.
+`.tabs` opens its tabs in order and stops at the first denial. (changed 2026-11-23) As merged in pull request #123, it stops at the first tab that doesn't open for any reason, a denial or another failure, and the notice says how many opened before it (`2 of 3 tabs opened. <why>`). A tab the opener had to open another way (a command file, when macOS hasn't let MacMosh control the terminal) counts as opened, and the first such sentence is kept as the notice. It waits 400 ms between two tabs.
 
 ### 6.3 New and changed words
 
@@ -418,6 +426,7 @@ Terms used in the table:
 - **Window line**: `<name>`, `<name> (in a tab)`, `<name> (in N tabs)` or `<name> (open in another tab)`. A repeated name gets ` (window <number>)`.
 - **Other desk lines**: `New window`, `Rename <desk>…`, `Remove <desk>…` (today they read `New window in <desk>` and the same two).
 - **Flags line**: `kept running`, `permanent`, or `kept running, permanent` (today these sit inside the desk's title).
+- **Summary** (changed 2026-11-23): one grey line per fact in the workhorse's submenu, for example `Sign-ins working`, `Awake on power`, `Lid-closed mode on`, `On power, 100%`; the words are today's.
 - **Notices**: `That tab has closed, so MacMosh opened a new one.` and `Couldn't bring that tab forward. <reason>`.
 - **Later**: `Open MacMosh` (main-window design, step 3).
 
@@ -441,7 +450,7 @@ Two timing details are the agent's calls (section 12). First, the waiting menu i
 Once the main window's forms exist (its step 4 for desks and step 6 for Settings, on top of the window of step 3):
 
 - `Rename…`, `Remove…` and the flags line leave each desk's submenu. The window's detail strip and forms take them.
-- `Restart…`, `Run the checklist…`, the summary line and the home-address line leave the workhorse's submenu. The window's header and foot have them.
+- `Restart…`, `Run the checklist…`, the summary lines (changed 2026-11-23: one line per fact) and the home-address line leave the workhorse's submenu. The window's header and foot have them.
 - The workhorse's submenu keeps `Share screen` and the lid-closed line.
 - A desk's submenu then has the Open or Go line, the window lines and `New window`. That is under the "about five items" of Apple's guideline [5] for most desks.
 - The hint and fix lines of states that are not Ready, `Run the checklist…` among them, stay.
@@ -477,6 +486,7 @@ The app uses the shape of section 6.1 (a) only when the workhorse's script is 0.
   - `workhorse` (its id);
   - `desk` (for logs only; it is never used to join, so a rename can't break it);
   - `askedWindow` (`@n`, or empty);
+  - (changed 2026-11-23) `target`: the option the tab was opened with, `window`, `new-window` or `view`. A record written before this key existed has none and still reads. It tells a fresh `--view` tab from a `--new-window` one, whose `askedWindow` are both empty (section 8.2);
   - `pid` and `started`: the `macmosh connect` process and its start time;
   - `tty`: the tab's terminal device, from `ttyname(STDIN_FILENO)` [15];
   - `terminal`: `iterm2` when `TERM_PROGRAM` is `iTerm.app`, `terminal` when it is `Apple_Terminal`, otherwise `unknown`. The `Apple_Terminal` value is inferred, not documented: macOS's `/etc/zshrc` reads `/etc/zshrc_$TERM_PROGRAM`, and the file `/etc/zshrc_Apple_Terminal` exists [15]. It is checked on the daily Mac (section 11);
@@ -497,6 +507,8 @@ The terminal device alone is never trusted, because nothing read says a device n
 - A window's findable tabs are the live records whose label appears in a `view` record for that window.
 - A live record whose label is not in the report yet, whose `askedWindow` is that window and whose `openedAt` is less than 2 minutes old, also counts. Without this, a second click before the next check would open a duplicate tab.
 - Unfindable tabs are the window's `windowinfo` tab count minus its findable tabs, never below 0.
+- (changed 2026-11-23) Two cases the outline left open, decided in issue #124: a label on `view` lines of two windows (the script doesn't check labels are unique) counts for the window of the first such line only, and on the other window it is an unfindable tab; a `view` line for a window with no `windowinfo` line is ignored, as if it were not there, so its label is in no window and a fresh record carrying it still counts for its asked window. A record whose label breaks the label rule, and a window whose id isn't `@` and digits, are never used, since their words would go into an action.
+- (changed 2026-11-23) The 2-minute rule above is not enough on its own: the new tab writes its record only after its own `macmosh connect` has checked the workhorse, and the menu shows the tab only once a later check has the record or the `view` line, so the menu can offer the same window for up to one poll (about 30 seconds) after the click. So the click is guarded as well (`MenuActionRunner`, review of pull request #127): before a tab action opens `connect <id> <desk> --window @n` (alone, as one of several tabs, or as a Go action's fallback) or `connect <id> <desk> --view`, it looks for a live record of the same workhorse and desk, asked for that window (or with `target` `view`), opened less than 2 minutes ago, with a terminal tab's device. If there is one, that tab is brought forward instead, and in a list of tabs it counts as opened. This check matches the desk by name, which section 8.1 otherwise never does; for 2 minutes that is safe, and after a rename it only means a new tab opens as before. `New window` is never guarded: each click is a new window.
 - The refresher prunes this workhorse's records that are dead, or whose label has been missing from a good report for more than 2 minutes. Pruning is a side effect, so it lives in `MenuRefresher`, not in the model.
 
 ### 8.3 `macmosh connect` and the gate
@@ -516,9 +528,13 @@ The terminal device alone is never trusted, because nothing read says a device n
 
 Otherwise it uses shape (b).
 
+(changed 2026-11-23) As built (`WindowLinesGate`, issue #124), the gate is decided for each desk, and the second condition is the connection the tab will really use: the workhorse's mode as `connect` turns it, by the same function `connect` calls (`ConnectionMode.used(inITerm2:)`), for the terminal the menu's tabs open in (`TabOpener.terminal`: the setting, else iTerm2 when it is installed, else Terminal). Tabs mode with tabs opening in Terminal is mosh, so it passes. A closed permanent desk has no windows to detail and needs only the first two conditions. An open desk whose window ids are all unusable keeps shape (b). Since a closed permanent desk needs no window details, a 0.8.0 report without `windowinfo` lines gives a mix: its closed permanent desks take shape (a) (`Open <desk>` with `--view`, the flags as a grey line) while its open desks keep shape (b). `MenuRefresher` reads the live records and asks where tabs open off the main actor, after it clears old records, and passes both, with the time, into `MenuModel.build` as a value (`TabsOnThisMac`); the model reads no file and no clock.
+
 ### 8.4 The select scripts
 
 Two new launcher scripts, sent as today's are, through `osascript`, the macOS command that runs AppleScript (`osascript -e <script> <tty>`, `TerminalLauncher.swift:40`). Each returns `ok` or `gone`. Neither has been run yet (section 11).
+
+(changed 2026-11-23) The scripts below are as merged in pull request #123, which changed them after review. A loop variable in `repeat with … in` is a reference by position, and both terminals list their windows front to back, so once a window is raised, the same reference names another window. So each script holds a reference that does not move before it changes anything (iTerm2: `contents of` the window, tab and session; Terminal: the window's `id`), selects the tab before the window, and un-minimizes the window.
 
 iTerm2:
 
@@ -530,9 +546,13 @@ on run argv
       repeat with t in tabs of w
         repeat with s in sessions of t
           if (tty of s) is wanted then
-            select w
-            select t
-            select s
+            set theWindow to contents of w
+            set theTab to contents of t
+            set theSession to contents of s
+            select theTab
+            select theSession
+            if miniaturized of theWindow then set miniaturized of theWindow to false
+            select theWindow
             activate
             return "ok"
           end if
@@ -553,9 +573,10 @@ on run argv
     repeat with w in windows
       repeat with t in tabs of w
         if (tty of t) is wanted then
-          if miniaturized of w then set miniaturized of w to false
+          set theWindowID to id of w
           set selected of t to true
-          set index of w to 1
+          if miniaturized of window id theWindowID then set miniaturized of window id theWindowID to false
+          set index of window id theWindowID to 1
           activate
           return "ok"
         end if
@@ -566,7 +587,7 @@ on run argv
 end run
 ```
 
-Every property these scripts use is in the dictionaries (section 4.3): iTerm2's window, tab and session `select` and session `tty`; Terminal's tab `tty` and `selected`, and window `index` and `miniaturized`. What setting them does with several windows, a minimized window or a window on another Space is not documented, and is tried on the daily Mac.
+Every property these scripts use is in the dictionaries (section 4.3): iTerm2's window, tab and session `select`, session `tty` and window `miniaturized`; Terminal's tab `tty` and `selected`, and window `index`, `miniaturized` and `id` (changed 2026-11-23: iTerm2's `miniaturized` and Terminal's `id` came with the review in pull request #123). What setting them does with several windows, a minimized window or a window on another Space is not documented, and is tried on the daily Mac.
 
 **Which terminal.** The record's `terminal` value decides. When it is `unknown`, the rule `TabOpener` uses today applies: the setting, else iTerm2 if it is installed, else Terminal.
 
@@ -602,6 +623,8 @@ public enum MenuAction { case tab([String]), tabs([[String]]), focus(label: Stri
 MenuModel.build(_ gathered: [Gathered], tabs: [TabRecord], waitingForDeskServer: Set<String>, now: Date) -> MenuLines
 ```
 
+(changed 2026-11-23) As built in issue #124: `MenuModel.build(_ gathered:, waitingForDeskServer:, tabs: TabsOnThisMac, now:, timeZone:)`, where `TabsOnThisMac` holds the live records and the terminal tabs open in. The gate is `WindowLinesGate`, and a desk past it carries a `DeskWindows` value (its row title, first line, window lines, `New window` and flags line) on its `DeskLine`, made from `DeskTabs.build`. The view (`MenuContent`) is unchanged: it draws what `MenuLines.rows` gives.
+
 - **flatten** turns a submenu into one line at indent d, carrying its primary action or `.none`, with its children at indent d + 1. `lines=` counts the flattened items, so CI's `lines=2` and `MenuRefresherTests`' `lines=6` don't change: those states have no submenus.
 - **Ids** are unique across the whole tree and the same across builds:
 
@@ -610,7 +633,8 @@ MenuModel.build(_ gathered: [Gathered], tabs: [TabRecord], waitingForDeskServer:
   | the workhorse's row | `wh:<id>` |
   | hint, fix | `wh:<id>:hint`, `wh:<id>:fix` |
   | a desk's row | `desk:<id>:<name>` |
-  | lines inside a desk | `desk:<id>:<name>:open`, `…:win:@3`, `…:new`, `…:rename`, `…:remove`, `…:flags` |
+  | lines inside a desk | `desk:<id>:<name>:open`, `…:win:@3`, `…:window` (changed 2026-11-23: `New window` keeps the id it has in shape (b), not `…:new`), `…:rename`, `…:remove`, `…:flags` |
+  | the summary's lines (changed 2026-11-23) | `wh:<id>:summary:1`, `wh:<id>:summary:2`, … |
   | separators | `<parent>:sep<n>` |
   | top-level lines | `top:newdesk:<id>`, `top:add`, `top:check`, `top:sep<n>` |
 
@@ -639,6 +663,8 @@ All are pure except the record store, which uses a temporary folder.
 - **`HostStatus`**: `view` with 5 or 6 fields, and `windowinfo`; unknown record types are still skipped.
 
 CI's menu check clicks the menu-bar icon through System Events. The trial showed that an accessibility press on a desk's row does not run its primary action (section 5.3), so the row's click is covered by the model tests and the daily-Mac tries, not by CI.
+
+(changed 2026-11-23) Since pull request #118, a second CI job (`.github/workflows/menu-pictures.yml`) starts a debug build with sample data and drives it with posted pointer events, which do run a row's primary action on the runners. For issue #124 it gained the sample `windows` (a script-0.8.0 report with window details and labels, and stand-in tab records in the sample's own temporary folder): it pictures the top level, a desk's submenu with a window in a tab, one open in another tab and one with no tab, and the workhorse's submenu, and it clicks a window line with no tab and one in a tab and checks the app's log names each row. These are posted clicks on GitHub's runners, not a trackpad, and no terminal tab is opened or brought forward there. The stored copies gained `Fixtures/menu/windows-menu.txt` (menus with a line per window) and `Fixtures/menu/s1-menu.txt` (the menu before issue #124, which every menu that fails the gate must equal, but for the summary's lines).
 
 ## 10. Order of work
 
@@ -676,12 +702,12 @@ The agent builds a test copy of the app and reads the app's log over ssh itself.
 
 1. **A tap and a press on a desk's row.** Shariq rests on one desk's row and taps it (tap-to-click), then rests on another and press-clicks it. Then he does both again, clicking as soon as the pointer reaches the row, before its submenu opens. Last, he opens the menu, moves the highlight to a desk's row with the arrow keys, waits for its submenu to open, and presses Return. Expect: every click, and the Return, opens (or goes to) that desk, and the menu closes.
 2. **A background check with a submenu open.** Shariq opens the menu, rests on a desk so its submenu opens, moves into the submenu and waits there for a minute while the agent changes something the check will see (a scratch desk it makes and removes). Expect: the submenu stays open and unchanged; the next time he opens the menu, it shows the change.
-3. **iTerm2 brings the right tab forward.** With tabs on three windows of a scratch desk spread over two iTerm2 windows, one window minimized and one on another Space, Shariq clicks each window line. Expect: each click shows that tab, unminimizes or switches Space as needed, and no new permission prompt appears.
+3. **iTerm2 brings the right tab forward.** With tabs on three windows of a scratch desk spread over two iTerm2 windows, one window minimized and one on another Space, Shariq clicks each window line. Expect: each click shows that tab, unminimizes or switches Space as needed, and no new permission prompt appears. (changed 2026-11-23) Two cases are tried on their own as well: two or more iTerm2 windows with the wanted one not in front, and the wanted window minimized.
 4. **The tab's own record.** In a tab MacMosh opened, the agent reads the tab record. Expect: `terminal` is `iterm2`, and its `tty` equals the `tty` iTerm2 reports for that tab's session.
 5. **A tab on one window, over mosh.** The agent opens a tab with `--window` and another with `--new-window` on a scratch desk. Expect: each tab shows its own window, the first tab doesn't move, and closing either tab ends its view within seconds (the next report has no `view` line for it).
 6. **Tabs mode.** On a scratch desk in a session group, Shariq opens the desk in iTerm2's Tabs mode. Expect: the windows show as iTerm2 tabs, as they do today.
 7. **The height.** With six desks, Shariq opens the menu and the longest desk submenu. Expect: no scroll arrows.
-8. **Terminal, only if Terminal is the chosen terminal for this try.** The same as try 3 in Apple's Terminal. Expect: the right Terminal window comes to the front, unminimized.
+8. **Terminal, only if Terminal is the chosen terminal for this try.** The same as try 3 in Apple's Terminal. Expect: the right Terminal window comes to the front, unminimized. (changed 2026-11-23) Here too, two or more Terminal windows with the wanted one not in front, and the wanted window minimized, are tried on their own.
 
 If something's off:
 

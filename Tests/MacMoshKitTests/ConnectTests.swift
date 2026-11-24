@@ -302,6 +302,15 @@ import Testing
         #expect(interactive.calls.first?.last == "~/.macmosh/macmosh-host attach --cc website")
     }
 
+    /// The rule `connect` follows, which the menu's gate asks too (menu design 8.3): Tabs mode needs iTerm2.
+    @Test func theModeUsedIsTabsOnlyInITerm2() {
+        #expect(ConnectionMode.tabs.used(inITerm2: true) == .tabs)
+        #expect(ConnectionMode.tabs.used(inITerm2: false) == .mosh)
+        for mode in [ConnectionMode.mosh, .ssh] {
+            #expect(mode.used(inITerm2: true) == mode && mode.used(inITerm2: false) == mode)
+        }
+    }
+
     @Test func aMissingMoshSaysHowToFixIt() async {
         let interactive = FakeInteractive(); let ui = ScriptedInteraction()
         let code = await connect(check(.ready(signIns: true)), mosh: nil, interactive: interactive, ui: ui)

@@ -31,6 +31,15 @@ public enum TabTarget: Sendable, Equatable {
         }
     }
 
+    /// The option, as the tab record keeps it in `target`: `window`, `new-window` or `view`.
+    public var recordWord: String {
+        switch self {
+        case .window: "window"
+        case .newWindow: "new-window"
+        case .view: "view"
+        }
+    }
+
     /// The window asked for, as the tab record keeps it: the id, or empty.
     public var askedWindow: String {
         if case .window(let id) = self { return id }
