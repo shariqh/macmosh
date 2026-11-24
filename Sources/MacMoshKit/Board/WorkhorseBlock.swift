@@ -30,8 +30,10 @@ public struct WorkhorseBlock: Sendable, Equatable {
     public var newDesk: ActionButton?
     /// Ready only: Share screen, a laptop's lid-closed switch, Restart… (`ButtonRules.forHeadline`).
     public var rareButtons: [ActionButton]
-    /// Ready only, when there is a report: `StatusFormat.summaryLine`.
-    public var summary: String?
+    /// Ready only, when there is a report: `StatusFormat.summaryFacts`, which the menu draws one per line.
+    public var summaryFacts: [String]
+    /// The same facts as one line, `StatusFormat.summaryLine`, as the window's board shows them; nil with none.
+    public var summary: String? { summaryFacts.isEmpty ? nil : summaryFacts.joined(separator: " · ") }
     /// Ready only, when a home address is known: whether this Mac can reach it (`homeLine` words it).
     public var homeReachable: Bool?
     /// Every workhorse has the checklist, last.
@@ -57,26 +59,27 @@ public struct WorkhorseBlock: Sendable, Equatable {
     }
 
     /// The block for one check's result. `now` and `timeZone` shape the time in a hint's "Last seen 14:02".
+    /// `tabs`, which only the menu gives, adds each desk's line per window (`ButtonRules.desks`).
     public static func of(_ r: CheckResult, waitingForDeskServer: Set<String>, now: Date,
-                          timeZone: TimeZone) -> WorkhorseBlock {
+                          timeZone: TimeZone, tabs: TabsOnThisMac? = nil) -> WorkhorseBlock {
         let checklist = ButtonRules.checklist(r.workhorse.id)
         if isWaitingForDeskServer(r, waitingForDeskServer) {
             // No "Finish setting up…": the login agent is about to do it.
             return WorkhorseBlock(kind: .waitingForDeskServer,
                                   headline: "\(r.workhorse.name) · Waiting for the desk server",
                                   hint: waitingForDeskServerHint, stateButtons: [], desks: [], newDesk: nil,
-                                  rareButtons: [], summary: nil, homeReachable: nil, checklist: checklist)
+                                  rareButtons: [], summaryFacts: [], homeReachable: nil, checklist: checklist)
         }
         var block = WorkhorseBlock(kind: .other, headline: StatusFormat.headline(r),
                                    hint: StatusFormat.hint(r, now: now, timeZone: timeZone),
                                    stateButtons: ButtonRules.forState(r), desks: [], newDesk: nil, rareButtons: [],
-                                   summary: nil, homeReachable: nil, checklist: checklist)
+                                   summaryFacts: [], homeReachable: nil, checklist: checklist)
         guard case .ready = r.state else { return block }
         block.kind = .ready
-        block.desks = ButtonRules.desks(r)
+        block.desks = ButtonRules.desks(r, tabs: tabs, now: now)
         block.newDesk = ButtonRules.newDesk(r.workhorse.id)
         block.rareButtons = ButtonRules.forHeadline(r)
-        block.summary = r.status.map(StatusFormat.summaryLine)
+        block.summaryFacts = r.status.map(StatusFormat.summaryFacts) ?? []
         block.homeReachable = r.homeReachable
         return block
     }
@@ -84,7 +87,7 @@ public struct WorkhorseBlock: Sendable, Equatable {
     /// A workhorse that hasn't answered yet: its name, "Still checking…", and the checklist.
     public static func stillChecking(_ w: Workhorse) -> WorkhorseBlock {
         WorkhorseBlock(kind: .stillChecking, headline: "\(w.name) · Still checking…", hint: nil, stateButtons: [],
-                       desks: [], newDesk: nil, rareButtons: [], summary: nil, homeReachable: nil,
+                       desks: [], newDesk: nil, rareButtons: [], summaryFacts: [], homeReachable: nil,
                        checklist: ButtonRules.checklist(w.id))
     }
 }

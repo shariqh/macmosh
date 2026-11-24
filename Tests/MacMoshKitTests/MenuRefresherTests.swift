@@ -353,6 +353,64 @@ private final class Saved: @unchecked Sendable {
         #expect(r.menu.symbol == "checkmark.circle")
     }
 
+    // MARK: this Mac's tabs reach the menu as a value (issue #124)
+
+    /// Attic's report of the menu design's example, with its two website labels and notes' label.
+    private static func windowsGathered(mode: ConnectionMode = .mosh) -> Gathered {
+        .checked(.sample(.ready(signIns: true), workhorse: .sample(id: "attic", name: "Attic", mode: mode),
+                         status: windowsReport(), homeReachable: true))
+    }
+
+    /// A store holding website's claude record, live, and zsh's, whose process has ended.
+    private func windowsStore() throws -> TabRecordStore {
+        let store = scratchTabRecords(running: [1: 10])
+        try store.write(sampleTabRecord(label: "3f9a2c71e5b7d4a6", workhorse: "attic", pid: 1, started: 10,
+                                        openedAt: Self.t0.addingTimeInterval(-600)))
+        try store.write(sampleTabRecord(label: "b04e5d12c3a4f5e6", workhorse: "attic", pid: 2, started: 20,
+                                        openedAt: Self.t0.addingTimeInterval(-600)))
+        return store
+    }
+
+    private func withTabs(_ gathered: Gathered, store: TabRecordStore?, terminal: TerminalApp = .iterm2) -> MenuRefresher {
+        let t0 = Self.t0
+        return MenuRefresher(load: { [.sample(id: "attic", name: "Attic")] }, gather: { _ in [gathered] }, save: { _ in },
+                             log: { _ in }, pause: { _ in }, tabRecords: store, now: { t0 }, tabTerminal: { terminal })
+    }
+
+    /// The refresher reads the live records (off the main actor, after clearing the old ones) and builds the
+    /// menu with them: a live record's window is in a tab this Mac can find, a dead one's only in another tab.
+    @Test func theLiveRecordsReachTheMenu() async throws {
+        let store = try windowsStore()
+        let r = withTabs(Self.windowsGathered(), store: store)
+        await r.refresh()
+        #expect(entry(r.menu.entries, "desk:attic:website:win:@1")?.title == "claude (in a tab)")
+        #expect(entry(r.menu.entries, "desk:attic:website:win:@2")?.title == "zsh (open in another tab)")
+        #expect(entry(r.menu.entries, "desk:attic:website:win:@1")?.action
+                == .focus(label: "3f9a2c71e5b7d4a6", orOpen: ["connect", "attic", "website", "--window", "@1"]))
+        // The dead record was cleared after the good report.
+        #expect(store.records().map(\.label) == ["3f9a2c71e5b7d4a6"])
+        let expected = MenuModel.build([Self.windowsGathered()],
+                                       tabs: TabsOnThisMac(records: store.records(), terminal: .iterm2), now: Self.t0)
+        #expect(r.menu == expected)
+    }
+
+    /// The terminal the refresher is told tabs open in decides the gate in Tabs mode, as connect would.
+    @Test func whereTabsOpenDecidesTheGateInTabsMode() async throws {
+        let inITerm = withTabs(Self.windowsGathered(mode: .tabs), store: try windowsStore(), terminal: .iterm2)
+        await inITerm.refresh()
+        #expect(entry(inITerm.menu.entries, "desk:attic:website")?.title == "website (3 windows: claude, zsh, vim, kept running, permanent)")
+        let inTerminal = withTabs(Self.windowsGathered(mode: .tabs), store: try windowsStore(), terminal: .appleTerminal)
+        await inTerminal.refresh()
+        #expect(entry(inTerminal.menu.entries, "desk:attic:website")?.title == "website · 3 windows, 2 in tabs")
+    }
+
+    /// With no record store, the menu still has a line per window, with no tab this Mac can find.
+    @Test func withNoRecordStoreTheMenuHasNoFindableTab() async {
+        let r = withTabs(Self.windowsGathered(), store: nil)
+        await r.refresh()
+        #expect(entry(r.menu.entries, "desk:attic:website:win:@1")?.title == "claude (open in another tab)")
+    }
+
     @Test func theSitting2LoginGoesFromWaitingForLoginToReady() async {
         let r = scripted([Self.found(.waitingForLogin, at: 0),
                           Self.down(at: 83),

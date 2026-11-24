@@ -113,7 +113,10 @@ public enum MenuModel {
     /// `waitingForDeskServer` names the workhorses that have just been logged in to: one of them
     /// whose desk server is down shows the wait instead of the fix, and adds nothing to the icon,
     /// as "Still checking…" adds nothing. `now` and `timeZone` shape the time in "Last seen 14:02"; a test fixes them.
+    /// `tabs` are this Mac's live tab records and where its tabs open: with them, a desk past
+    /// `WindowLinesGate` gets a line per window (issue #124), and `now` also dates the records.
     public static func build(_ gathered: [Gathered], waitingForDeskServer: Set<String> = [],
+                             tabs: TabsOnThisMac = TabsOnThisMac(),
                              now: Date = Date(), timeZone: TimeZone = .current) -> MenuLines {
         if gathered.isEmpty {
             return MenuLines(symbol: noWorkhorsesSymbol, entries: [
@@ -134,7 +137,7 @@ public enum MenuModel {
             switch entry {
             case .checked(let result):
                 let block = WorkhorseBlock.of(result, waitingForDeskServer: waitingForDeskServer, now: now,
-                                              timeZone: timeZone)
+                                              timeZone: timeZone, tabs: tabs)
                 if block.kind != .waitingForDeskServer { states.append(result.state) }
                 entries.append(self.entry(for: block, workhorse: result.workhorse.id))
             case .stillChecking(let w):
@@ -181,12 +184,12 @@ public enum MenuModel {
                          children: children)
     }
 
-    /// Share screen, a laptop's lid-closed switch, Restart…; then the summary line and the home-address
-    /// light, as text; then the checklist. A separator between each group that has lines.
+    /// Share screen, a laptop's lid-closed switch, Restart…; then the summary, one fact per line (issue #124:
+    /// the single line was cut in the middle on a small screen), and the home-address light, as text; then
+    /// the checklist. A separator between each group that has lines.
     private static func headlineSubmenu(_ block: WorkhorseBlock, under id: String) -> [MenuEntry] {
-        var texts: [MenuEntry] = []
-        if let summary = block.summary {
-            texts.append(MenuEntry(id: "\(id):summary", title: summary))
+        var texts: [MenuEntry] = block.summaryFacts.enumerated().map { i, fact in
+            MenuEntry(id: "\(id):summary:\(i + 1)", title: fact)
         }
         if let reachable = block.homeReachable {
             texts.append(MenuEntry(id: "\(id):home", title: WorkhorseBlock.homeLine(reachable)))
@@ -211,12 +214,25 @@ public enum MenuModel {
     /// Rename… and Remove….
     private static func deskEntry(workhorse id: String, _ desk: DeskLine) -> MenuEntry {
         let deskID = "desk:\(id):\(desk.name)"
+        if let windows = desk.windows { return deskEntry(deskID, desk, windows) }
         let title = desk.session.map { deskTitle($0, kept: desk.isKept, permanent: desk.isPermanent) }
             ?? "\(desk.name) (closed)"
         let asksFirst: Set = ["rename", "remove"]
         let groups = [desk.buttons.filter { !asksFirst.contains($0.key) }, desk.buttons.filter { asksFirst.contains($0.key) }]
         return MenuEntry(id: deskID, title: title, action: ButtonRules.connect(workhorse: id, desk: desk.name),
                          submenu: joined(groups.map { $0.map { .button($0, under: deskID) } }, under: deskID))
+    }
+
+    /// A desk past `WindowLinesGate` (issue #124): its row (`DeskWindows.title`) does what its submenu's first
+    /// line does, and the submenu is that first line, the window lines, New window in a tab of its own,
+    /// Rename… and Remove…, then the flags as grey text. A separator between each group that has lines.
+    private static func deskEntry(_ deskID: String, _ desk: DeskLine, _ windows: DeskWindows) -> MenuEntry {
+        func lines(_ buttons: [ActionButton]) -> [MenuEntry] { buttons.map { .button($0, under: deskID) } }
+        var last = lines(desk.buttons.filter { ["rename", "remove"].contains($0.key) })
+        if let flags = windows.flags { last.append(MenuEntry(id: "\(deskID):flags", title: flags)) }
+        let groups = [lines([windows.first]), lines(windows.windows), lines(windows.newWindow.map { [$0] } ?? []), last]
+        return MenuEntry(id: deskID, title: windows.title, action: windows.first.action,
+                         submenu: joined(groups.filter { !$0.isEmpty }, under: deskID))
     }
 
     /// `website (2 windows: zsh, vim, kept running, permanent, open in 1 tab)`

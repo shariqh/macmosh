@@ -292,6 +292,64 @@ six_desks() {
     stop_app
 }
 
+# window_click <check> <line prefix> <row id> <log text> <step>: with the menu open, rests on website's row
+# (a picture named after <step>), clicks that line of its submenu, and checks that the log names that row
+# and the action's outcome.
+window_click() {
+    local since
+    rest_on "   website" "$5"
+    since=$(moment)
+    if click_in_submenu "   website" "$2"; then
+        expect_row "$1" "$since" "$3"
+        if wait_log "$since" "$4" 6 > /dev/null; then
+            result PASS "$1: the action ran" "log: $4"
+        else
+            result FAIL "$1: the action ran" "no '$4' line after the click"
+        fi
+    else
+        result FAIL "$1" "the line [$2] was not found in website's submenu"
+    fi
+}
+
+# The sample with a line per window (issue #124): the top level, a desk's submenu with a window in a tab, one
+# open in another tab and one with no tab, a click on a window line with no tab and on one in a tab, the
+# workhorse's submenu with the summary one fact per line, and the submenus of shop and garden.
+windows_sample() {
+    local n base
+    start_app windows || return
+    if ! opened_or_fail "first click"; then stop_app; return; fi
+    snap menu
+    base=$(printf '%s-%s' "$os" "$sample")
+    window_click "a click on a window line with no tab runs that line" "vim" "desk:workhorse:website:win:@3" \
+        "menu action done: tab connect: tab opened" website-submenu
+    n=$(wait_menus 0 2)
+    if [ "$n" -eq 0 ]; then
+        result PASS "the menu closes after the window line's click" "menu windows=0"
+    else
+        result DIFFERS "the menu closes after the window line's click" "menu windows=$n"
+    fi
+    snap after-window-click
+    if opened_or_fail "for the window line in a tab"; then
+        window_click "a click on a window line in a tab runs that line" "claude (in a tab)" \
+            "desk:workhorse:website:win:@1" "menu action done: focus connect: tab selected" website-submenu-again
+        snap after-tab-click
+    fi
+    if opened_or_fail "for the workhorse's submenu"; then
+        rest_on "Workhorse" workhorse-submenu
+        ax names "Workhorse" > "$OUT/ax/$base-workhorse-submenu-names.txt"
+        if grep -qx "Sign-ins working" "$OUT/ax/$base-workhorse-submenu-names.txt" \
+            && grep -qx "On power, 82%" "$OUT/ax/$base-workhorse-submenu-names.txt"; then
+            result PASS "the summary is one fact per line" "lines 'Sign-ins working' … 'On power, 82%' in the workhorse's submenu"
+        else
+            result FAIL "the summary is one fact per line" "see ax/$base-workhorse-submenu-names.txt"
+        fi
+        # Two more desks: a window in two tabs beside a window of the same name, and a closed permanent desk.
+        rest_on "   shop" shop-submenu
+        rest_on "   garden" garden-submenu
+    fi
+    stop_app
+}
+
 changing() {
     local since open_since hold_since click_since n idx x y name watch fewest changes lines row_at shown_at base
     local watch_from watch_to gap
@@ -422,6 +480,7 @@ tool preflight > /dev/null
 lim 10 "$TOOL" move 600 500 > /dev/null
 
 six_desks
+windows_sample
 plain_sample sign-ins-off
 plain_sample locked
 plain_sample waiting-for-login

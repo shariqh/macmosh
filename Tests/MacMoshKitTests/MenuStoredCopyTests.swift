@@ -23,17 +23,75 @@ import Testing
         }
     }
 
+    /// The menus with a line per window (issue #124), kept in `Fixtures/menu/windows-menu.txt`.
+    @Test func everyWindowSampleMenuIsTheStoredCopy() throws {
+        let stored = try storedMenus("menu/windows-menu.txt")
+        let now = windowSampleInputs().map(\.menu)
+        #expect(stored.count == now.count)
+        for (i, (want, got)) in zip(stored, now).enumerated() {
+            #expect(got.symbol == want.symbol, "menu \(i)")
+            #expect(got.items.count == want.items.count, "menu \(i)")
+            for (j, (w, g)) in zip(want.items, got.items).enumerated() {
+                #expect(g == w, "menu \(i), line \(j)")
+            }
+        }
+    }
+
+    /// The format reads back what it writes, for every kind of action.
+    @Test func theStoredFormatReadsBackEveryAction() throws {
+        let menus = everySampleMenu() + moreSampleMenus() + windowSampleInputs().map(\.menu)
+        let text = storedText(menus)
+        let back = try storedMenus(text: text)
+        #expect(back.map(\.items) == menus.map(\.items))
+        #expect(back.map(\.symbol) == menus.map(\.symbol))
+        #expect(try storedAction("tabs connect a b --window @1 | connect a b --window @2")
+                == .tabs([["connect", "a", "b", "--window", "@1"], ["connect", "a", "b", "--window", "@2"]]))
+        #expect(try storedAction("focus 0123abcd connect a b --window @1")
+                == .focus(label: "0123abcd", orOpen: ["connect", "a", "b", "--window", "@1"]))
+    }
+
     @Test func theStoredCopyCoversEveryKindOfLine() throws {
-        let items = try storedMenus().flatMap(\.items)
+        let items = try (storedMenus() + storedMenus("menu/windows-menu.txt")).flatMap(\.items)
         #expect(items.contains { $0.isSeparator })
         #expect(items.contains { $0.action == .refresh })
         #expect(items.contains { if case .tab = $0.action { return true }; return false })
         #expect(items.contains { if case .run = $0.action { return true }; return false })
+        #expect(items.contains { if case .tabs = $0.action { return true }; return false })
+        #expect(items.contains { if case .focus = $0.action { return true }; return false })
         #expect(Set(items.map(\.indent)) == [0, 1, 2])
         #expect(items.contains { $0.opensSubmenu && $0.action == .none })
         #expect(items.contains { $0.opensSubmenu && $0.action != .none })
         #expect(items.contains { $0.inSubmenu && $0.isSeparator })
         #expect(items.contains { $0.inSubmenu && !$0.isSeparator })
+    }
+
+    /// Main's copy before issue #124 (`Fixtures/menu/s1-menu.txt`, kept as it was) is every sample's menu now,
+    /// line for line, but for one change made on purpose: the summary line in a Ready workhorse's submenu is
+    /// drawn one fact per line, the same words split where the line joined them with " · ". None of these
+    /// samples passes the gate for a line per window (an older script, or no window details), so nothing else
+    /// may differ.
+    @Test func everyGatedOffMenuIsMainsCopyWithTheSummaryOneFactPerLine() throws {
+        let main = try storedMenus("menu/s1-menu.txt")
+        let now = everySampleMenu() + moreSampleMenus()
+        #expect(main.count == now.count)
+        var split = 0
+        for (i, (was, menu)) in zip(main, now).enumerated() {
+            #expect(menu.symbol == was.symbol, "menu \(i)")
+            var want: [MenuItem] = []
+            for item in was.items {
+                let isSummary = item.inSubmenu && !item.isSeparator && item.action == .none
+                    && (item.title.hasPrefix("Sign-ins working · ") || item.title.hasPrefix("Sign-ins off · "))
+                guard isSummary else { want.append(item); continue }
+                split += 1
+                for fact in item.title.components(separatedBy: " · ") {
+                    var line = item
+                    line.title = fact
+                    want.append(line)
+                }
+            }
+            #expect(menu.items == want, "menu \(i)")
+        }
+        #expect(split == 8)
     }
 
     /// Every block that is not Ready (every other state, "Still checking…", "Waiting for the desk
@@ -146,11 +204,17 @@ struct StoredMenu {
 /// Reads a stored copy. Lines starting with `#` are notes. `menu <n> symbol=<symbol>` starts a case;
 /// each line after it is `<indent> TAB <kind> TAB <action> TAB <title>`, where the kind is `line`,
 /// `separator`, `submenu` (a row that opens one), `sub-line` or `sub-separator`, and the action is
-/// `none`, `refresh`, `tab <arguments>` or `run <arguments>`. Arguments are plain words, so a space
-/// separates them.
+/// `none`, `refresh`, `tab <arguments>`, `run <arguments>`, `tabs <arguments> | <arguments> …` (one list
+/// of arguments per tab, in order) or `focus <label> <arguments>` (the tab to bring forward, then what to
+/// open when it has gone). Arguments are plain words, which never hold a space or `|`, so a space separates
+/// them and `|` separates two tabs.
 func storedMenus(_ name: String = "menu/every-sample-menu.txt") throws -> [StoredMenu] {
+    try storedMenus(text: fixture(name))
+}
+
+func storedMenus(text: String) throws -> [StoredMenu] {
     var menus: [StoredMenu] = []
-    for line in try fixture(name).split(separator: "\n", omittingEmptySubsequences: true) {
+    for line in text.split(separator: "\n", omittingEmptySubsequences: true) {
         if line.hasPrefix("#") { continue }
         if line.hasPrefix("menu ") {
             guard let at = line.range(of: " symbol=") else { throw StoredCopyError.badLine(String(line)) }
@@ -169,15 +233,40 @@ func storedMenus(_ name: String = "menu/every-sample-menu.txt") throws -> [Store
     return menus
 }
 
-private func storedAction(_ text: String) throws -> MenuAction {
+func storedAction(_ text: String) throws -> MenuAction {
     let words = text.split(separator: " ").map(String.init)
     switch words.first {
     case "none": return .none
     case "refresh": return .refresh
     case "tab": return .tab(Array(words.dropFirst()))
     case "run": return .run(Array(words.dropFirst()))
+    case "tabs": return .tabs(words.dropFirst().split(separator: "|").map(Array.init))
+    case "focus" where words.count >= 3: return .focus(label: words[1], orOpen: Array(words.dropFirst(2)))
     default: throw StoredCopyError.badLine(text)
     }
+}
+
+/// The words of an action as a stored copy writes them; `storedAction` reads them back.
+func storedWords(_ action: MenuAction) -> String {
+    switch action {
+    case .none: return "none"
+    case .refresh: return "refresh"
+    case .tab(let a): return (["tab"] + a).joined(separator: " ")
+    case .run(let a): return (["run"] + a).joined(separator: " ")
+    case .tabs(let list): return "tabs " + list.map { $0.joined(separator: " ") }.joined(separator: " | ")
+    case .focus(let label, let orOpen): return (["focus", label] + orOpen).joined(separator: " ")
+    }
+}
+
+/// Menus as a stored copy holds them, cases numbered from 0, with no notes.
+func storedText(_ menus: [MenuLines]) -> String {
+    menus.enumerated().map { i, menu in
+        "menu \(i) symbol=\(menu.symbol)\n" + menu.items.map { item in
+            let kind = item.isSeparator ? (item.inSubmenu ? "sub-separator" : "separator")
+                : item.opensSubmenu ? "submenu" : item.inSubmenu ? "sub-line" : "line"
+            return "\(item.indent)\t\(kind)\t\(storedWords(item.action))\t\(item.title)\n"
+        }.joined()
+    }.joined()
 }
 
 enum StoredCopyError: Error {

@@ -30,6 +30,10 @@ public struct TabRecord: Codable, Sendable, Equatable {
     public var desk: String
     /// The window asked for (`@n`), or empty for `--new-window` and `--view`.
     public var askedWindow: String
+    /// Which option the tab was opened with: `window`, `new-window` or `view` (`TabTarget.recordWord`). nil in
+    /// a record an older version wrote, which has no such key. The menu reads it to tell a fresh `--view` tab
+    /// from a `--new-window` one, whose `askedWindow` are both empty (menu design 8.2).
+    public var target: String?
     /// The process that stays alive for as long as the tab is connected, and its start time in
     /// microseconds since 1970. Both must still match for the record to be trusted.
     public var pid: Int32
@@ -39,12 +43,13 @@ public struct TabRecord: Codable, Sendable, Equatable {
     public var terminal: Terminal
     public var openedAt: Date
 
-    public init(label: String, workhorse: String, desk: String, askedWindow: String, pid: Int32, started: Int64,
-                tty: String, terminal: Terminal, openedAt: Date) {
+    public init(label: String, workhorse: String, desk: String, askedWindow: String, target: String? = nil,
+                pid: Int32, started: Int64, tty: String, terminal: Terminal, openedAt: Date) {
         self.label = label
         self.workhorse = workhorse
         self.desk = desk
         self.askedWindow = askedWindow
+        self.target = target
         self.pid = pid
         self.started = started
         self.tty = tty

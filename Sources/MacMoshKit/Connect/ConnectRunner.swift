@@ -93,10 +93,10 @@ public struct ConnectRunner: Sendable {
             return ui.finish(1, reason: StatusFormat.hint(check) ?? "MacMosh can't open a desk there yet.")
         }
 
-        var mode = requestedMode ?? w.mode
-        if mode == .tabs, environment["TERM_PROGRAM"] != "iTerm.app" {
+        let asked = requestedMode ?? w.mode
+        let mode = asked.used(inITerm2: environment["TERM_PROGRAM"] == "iTerm.app")
+        if mode != asked {
             ui.say("Tabs mode needs iTerm2, and this isn't iTerm2. Opening over mosh instead.")
-            mode = .mosh
         }
         if tab != nil, mode == .tabs {
             return ui.finish(1, reason: "Tabs mode already shows every window as its own tab.")
@@ -136,6 +136,7 @@ public struct ConnectRunner: Sendable {
                              environment: [String: String], noting: TabNoting) -> Bool {
         guard let started = noting.started else { return false }
         let record = TabRecord(label: label, workhorse: w.id, desk: desk.value, askedWindow: tab.askedWindow,
+                               target: tab.recordWord,
                                pid: noting.pid, started: started, tty: noting.tty,
                                terminal: TabRecord.Terminal(environment: environment), openedAt: noting.now())
         do {
@@ -160,5 +161,13 @@ public struct ConnectRunner: Sendable {
         let w = workhorse ?? Workhorse(id: "", name: "The workhorse", user: "", mainAddress: "", hostKey: "")
         return CheckResult(workhorse: w, state: state, status: nil, probes: ProbeSet(), answeredAt: nil,
                            homeReachable: nil, checkedAt: Date())
+    }
+}
+
+extension ConnectionMode {
+    /// The mode `connect` really uses in a tab: Tabs mode needs iTerm2, so outside it Tabs mode is mosh. The
+    /// menu asks the same rule for the terminal its tabs open in (menu design 8.3).
+    public func used(inITerm2: Bool) -> ConnectionMode {
+        self == .tabs && !inITerm2 ? .mosh : self
     }
 }
