@@ -279,6 +279,15 @@ six_desks() {
     if ! open_window; then stop_app; return; fi
     snap window
 
+    # A desk's row is a button, so the keyboard and VoiceOver can open its strip too. A finding only.
+    local role
+    role=$(wax find "desk.website" | grep '^found' | tail -n 1 | awk '{ print $NF }')
+    if [ "$role" = "AXButton" ]; then
+        result PASS "a desk's row is a button" "desk.website is $role"
+    else
+        result DIFFERS "a desk's row is a button" "desk.website is ${role:-not found}"
+    fi
+
     # A click on a desk's row (its name, not its button) opens the detail strip under it.
     if click_id "desk.website"; then
         sleep 1
@@ -286,7 +295,7 @@ six_desks() {
         if [ -n "$t" ] && wax find "desk.website.strip" | grep -q '^found'; then
             result PASS "a click on a desk's row opens its detail strip" "website's strip is there, with Starts with"
         else
-            result DIFFERS "a click on a desk's row opens its detail strip" "no strip found for website"
+            result FAIL "a click on a desk's row opens its detail strip" "no strip found for website"
         fi
         snap detail-strip
     else
@@ -308,7 +317,7 @@ six_desks() {
         expect_ran "Open the 2 not in a tab runs one connect for each" "$since" \
             "tabs connect workhorse api connect workhorse blog"
     else
-        result NOT-SHOWN "Open the 2 not in a tab runs one connect for each" "no such button"
+        result FAIL "Open the 2 not in a tab runs one connect for each" "no such button: the sample must have it"
     fi
     sleep 1
 
@@ -317,7 +326,7 @@ six_desks() {
     if click_id "button.checkNow"; then
         expect_ran "Check now asks for a check" "$since" "refresh"
     else
-        result NOT-SHOWN "Check now asks for a check" "no Check now button"
+        result FAIL "Check now asks for a check" "no Check now button: the sample must have it"
     fi
     sleep 1
     snap after-clicks
@@ -337,7 +346,12 @@ six_desks() {
     if [ "$n" -eq 0 ]; then
         result PASS "the close button closes the window" "windows=0"
     else
-        result DIFFERS "the close button closes the window" "windows=$n"
+        # Nothing after this would test a closed window, so the checks that follow are not shown.
+        result FAIL "the close button closes the window" "windows=$n after the click"
+        result NOT-SHOWN "closing the window keeps the app running" "the window did not close"
+        result NOT-SHOWN "the menu still opens after the window closed" "the window did not close"
+        stop_app
+        return
     fi
     sleep 2
     if kill -0 "$app_pid" 2>/dev/null; then
@@ -398,6 +412,48 @@ two_workhorses() {
     stop_app
 }
 
+# A desk with a long folder that is kept and doesn't come back, and a desk made by hand: a picture of
+# their second lines, which wrap rather than cut the facts, and of the hand-made desk's strip.
+long_folder() {
+    local t
+    start_app long-folder || return
+    if ! open_window; then stop_app; return; fi
+    # The row's second line starts with the folder, shown with a tilde for the home folder.
+    # shellcheck disable=SC2088
+    t=$(wax text "~/Development/clients/acme/website-redesign" | grep '^text' | tail -n 1)
+    if [[ "$t" == *"Kept when it exits"*"Doesn't come back after a restart"* ]]; then
+        result PASS "a long folder's row still shows its facts" "${t#text }"
+    else
+        result DIFFERS "a long folder's row still shows its facts" "the second line reads: ${t:-not found}"
+    fi
+    snap long-folder
+    if click_id "desk.notes"; then
+        sleep 1
+        if wax find "desk.notes.strip" | grep -q '^found'; then
+            result PASS "a click on a hand-made desk's row opens its strip" "notes' strip is there"
+        else
+            result FAIL "a click on a hand-made desk's row opens its strip" "no strip found for notes"
+        fi
+        snap hand-made-strip
+    else
+        result NOT-SHOWN "a click on a hand-made desk's row opens its strip" "no row for notes"
+    fi
+    stop_app
+}
+
+# The saved list can't be read: the window says what the menu says, not Add a Mac.
+unreadable_list() {
+    start_app unreadable-list || return
+    if ! open_window; then stop_app; return; fi
+    if wax find "page.listProblem" | grep -q '^found' && ! wax find "page.addMac" | grep -q '^found'; then
+        result PASS "an unreadable list shows the menu's sentence, not Add a Mac" "page.listProblem found"
+    else
+        result DIFFERS "an unreadable list shows the menu's sentence, not Add a Mac" "page.listProblem not found, or page.addMac found"
+    fi
+    snap unreadable-list
+    stop_app
+}
+
 no_workhorses() {
     start_app no-workhorses || return
     if ! open_window; then stop_app; return; fi
@@ -418,6 +474,8 @@ lim 10 "$TOOL" move 600 500 > /dev/null
 six_desks
 ready_then_locked
 two_workhorses
+long_folder
+unreadable_list
 no_workhorses
 
 applog "$run_since" > "$OUT/app-log.txt"
