@@ -35,6 +35,9 @@ shellcheck scripts/embed-host-script.sh
 echo "check.sh: shellcheck scripts/build-app.sh"
 shellcheck scripts/build-app.sh
 
+echo "check.sh: shellcheck scripts/ci"
+shellcheck scripts/ci/drive-menu.sh
+
 echo "check.sh: shellcheck scripts/sitting-2"
 shellcheck scripts/sitting-2/record.sh scripts/sitting-2/start.sh scripts/sitting-2/restart.sh
 
