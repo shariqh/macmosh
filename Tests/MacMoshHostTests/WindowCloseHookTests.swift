@@ -184,6 +184,64 @@ extension HostScriptTests {
         #expect(h.currentWindow(desk) == ids[0])
     }
 
+    /// swap-window changes the window two sessions of a group show without running
+    /// session-window-changed for either: each session keeps its place (index), and the windows at
+    /// those places trade. man tmux (3.8), swap-window: "This is similar to link-window, except the
+    /// source and destination windows are swapped." So a view's remembered window can fall behind the
+    /// window it shows, and only window-unlinked (pinned above for every session of the group) tells
+    /// it when the remembered one goes.
+    @Test func swapWindowRunsNoSessionWindowChangedForGroupedSessions() throws {
+        let h = try HostHarness(); defer { h.cleanUp() }
+        _ = h.run(["start"])
+        let desk = try makeDesk(h, "website", windows: 4)
+        let ids = windowIDs(h, desk)
+        let one = try makeView(h, desk: desk, "website+1", on: ids[1])
+        let two = try makeView(h, desk: desk, "website+2", on: ids[2])
+        logHooks(h, sessions: [desk, one, two])
+        clearLog(h)
+        let index = { (w: String) in
+            h.tmux(["display-message", "-p", "-t", w, "#{window_index}"]).stdout.trimmingCharacters(in: .newlines)
+        }
+        #expect(h.tmux(["swap-window", "-d", "-s", desk + ":" + index(ids[1]), "-t", desk + ":" + index(ids[2])]).exitCode == 0)
+        #expect(h.currentWindow(one) == ids[2])
+        #expect(h.currentWindow(two) == ids[1])
+        // A marker: the desk switching windows runs the hook for the desk, after anything the swap ran.
+        #expect(h.tmux(["select-window", "-t", desk + ":" + ids[3]]).exitCode == 0)
+        try waitFor(seconds: 30) { !lines(log(h), "session-window-changed", desk).isEmpty }
+        let seen = log(h)
+        for sid in [one, two] {
+            #expect(lines(seen, "session-window-changed", sid).isEmpty, "\(sid): \(seen)")
+        }
+    }
+
+    /// After a kill-window, a session's own window-unlinked hook was seen to run also for other
+    /// sessions of the group (hook_session names the other one), and before that session's own
+    /// session-window-changed. Run for the session itself, it comes after its session-window-changed,
+    /// as it does when the shell exits (pinned above). So a view's window-unlinked hook must check
+    /// hook_session. Each hook adds a word to a server option (no process): `<hook>:<owner>:<hook_session>`.
+    @Test func afterKillWindowASessionsWindowUnlinkedHookAlsoRunsForOthers() throws {
+        let h = try HostHarness(); defer { h.cleanUp() }
+        _ = h.run(["start"])
+        let desk = try makeDesk(h, "website", windows: 4)
+        let ids = windowIDs(h, desk)
+        let one = try makeView(h, desk: desk, "website+1", on: ids[1])
+        let two = try makeView(h, desk: desk, "website+2", on: ids[2])
+        for vid in [one, two] {
+            _ = h.tmux(["set-hook", "-t", vid, "session-window-changed[5]", "set-option -s -F -a @trace 'SWC:\(vid):#{hook_session} '"])
+            _ = h.tmux(["set-hook", "-t", vid, "window-unlinked[5]", "set-option -s -F -a @trace 'WU:\(vid):#{hook_session} '"])
+        }
+        let trace = { h.tmux(["show-options", "-sv", "@trace"]).stdout.split(whereSeparator: { $0 == " " || $0 == "\n" }).map(String.init) }
+        #expect(h.tmux(["kill-window", "-t", ids[2]]).exitCode == 0)
+        try waitFor(seconds: 30) { trace().contains("WU:\(two):\(two)") }
+        Thread.sleep(forTimeInterval: 0.5)
+        let seen = trace()
+        #expect(seen.filter { $0.hasPrefix("SWC:") } == ["SWC:\(two):\(two)"], "\(seen)")
+        let changed = try #require(seen.firstIndex(of: "SWC:\(two):\(two)"))
+        let own = try #require(seen.firstIndex(of: "WU:\(two):\(two)"))
+        #expect(changed < own, "\(seen)")
+        #expect(seen.prefix(changed).contains { $0.hasPrefix("WU:\(two):") && $0 != "WU:\(two):\(two)" }, "\(seen)")
+    }
+
     // MARK: 3. The last window
 
     /// When the group's last window closes, every session closes and none gets session-window-changed.
@@ -251,6 +309,7 @@ extension HostScriptTests {
         clearLog(h)
         for n in 0..<3 { #expect(h.tmux(["kill-window", "-t", ids[n + 1]]).exitCode == 0) }
         try waitFor(seconds: 30) { h.sessionNames() == ["website"] && h.clients().isEmpty }
+        try waitFor(seconds: 30) { log(h).contains("closed \(made[2])") }
         Thread.sleep(forTimeInterval: 1)
         #expect(log(h) == ["closed \(made[2])"], "\(log(h))")
     }
@@ -258,8 +317,8 @@ extension HostScriptTests {
     // MARK: 6. Formats
 
     /// The formats a hook can decide with, read for a session named by its id (as if-shell -F -t and
-    /// set-option -F -t read them): a user option of the session inside a window loop, the group's
-    /// size, and the operators !, && and e|>.
+    /// set-option -F -t read them): a user option of the session inside a window loop, a session loop
+    /// that finds one session by its id, the group's size, and the operators !, && and e|>.
     @Test func theFormatsAViewsHookCanDecideWith() throws {
         let h = try HostHarness(); defer { h.cleanUp() }
         _ = h.run(["start"])
@@ -284,8 +343,15 @@ extension HostScriptTests {
         // -F on set-option expands for the session it names.
         _ = h.tmux(["set-option", "-F", "-t", one, "@w", "#{window_id}"])
         #expect(read(one, "#{@w}") == ids[1])
+        // A session loop (#{S:...}) over the server's sessions is not empty while the desk's session,
+        // named by its id, is there.
+        let deskThere = "#{S:#{?#{==:#{session_id},\(desk)},1,}}"
+        #expect(read(one, deskThere) == "1")
+        #expect(read(one, "#{&&:#{@w},\(deskThere)}") == "1")
         #expect(h.tmux(["kill-session", "-t", desk]).exitCode == 0)
         #expect(read(one, "#{e|>:#{session_group_size},1}") == "0")
+        #expect(read(one, deskThere) == "")
+        #expect(read(one, "#{&&:#{@w},\(deskThere)}") == "0")
     }
 }
 }

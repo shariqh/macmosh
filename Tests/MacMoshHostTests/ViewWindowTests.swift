@@ -255,25 +255,74 @@ extension HostScriptTests {
         #expect(failures(h).isEmpty, "\(failures(h))")
     }
 
-    /// A view left alone in its group (its desk's own session killed by hand) holds the desk's windows.
-    /// Ending it would close them, so when its window closes it keeps today's behaviour: it moves to
-    /// another window, and every other window keeps running.
-    @Test func aViewAloneInItsGroupKeepsTodaysBehaviour() throws {
+    /// Views left without their desk's own session (killed by hand) hold the desk's windows between
+    /// them. Ending them would close those windows, so when the window they show closes they keep
+    /// today's behaviour: they move to another window, and every other window keeps running. Two tabs
+    /// on one window are the case a guard on the group's size missed: each read a group of two.
+    @Test func tabsLeftWithoutTheirDesksSessionKeepTodaysBehaviour() throws {
         let h = try HostHarness(); defer { h.cleanUp() }
         _ = h.run(["start"])
-        let (desk, ids) = try deskWithWindows(h, "website", 3)
+        let (desk, ids) = try deskWithWindows(h, "website", 3, permanent: true)
         try openTab(h, "one", ["--window", ids[1], "website"])
-        try ready(h, desk, views: 1, clients: 1)
-        let one = try view(h, of: desk, on: ids[1])
+        try openTab(h, "two", ["--window", ids[1], "website"])
+        try ready(h, desk, views: 2, clients: 2)
+        let made = views(h, of: desk).map { String($0.split(separator: "|")[0]) }
         #expect(h.tmux(["kill-session", "-t", desk]).exitCode == 0)
-        #expect(windowIDs(h, one) == ids)
+        #expect(made.allSatisfy { windowIDs(h, $0) == ids })
 
         typeExit(h, ids[1])
-        try wait(h) { windowIDs(h, one) == [ids[0], ids[2]] }
+        try wait(h) { made.allSatisfy { windowIDs(h, $0) == [ids[0], ids[2]] } }
         Thread.sleep(forTimeInterval: 1)
-        #expect(exists(h, one) && hasClient(h, one))
-        #expect(windowIDs(h, one) == [ids[0], ids[2]])
-        #expect(h.sessionFormat(one, "#{@macmosh-window}") == h.currentWindow(one))
+        for vid in made {
+            #expect(exists(h, vid) && hasClient(h, vid), "\(vid): \(h.sessionNames())")
+            #expect(windowIDs(h, vid) == [ids[0], ids[2]])
+            #expect(h.sessionFormat(vid, "#{@macmosh-window}") == h.currentWindow(vid))
+        }
+    }
+
+    // MARK: - Windows swapped
+
+    /// tmux's own swap-window (also on Ctrl-click in the status bar) changes the window a view shows
+    /// without telling the view. A tab whose window never closed must not close on a later switch:
+    /// when the window a view remembers leaves the group, the view takes up the window it shows. The
+    /// view that was shown the closed window by the swap keeps today's behaviour (a known limit).
+    @Test func aSwapOfWindowsNeverClosesATabWhoseWindowStaysOpen() throws {
+        let h = try HostHarness(); defer { h.cleanUp() }
+        _ = h.run(["start"])
+        let (desk, ids) = try deskWithWindows(h, "website", 4)
+        try openTab(h, "a", ["--window", ids[1], "website"])
+        try openTab(h, "b", ["--window", ids[2], "website"])
+        try ready(h, desk, views: 2, clients: 2)
+        let a = try view(h, of: desk, on: ids[1])
+        let b = try view(h, of: desk, on: ids[2])
+        let index = { (w: String) in
+            h.tmux(["display-message", "-p", "-t", w, "#{window_index}"]).stdout.trimmingCharacters(in: .newlines)
+        }
+        #expect(h.tmux(["swap-window", "-d", "-s", desk + ":" + index(ids[1]), "-t", desk + ":" + index(ids[2])]).exitCode == 0)
+        #expect(h.currentWindow(a) == ids[2])
+        #expect(h.currentWindow(b) == ids[1])
+
+        // The window tab a shows now closes. Tab b, which remembered it, takes up the window it shows.
+        typeExit(h, ids[2])
+        try wait(h) { h.sessionFormat(b, "#{@macmosh-window}") == ids[1] }
+        try wait(h) { h.currentWindow(a) != ids[2] }
+        Thread.sleep(forTimeInterval: 0.5)
+        #expect(exists(h, a) && hasClient(h, a))
+
+        // A switch in tab b is a switch: its window never closed.
+        #expect(h.tmux(["next-window", "-t", b]).exitCode == 0)
+        try wait(h) { h.sessionFormat(b, "#{@macmosh-window}") == h.currentWindow(b) && h.currentWindow(b) != ids[1] }
+        Thread.sleep(forTimeInterval: 0.5)
+        #expect(exists(h, b) && hasClient(h, b))
+
+        // And the rule still holds for it: the window it shows now closes, and the tab with it.
+        let shown = try #require(h.currentWindow(b))
+        typeExit(h, shown)
+        try wait(h) { !exists(h, b) && !hasClient(h, b) }
+        #expect(windowIDs(h, desk).contains(ids[1]))
+        try proveTheHookHasRun(h)
+        #expect(defined(h, "website"))
+        #expect(failures(h).isEmpty, "\(failures(h))")
     }
 
     // MARK: - The last window
@@ -317,7 +366,7 @@ extension HostScriptTests {
     private func olderScript(_ h: HostHarness) throws -> String {
         let text = try String(contentsOf: h.scriptURL, encoding: .utf8)
         let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
-        let kept = lines.filter { $0.trimmingCharacters(in: .whitespaces) != "mm_view_rule \"$vid\"" }
+        let kept = lines.filter { $0.trimmingCharacters(in: .whitespaces) != "mm_view_rule \"$vid\" \"$sid\"" }
         #expect(lines.count - kept.count == 1)
         let old = kept.joined(separator: "\n")
             .replacingOccurrences(of: "\nMACMOSH_HOST_VERSION=\(h.scriptVersion)\n", with: "\nMACMOSH_HOST_VERSION=0.9.0\n")

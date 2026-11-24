@@ -954,7 +954,7 @@ mm_open_view() {
         mm_log attach "$name: window $wid has closed"
         return 4
     fi
-    mm_view_rule "$vid"
+    mm_view_rule "$vid" "$sid"
     mm_release_lock
     MM_VIEW_ID="$vid"
     MM_VIEW_WINDOW="$wid"
@@ -1039,20 +1039,40 @@ mm_view_bar() {
 # run from a hook kills runs no session-closed hook (seen with tmux 3.8), so desk-closed would never
 # clear the view's record. Detached, the client exits, the view has no client left, and its own
 # destroy-unattached ends it after the hook, exactly as when the tab closes: session-closed runs and
-# desk-closed ignores it by its record, as for any view. That closes only windows no other session of
-# the group shows, so it is done only while another session is in the group: a view left alone in its
-# group (its desk's session killed by hand) holds the desk's windows, and keeps today's behaviour. A
-# view with no tab is left to the sweep in status. The formats were tried with tmux 3.8 only.
+# desk-closed ignores it by its record, as for any view. Ending views closes no other window only
+# while the desk's own session is there, since it holds every window of the desk, so the hook acts only
+# then (a loop over the server's sessions finds it by its id, which tmux never gives to another
+# session and which desk-rename keeps). Views left without it (the desk's session killed by hand) hold
+# the desk's windows between them, and keep today's behaviour; a guard on the group's size missed two
+# such views on one window, as each read a group of two. A view with no tab is left to the sweep in
+# status. The formats were tried with tmux 3.8 only.
+# tmux's own swap-window (also bound to a Ctrl-click in the status bar) changes the window a grouped
+# session shows without running session-window-changed for it (WindowCloseHookTests), so the window a
+# view remembers can fall behind. A second hook of the view's own, on window-unlinked (which every
+# session of the group gets when a window closes, each after its own session-window-changed), takes
+# up the window the view shows when the window it remembers leaves the view. So a tab never closes on
+# a switch when its window did not close. It acts only when the hook is run for the view itself
+# (hook_session): after a kill-window, tmux 3.8 was seen to run a session's window-unlinked hook for
+# another session of the group too, before that session's own session-window-changed. A view the swap
+# moved onto a window that then closes still moves on, as before 0.10.0.
 # Limits: a hook of the view's own takes the place of the global hook of the same name for that view
-# (seen with tmux 3.8), so a session-window-changed hook in the person's own tmux settings doesn't run
-# for a tab on one window. A view made by a script before 0.10.0 has no such hook, and keeps today's
-# behaviour until its tab closes. Errors are ignored: a view without the rule behaves as before.
-MM_VIEW_GONE='#{&&:#{@macmosh-window},#{&&:#{e|>:#{session_group_size},1},#{!:#{W:#{?#{==:#{window_id},#{@macmosh-window}},1,}}}}}'
-
+# (seen with tmux 3.8), so a session-window-changed or window-unlinked hook in the person's own tmux
+# settings doesn't run for a tab on one window. A view made by a script before 0.10.0 has no such
+# hooks, and keeps today's behaviour until its tab closes. Errors are ignored: a view without the rule
+# behaves as before.
 mm_view_rule() {
-    mm_tmux set-option -F -t "$1" @macmosh-window '#{window_id}' \; \
-        set-hook -t "$1" 'session-window-changed[1089]' \
-        "if-shell -F -t '$1' '$MM_VIEW_GONE' { detach-client -s '$1' } { set-option -F -t '$1' @macmosh-window '#{window_id}' }" \
+    local vid="$1" sid="$2" gone
+    case "$sid" in
+        '$'[0-9]*) ;;
+        *) return 0 ;;
+    esac
+    # shellcheck disable=SC2016  # the #{...} parts are tmux formats, expanded when the hook runs
+    gone='#{&&:#{@macmosh-window},#{&&:#{S:#{?#{==:#{session_id},'"$sid"'},1,}},#{!:#{W:#{?#{==:#{window_id},#{@macmosh-window}},1,}}}}}'
+    mm_tmux set-option -F -t "$vid" @macmosh-window '#{window_id}' \; \
+        set-hook -t "$vid" 'session-window-changed[1089]' \
+        "if-shell -F -t '$vid' '$gone' { detach-client -s '$vid' } { set-option -F -t '$vid' @macmosh-window '#{window_id}' }" \; \
+        set-hook -t "$vid" 'window-unlinked[1089]' \
+        "if-shell -F -t '$vid' '#{&&:#{==:#{hook_session},$vid},#{==:#{hook_window},#{@macmosh-window}}}' { set-option -F -t '$vid' @macmosh-window '#{window_id}' }" \
         >/dev/null 2>&1
     return 0
 }
