@@ -478,6 +478,21 @@ windows_sample() {
     fi
     snap page
 
+    # The row's button keeps the menu's words for its click as its help tag: a picture with the pointer
+    # resting on website's Open, which opens the 1 window not in a tab. A picture only, never a failure.
+    local x y
+    read -r _ x y _ <<< "$(wax find "desk.website.open" | grep '^found' | tail -n 1)"
+    if [ -n "${y:-}" ]; then
+        say "rest the pointer on website's Open at $x,$y"
+        lim 10 "$TOOL" move "$x" "$y" >> "$LOG" 2>&1
+        sleep 3
+        snap help-tag
+        lim 10 "$TOOL" move 600 500 >> "$LOG" 2>&1
+        sleep 0.5
+    else
+        result NOT-SHOWN "the row's button has the menu's words as its help tag" "no Open button for website"
+    fi
+
     # website's details list its three windows with the menu's words, each with its own button.
     if click_id "desk.website"; then
         sleep 1
