@@ -1050,8 +1050,11 @@ mm_view_bar() {
 # session shows without running session-window-changed for it (WindowCloseHookTests), so the window a
 # view remembers can fall behind. A second hook of the view's own, on window-unlinked (which every
 # session of the group gets when a window closes, each after its own session-window-changed), takes
-# up the window the view shows when the window it remembers leaves the view. So a tab never closes on
-# a switch when its window did not close. It acts only when the hook is run for the view itself
+# up the window the view shows when the window it remembers leaves the view. That covers a window
+# closed by its shell exiting. One case is known to remain (found by the second check of pull request
+# 141, left as it is, issue #142): after a swap, a window closed by a tmux command (kill-window, kill-pane) can
+# leave another tab's memory behind, and that tab then closes on its next window switch although its
+# window is open. Nothing is lost; the menu opens the tab again. It acts only when the hook is run for the view itself
 # (hook_session): after a kill-window, tmux 3.8 was seen to run a session's window-unlinked hook for
 # another session of the group too, before that session's own session-window-changed. A view the swap
 # moved onto a window that then closes still moves on, as before 0.10.0.
