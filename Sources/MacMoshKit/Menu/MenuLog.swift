@@ -66,9 +66,10 @@ public enum MenuLog {
         "menu showed the held change: \(when.rawValue)"
     }
 
-    /// `menu action: tab connect`
-    static func asked(_ action: MenuAction) -> String {
-        "menu action: \(name(action))"
+    /// `menu action: tab connect (row)`: the action, and whether a row that opens a submenu was clicked itself
+    /// or a line was (issue #128).
+    static func asked(_ action: MenuAction, from click: MenuClick) -> String {
+        "menu action: \(name(action)) (\(click.rawValue))"
     }
 
     /// `menu action done: tab connect: tab opened`
@@ -85,6 +86,11 @@ public enum MenuLog {
     /// A tab that couldn't be brought forward, in fixed words, as `tabFailure` does.
     static func selectFailure(_ reason: String) -> String {
         failure("tab not selected", reason)
+    }
+
+    /// `tab not selected (step B, error -1728)`: a select script that stopped at a step (issue #129).
+    static func selectStopped(_ step: SelectStep, error: Int) -> String {
+        "tab not selected (step \(step.rawValue), error \(error))"
     }
 
     private static func failure(_ words: String, _ reason: String) -> String {
@@ -150,6 +156,13 @@ public enum MenuLog {
         guard text.hasSuffix(")"), let open = text.lastIndex(of: "(") else { return nil }
         return Int(text[text.index(after: open)..<text.index(before: text.endIndex)])
     }
+}
+
+/// Where a menu action's click was (issue #128): `row` when a row that opens a submenu was clicked itself (its
+/// primary action), `line` for a line inside a submenu or at the top level, and `window` for a button in the
+/// MacMosh window, which runs its action the same way.
+public enum MenuClick: String, Sendable {
+    case row, line, window
 }
 
 /// The menu a `NSMenu.didBeginTrackingNotification` was sent for, in four fixed words, never a title.

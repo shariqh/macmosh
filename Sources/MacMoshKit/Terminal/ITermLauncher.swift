@@ -21,54 +21,58 @@ public struct ITermLauncher: TerminalLauncher {
     end run
     """
 
-    /// Brings forward the tab whose session's terminal device is the script's one argument, and answers
-    /// `ok`, or `gone` when no session has it (menu design 8.4). The device is an argument, never part of
-    /// the script's text.
+    /// Brings forward the tab whose session's terminal device is the script's one argument (menu design 8.4).
+    /// The device is an argument, never part of the script's text. The answer is one line: `ok`; `gone` when no
+    /// session has that device; or `failed <step> <error number>` when a step stopped (`TabOpener.select`).
     ///
-    /// This script has never run on a real Mac: it is tried on the daily Mac before the rollout, with several
-    /// windows and the wanted one not in front, a minimized window, a window on another Space, and no new
-    /// permission prompt (design 11.1).
+    /// Three steps, each a fresh search by the device: A un-minimizes the session's window, B brings that
+    /// window to the front, C selects the tab and the session and activates iTerm2. A loop variable is a
+    /// reference by position (`item 2 of windows`), and iTerm2 lists its windows front to back, so after a
+    /// command that can move a window, a step returns at once and never uses its references again. Step C
+    /// uses `s` after `select t`: step B has already put that window in front, so it stays `item 1 of windows`.
     ///
-    /// It differs from design 8.4 after review. A loop variable is a reference by position: the AppleScript
-    /// Language Guide ("repeat with loopVariable (in list)") says it "takes on the value of item 1 of list,
-    /// item 2 of list, item 3 of list, and so on", and "To access the actual value of an item in the list,
-    /// rather than a reference to the item, use the contents of property". iTerm2 lists its windows front
-    /// to back (`<element type="window">` with `<cocoa key="orderedScriptingWindows"/>`), so once a window
-    /// is raised, `item 2 of windows` is another window. The script therefore takes `contents of` each
-    /// match before any select, selects the tab and session before the window, and un-minimizes the window
-    /// (`miniaturized`, "Whether the window is currently minimized.", which is writable).
-    ///
-    /// Its terms are in iTerm2's installed dictionary (`sdef`, 3.7.7): window, tab and session respond to
-    /// `select`, the command "Make receiver visible and selected."; a session has `tty`; a window has
-    /// `miniaturized`. The dictionary describes no further what each `select` does. iTerm2's page "Scripting
-    /// with AppleScript" (design source [10]) says a window's `select` "Gives the window keyboard focus and
-    /// brings it to the front.", a tab's "Selects the tab, making it the current tab for the window.", and a
-    /// session's `tty` is "The name of the session's tty (e.g., /dev/ttys01). Returns a string." What
-    /// selecting does with a window on another Space is not documented.
+    /// Inside `tell application "iTerm2"` no word may be read as AppleScript's own: `contents` is iTerm2's
+    /// session property, "The currently visible contents of the session.", and the script that used `contents
+    /// of w` stopped with error -1728 on a real iTerm2 (issue #129). Every term here is in iTerm2's installed
+    /// dictionary (`sdef`, 3.7.7): `tty` of a session; `miniaturized` of a window, "Whether the window is
+    /// currently minimized."; `select`, "Make receiver visible and selected.", for a window, a tab and a session.
+    /// CI's "Terminal scripts" job runs this text against a real iTerm2 (scripts/ci/try-select.sh).
     static let selectScript = """
     on run argv
-        set wanted to item 1 of argv
+        repeat with i from 1 to 3
+            set step to character i of "ABC"
+            try
+                if not atStep(step, item 1 of argv) then return "gone"
+            on error number n
+                return "failed " & step & " " & n
+            end try
+        end repeat
+        return "ok"
+    end run
+
+    on atStep(step, wanted)
         tell application "iTerm2"
             repeat with w in windows
                 repeat with t in tabs of w
                     repeat with s in sessions of t
                         if (tty of s) is wanted then
-                            set theWindow to contents of w
-                            set theTab to contents of t
-                            set theSession to contents of s
-                            select theTab
-                            select theSession
-                            if miniaturized of theWindow then set miniaturized of theWindow to false
-                            select theWindow
-                            activate
-                            return "ok"
+                            if step is "A" then
+                                if miniaturized of w then set miniaturized of w to false
+                            else if step is "B" then
+                                select w
+                            else
+                                select t
+                                select s
+                                activate
+                            end if
+                            return true
                         end if
                     end repeat
                 end repeat
             end repeat
         end tell
-        return "gone"
-    end run
+        return false
+    end atStep
     """
 
     /// `title` isn't used: the command sets the tab's name itself.

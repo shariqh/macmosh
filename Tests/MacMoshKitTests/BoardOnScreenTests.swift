@@ -160,7 +160,7 @@ private func locked(_ w: Workhorse = attic) -> Gathered {
         let actions = MenuActionRunner(macmoshPath: "/x/macmosh", tabs: RecordingTabs(),
                                        runner: FakeRunner { _ in FakeRunner.ok() }, records: scratchTabRecords())
         let count = boards.count
-        await refresher.perform(.none, title: "Nothing", using: actions)
+        await refresher.perform(.none, title: "Nothing", from: .window, using: actions)
         #expect(boards.count == count + 2)   // only the check after the action: on, then off
         #expect(boards.last == before)
         watch.cancel()
@@ -259,7 +259,7 @@ private func locked(_ w: Workhorse = attic) -> Gathered {
         let tabs = RecordingTabs(failure: LaunchError.failed("osascript said no (-1728)"))
         let actions = MenuActionRunner(macmoshPath: "/x/macmosh", tabs: tabs,
                                        runner: FakeRunner { _ in FakeRunner.ok() }, records: scratchTabRecords())
-        await refresher.perform(.tab(["connect", "attic", "api"]), title: "Open api", using: actions)
+        await refresher.perform(.tab(["connect", "attic", "api"]), title: "Open api", from: .window, using: actions)
         #expect(screen.notice == refresher.notice)
         #expect(screen.notice?.hasPrefix("The tab didn't open.") == true)
     }

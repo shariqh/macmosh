@@ -272,6 +272,22 @@ import Testing
                 == ActionOutcome(summary: "tab not selected", notice: "Couldn't bring that tab forward."))
     }
 
+    /// A select script that stopped at a step (issue #129): fixed words with the step and the error number for the
+    /// log, and the usual sentence with a plain reason for the person. The record is kept.
+    @Test func aStoppedStepSaysWhichStep() async throws {
+        for (step, letter, reason) in [(SelectStep.a, "A", "iTerm2 couldn't un-minimize the tab's window (error -1728)."),
+                                       (.b, "B", "iTerm2 couldn't bring the tab's window to the front (error -1728)."),
+                                       (.c, "C", "iTerm2 couldn't select the tab (error -1728).")] {
+            let tabs = RecordingTabs(selection: .failure(LaunchError.selectStopped(.iterm2, step: step, error: -1728)))
+            let store = try records()
+            let outcome = await focusing(tabs, store).outcome(of: Self.focus, title: "x")
+            #expect(outcome == ActionOutcome(summary: "tab not selected (step \(letter), error -1728)",
+                                             notice: "Couldn't bring that tab forward. \(reason)"))
+            #expect(tabs.events == ["select /dev/ttys004 iterm2"])
+            #expect(store.record(label: Self.label) != nil)
+        }
+    }
+
     /// When the new tab doesn't open either, that failure is what is said.
     @Test func aFallbackThatFailsSaysWhy() async throws {
         let tabs = RecordingTabs(failure: LaunchError.failed("execution error: iTerm2 got an error. (-1728)"))
@@ -389,6 +405,17 @@ import Testing
         #expect(tabs.events == ["select /dev/ttys004 iterm2", "open \(Self.path) connect mbp website --window @3"])
         #expect(outcome.summary == "tab opened")
         #expect(store.record(label: Self.label) == nil)
+    }
+
+    /// A fresh tab whose select stopped at a step says so as a focus does, and opens nothing.
+    @Test func aFreshTabWhoseSelectStoppedSaysWhichStep() async throws {
+        let tabs = RecordingTabs(selection: .failure(LaunchError.selectStopped(.iterm2, step: .b, error: -1719)))
+        let store = try fresh()
+        let outcome = await clocked(tabs, store).outcome(of: .tab(Self.fallback), title: "vim")
+        #expect(tabs.events == ["select /dev/ttys004 iterm2"])
+        #expect(outcome == ActionOutcome(summary: "tab not selected (step B, error -1719)",
+                                         notice: "Couldn't bring that tab forward. iTerm2 couldn't bring the tab's window to the front (error -1719)."))
+        #expect(store.record(label: Self.label) != nil)
     }
 
     /// A focus whose own tab has gone goes to a fresh tab on the same window rather than opening a third.

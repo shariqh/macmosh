@@ -60,7 +60,7 @@ struct MainWindow: View {
         SampleRun.windowRan(action)   // a sample's log line for CI; nothing otherwise
         #endif
         let refresher = screen.refresher, actions = actions, title = button.title
-        Task { await refresher.perform(action, title: title, using: actions) }
+        Task { await refresher.perform(action, title: title, from: .window, using: actions) }
     }
 }
 

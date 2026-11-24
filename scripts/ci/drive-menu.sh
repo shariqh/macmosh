@@ -15,7 +15,8 @@
 #                 NOT-SHOWN (the step could not be done, so nothing is known)
 #
 # The job fails only when the app does not start, its menu does not open, a click runs the wrong row
-# or none, an open submenu closes under the pointer, or a held change is shown before the clicked
+# or none, the app's log does not say whether a row or a line was clicked (issue #128), an open
+# submenu closes under the pointer, or a held change is shown before the clicked
 # row has run. In the "changing" sample it also fails when the hold could not be tested (the
 # submenu never opened, fewer than two changes landed during the wait, or the held change was never
 # shown), so the job cannot go green without testing it. How a picture looks never fails it.
@@ -220,6 +221,16 @@ expect_row() {
     fi
 }
 
+# expect_asked <check> <moment> <line>: the app's log since then has that action line, which says whether
+# a row's own click or a line ran it (issue #128).
+expect_asked() {
+    if wait_log "$2" "$3" 6 > /dev/null; then
+        result PASS "$1" "log: $3"
+    else
+        result FAIL "$1" "no '$3' line after the click"
+    fi
+}
+
 # click_in_submenu <parent prefix> <line prefix>: with the submenu open, moves sideways into it at the
 # parent row's height (onto its first line, so it stays open) and clicks the line. Prints the x y it
 # clicked, or nothing.
@@ -258,6 +269,7 @@ six_desks() {
     say "click on row $idx [$name] at $x,$y"
     tool click "$x" "$y" > /dev/null
     expect_row "a click on a desk's row runs that desk's row" "$since" "desk:workhorse:website"
+    expect_asked "a click on a desk's row is logged as the row" "$since" "menu action: tab connect (row)"
     n=$(wait_menus 0 2)
     if [ "$n" -eq 0 ]; then
         result PASS "the menu closes after the click" "menu windows=0"
@@ -272,6 +284,7 @@ six_desks() {
         since=$(moment)
         if click_in_submenu "   api" "New window"; then
             expect_row "a click on New window in api's submenu runs that line" "$since" "desk:workhorse:api:window"
+            expect_asked "a click on New window in api's submenu is logged as a line" "$since" "menu action: run desk (line)"
         else
             result NOT-SHOWN "a click on New window in api's submenu" "the line was not found"
         fi
@@ -292,15 +305,16 @@ six_desks() {
     stop_app
 }
 
-# window_click <check> <line prefix> <row id> <log text> <step>: with the menu open, rests on website's row
-# (a picture named after <step>), clicks that line of its submenu, and checks that the log names that row
-# and the action's outcome.
+# window_click <check> <line prefix> <row id> <log text> <step> <action line>: with the menu open, rests on
+# website's row (a picture named after <step>), clicks that line of its submenu, and checks that the log
+# names that row, the action as a line's (issue #128), and the action's outcome.
 window_click() {
     local since
     rest_on "   website" "$5"
     since=$(moment)
     if click_in_submenu "   website" "$2"; then
         expect_row "$1" "$since" "$3"
+        expect_asked "$1: logged as a line" "$since" "$6"
         if wait_log "$since" "$4" 6 > /dev/null; then
             result PASS "$1: the action ran" "log: $4"
         else
@@ -321,7 +335,7 @@ windows_sample() {
     snap menu
     base=$(printf '%s-%s' "$os" "$sample")
     window_click "a click on a window line with no tab runs that line" "vim" "desk:workhorse:website:win:@3" \
-        "menu action done: tab connect: tab opened" website-submenu
+        "menu action done: tab connect: tab opened" website-submenu "menu action: tab connect (line)"
     n=$(wait_menus 0 2)
     if [ "$n" -eq 0 ]; then
         result PASS "the menu closes after the window line's click" "menu windows=0"
@@ -331,7 +345,8 @@ windows_sample() {
     snap after-window-click
     if opened_or_fail "for the window line in a tab"; then
         window_click "a click on a window line in a tab runs that line" "claude (in a tab)" \
-            "desk:workhorse:website:win:@1" "menu action done: focus connect: tab selected" website-submenu-again
+            "desk:workhorse:website:win:@1" "menu action done: focus connect: tab selected" website-submenu-again \
+            "menu action: focus connect (line)"
         snap after-tab-click
     fi
     if opened_or_fail "for the workhorse's submenu"; then

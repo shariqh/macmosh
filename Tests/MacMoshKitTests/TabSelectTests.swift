@@ -14,53 +14,79 @@ import Testing
                   fileExists: { installed.contains($0) })
     }
 
-    /// The scripts of the design's section 8.4, changed after review so that nothing acts on a loop's
-    /// positional reference once a window may have moved (see `aMatchIsHeldByAReferenceThatDoesNotMove`).
+    /// The scripts of the design's section 8.4 since issue #129: three steps, each a fresh search by the
+    /// device, and a one-line answer. CI's "Terminal scripts" job runs these texts against the real apps.
     static let iTermScript = """
     on run argv
-        set wanted to item 1 of argv
+        repeat with i from 1 to 3
+            set step to character i of "ABC"
+            try
+                if not atStep(step, item 1 of argv) then return "gone"
+            on error number n
+                return "failed " & step & " " & n
+            end try
+        end repeat
+        return "ok"
+    end run
+
+    on atStep(step, wanted)
         tell application "iTerm2"
             repeat with w in windows
                 repeat with t in tabs of w
                     repeat with s in sessions of t
                         if (tty of s) is wanted then
-                            set theWindow to contents of w
-                            set theTab to contents of t
-                            set theSession to contents of s
-                            select theTab
-                            select theSession
-                            if miniaturized of theWindow then set miniaturized of theWindow to false
-                            select theWindow
-                            activate
-                            return "ok"
+                            if step is "A" then
+                                if miniaturized of w then set miniaturized of w to false
+                            else if step is "B" then
+                                select w
+                            else
+                                select t
+                                select s
+                                activate
+                            end if
+                            return true
                         end if
                     end repeat
                 end repeat
             end repeat
         end tell
-        return "gone"
-    end run
+        return false
+    end atStep
     """
 
     static let terminalScript = """
     on run argv
-        set wanted to item 1 of argv
+        repeat with i from 1 to 3
+            set step to character i of "ABC"
+            try
+                if not atStep(step, item 1 of argv) then return "gone"
+            on error number n
+                return "failed " & step & " " & n
+            end try
+        end repeat
+        return "ok"
+    end run
+
+    on atStep(step, wanted)
         tell application "Terminal"
             repeat with w in windows
                 repeat with t in tabs of w
                     if (tty of t) is wanted then
-                        set theWindowID to id of w
-                        set selected of t to true
-                        if miniaturized of window id theWindowID then set miniaturized of window id theWindowID to false
-                        set index of window id theWindowID to 1
-                        activate
-                        return "ok"
+                        if step is "A" then
+                            if miniaturized of w then set miniaturized of w to false
+                        else if step is "B" then
+                            activate
+                        else
+                            set selected of t to true
+                            set index of w to 1
+                        end if
+                        return true
                     end if
                 end repeat
             end repeat
         end tell
-        return "gone"
-    end run
+        return false
+    end atStep
     """
 
     // MARK: the exact call
@@ -85,28 +111,43 @@ import Testing
         #expect(AppleTerminalLauncher.selectScript == Self.terminalScript)
     }
 
-    /// A loop variable over `windows` is a reference by position ("item 2 of windows"), looked up again each
-    /// time it is used, and both terminals list their windows front to back. Once a window is raised or
-    /// un-minimized the positions move, so after a match no select or set may go through `w`, `t` or `s`
-    /// except before anything has moved: iTerm2 takes the app's own references first (`contents of`), and
-    /// Terminal selects the tab first and then names the window by its id.
-    @Test func aMatchIsHeldByAReferenceThatDoesNotMove() {
-        func afterMatch(_ script: String) -> [String] {
+    /// A loop variable over `windows` is a reference by position ("item 2 of windows"), and both terminals list
+    /// their windows front to back. So each step searches again, and a step that matches does its one thing
+    /// and returns: no reference outlives a command that can move a window. In iTerm2, step A un-minimizes,
+    /// B raises the window, C selects the tab and the session and activates iTerm2. In Terminal, A un-minimizes,
+    /// B activates Terminal, C selects the tab and raises its window (activating last let Terminal put its
+    /// previous front window back on top in CI).
+    @Test func eachStepSearchesAgainAndDoesOneThing() {
+        func branches(_ script: String) -> [String] {
             let lines = script.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
             let start = lines.firstIndex { $0.hasPrefix("if (tty of") }!
-            return Array(lines[(start + 1)...].prefix { $0 != "return \"ok\"" })
+            return Array(lines[(start + 1)...].prefix { $0 != "return true" })
         }
-        func words(_ line: String) -> Set<String> { Set(line.split(separator: " ").map(String.init)) }
-        let iTerm = afterMatch(ITermLauncher.selectScript)
-        #expect(Array(iTerm.prefix(3)) == ["set theWindow to contents of w", "set theTab to contents of t",
-                                           "set theSession to contents of s"])
-        for line in iTerm.dropFirst(3) {
-            #expect(words(line).isDisjoint(with: ["w", "t", "s"]), "\(line)")
+        #expect(branches(ITermLauncher.selectScript) == [
+            "if step is \"A\" then", "if miniaturized of w then set miniaturized of w to false",
+            "else if step is \"B\" then", "select w",
+            "else", "select t", "select s", "activate",
+            "end if",
+        ])
+        #expect(branches(AppleTerminalLauncher.selectScript) == [
+            "if step is \"A\" then", "if miniaturized of w then set miniaturized of w to false",
+            "else if step is \"B\" then", "activate",
+            "else", "set selected of t to true", "set index of w to 1",
+            "end if",
+        ])
+        for script in [ITermLauncher.selectScript, AppleTerminalLauncher.selectScript] {
+            #expect(script.contains("repeat with i from 1 to 3\n        set step to character i of \"ABC\""))
+            #expect(script.contains("return \"failed \" & step & \" \" & n"))
         }
-        let terminal = afterMatch(AppleTerminalLauncher.selectScript)
-        #expect(Array(terminal.prefix(2)) == ["set theWindowID to id of w", "set selected of t to true"])
-        for line in terminal.dropFirst(2) {
-            #expect(words(line).isDisjoint(with: ["w", "t"]), "\(line)")
+    }
+
+    /// Inside a `tell` block `contents` is the terminal's own property (iTerm2's session, Terminal's tab), which
+    /// is what stopped the earlier iTerm2 script with error -1728 (issue #129). Neither script names an object by
+    /// id either: CI has not run one.
+    @Test func noWordThatMeansSomethingElseInsideTheTell() {
+        for script in [ITermLauncher.selectScript, AppleTerminalLauncher.selectScript] {
+            #expect(!script.contains("contents"))
+            #expect(!script.contains(" id "))
         }
     }
 
@@ -152,6 +193,52 @@ import Testing
         await #expect(throws: LaunchError.failed("iTerm2 gave an answer MacMosh doesn't know.")) {
             try await opener(runner: runner).select(tty: "/dev/ttys004", terminal: .iterm2)
         }
+    }
+
+    /// A step that stopped (issue #129): `failed <step> <error number>`, the step A, B or C.
+    @Test func aStepThatStoppedIsNamedWithItsErrorNumber() async throws {
+        let iTerm = FakeRunner { _ in FakeRunner.ok("failed A -1728\n") }
+        await #expect(throws: LaunchError.selectStopped(.iterm2, step: .a, error: -1728)) {
+            try await opener(runner: iTerm).select(tty: "/dev/ttys004", terminal: .iterm2)
+        }
+        let terminal = FakeRunner { _ in FakeRunner.ok("failed B -1719") }
+        await #expect(throws: LaunchError.selectStopped(.appleTerminal, step: .b, error: -1719)) {
+            try await opener(runner: terminal).select(tty: "/dev/ttys004", terminal: .terminal)
+        }
+        let last = FakeRunner { _ in FakeRunner.ok("failed C -10006\n") }
+        await #expect(throws: LaunchError.selectStopped(.iterm2, step: .c, error: -10006)) {
+            try await opener(runner: last).select(tty: "/dev/ttys004", terminal: .iterm2)
+        }
+    }
+
+    /// Each step runs inside its own `try`, so a refusal comes back as a step's answer, not as osascript's
+    /// error: it is still a refusal, worded as before.
+    @Test func aRefusalInsideAStepIsStillARefusal() async throws {
+        for step in ["A", "B", "C"] {
+            let runner = FakeRunner { _ in FakeRunner.ok("failed \(step) -1743\n") }
+            await #expect(throws: LaunchError.automationDenied(.iterm2)) {
+                try await opener(runner: runner).select(tty: "/dev/ttys004", terminal: .iterm2)
+            }
+        }
+    }
+
+    @Test(arguments: ["failed", "failed A", "failed D -1728", "failed a -1728", "failed A -17x28", "failed A -1728 more",
+                      "failed  A -1728", "failedA -1728", "ok then", "OK", "Gone"])
+    func aMisshapenAnswerIsAFailure(_ said: String) async throws {
+        let runner = FakeRunner { _ in FakeRunner.ok(said + "\n") }
+        await #expect(throws: LaunchError.failed("iTerm2 gave an answer MacMosh doesn't know.")) {
+            try await opener(runner: runner).select(tty: "/dev/ttys004", terminal: .iterm2)
+        }
+    }
+
+    /// The sentence for a stopped step: the app, what the step was doing, and the error number.
+    @Test func aStoppedStepHasAPlainReason() {
+        #expect(LaunchError.stoppedReason(.iterm2, step: .a, error: -1728)
+                == "iTerm2 couldn't un-minimize the tab's window (error -1728).")
+        #expect(LaunchError.stoppedReason(.appleTerminal, step: .b, error: -1719)
+                == "Terminal couldn't bring the tab's window to the front (error -1719).")
+        #expect(LaunchError.stoppedReason(.iterm2, step: .c, error: -10006)
+                == "iTerm2 couldn't select the tab (error -10006).")
     }
 
     @Test func aRefusalIsNamedForTheTerminal() async throws {

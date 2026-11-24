@@ -56,8 +56,10 @@ public struct TabOpener: Sendable {
     /// Brings forward the tab whose terminal device is `tty`, in the terminal the tab's record names; for
     /// `unknown`, the one `terminal()` picks for a new tab (menu design 8.4). It runs from this process, as
     /// opening a tab does, because the app is what holds the Automation permission. A device that isn't
-    /// `/dev/ttys` and digits is `gone` without asking. A refusal throws `automationDenied`, with no other
-    /// way to try: a command file can open a tab but can't bring one forward.
+    /// `/dev/ttys` and digits is `gone` without asking. The script answers `ok`, `gone`, or `failed <step>
+    /// <error number>`, which throws `selectStopped`. A refusal, from osascript or from a step (error -1743),
+    /// throws `automationDenied`, with no other way to try: a command file can open a tab but can't bring one
+    /// forward.
     public func select(tty: String, terminal recorded: TabRecord.Terminal) async throws -> TabSelection {
         guard TabRecord.isTerminalDevice(tty) else { return .gone }
         let app: TerminalApp
@@ -71,7 +73,21 @@ public struct TabOpener: Sendable {
         switch answer.trimmingCharacters(in: .whitespacesAndNewlines) {
         case "ok": return .selected
         case "gone": return .gone
-        default: throw LaunchError.failed("\(app.displayName) gave an answer MacMosh doesn't know.")
+        case let line:
+            guard let (step, number) = Self.stopped(line) else {
+                throw LaunchError.failed("\(app.displayName) gave an answer MacMosh doesn't know.")
+            }
+            // Each step has its own `try`, so a refusal comes back as a step's answer.
+            if number == AppleScriptRunner.notAuthorized { throw LaunchError.automationDenied(app) }
+            throw LaunchError.selectStopped(app, step: step, error: number)
         }
+    }
+
+    /// The step and the error number of `failed <A|B|C> <number>`, one space between each; nil for anything else.
+    static func stopped(_ line: String) -> (SelectStep, Int)? {
+        let words = line.split(separator: " ", omittingEmptySubsequences: false)
+        guard words.count == 3, words[0] == "failed", let step = SelectStep(rawValue: String(words[1])),
+              let number = Int(words[2]) else { return nil }
+        return (step, number)
     }
 }

@@ -70,22 +70,35 @@ private final class Lines: @unchecked Sendable {
     }
 
     @Test func anActionLineNamesOnlyTheSubcommand() {
-        #expect(MenuLog.asked(.tab(["connect", "workhorse", "website"])) == "menu action: tab connect")
-        #expect(MenuLog.asked(.run(["desk", "window", "workhorse", "website"])) == "menu action: run desk")
-        #expect(MenuLog.asked(.tab([])) == "menu action: tab")
-        #expect(MenuLog.asked(.refresh) == "menu action: refresh")
-        #expect(MenuLog.asked(.none) == "menu action: none")
+        #expect(MenuLog.asked(.tab(["connect", "workhorse", "website"]), from: .line) == "menu action: tab connect (line)")
+        #expect(MenuLog.asked(.run(["desk", "window", "workhorse", "website"]), from: .line) == "menu action: run desk (line)")
+        #expect(MenuLog.asked(.tab([]), from: .line) == "menu action: tab (line)")
+        #expect(MenuLog.asked(.refresh, from: .line) == "menu action: refresh (line)")
+        #expect(MenuLog.asked(.none, from: .line) == "menu action: none (line)")
         #expect(MenuLog.finished(.tab(["connect", "workhorse", "website"]), summary: "tab opened")
                 == "menu action done: tab connect: tab opened")
+    }
+
+    /// Where the click was (issue #128): a row that opens a submenu and was clicked itself, or a line, inside a
+    /// submenu or at the top level. Fixed words, never the row's title.
+    @Test func anActionLineSaysWhetherARowOrALineWasClicked() {
+        let open = ["connect", "workhorse", "website", "--window", "@3"]
+        #expect(MenuLog.asked(.tab(open), from: .row) == "menu action: tab connect (row)")
+        #expect(MenuLog.asked(.tab(open), from: .line) == "menu action: tab connect (line)")
+        #expect(MenuLog.asked(.focus(label: "9f3a1c2e", orOpen: open), from: .row) == "menu action: focus connect (row)")
+        #expect(MenuLog.asked(.tab(open), from: .window) == "menu action: tab connect (window)")
+        #expect(MenuClick.row.rawValue == "row")
+        #expect(MenuClick.line.rawValue == "line")
+        #expect(MenuClick.window.rawValue == "window")
     }
 
     /// The two tab actions of issue #120: the subcommand of the first tab, never a desk, a window or a label.
     @Test func theTabsAndFocusLinesNameOnlyTheSubcommand() {
         let open = ["connect", "workhorse", "website", "--window", "@3"]
-        #expect(MenuLog.asked(.tabs([open, open])) == "menu action: tabs connect")
-        #expect(MenuLog.asked(.tabs([])) == "menu action: tabs")
-        #expect(MenuLog.asked(.focus(label: "9f3a1c2e", orOpen: open)) == "menu action: focus connect")
-        #expect(MenuLog.asked(.focus(label: "9f3a1c2e", orOpen: [])) == "menu action: focus")
+        #expect(MenuLog.asked(.tabs([open, open]), from: .line) == "menu action: tabs connect (line)")
+        #expect(MenuLog.asked(.tabs([]), from: .line) == "menu action: tabs (line)")
+        #expect(MenuLog.asked(.focus(label: "9f3a1c2e", orOpen: open), from: .line) == "menu action: focus connect (line)")
+        #expect(MenuLog.asked(.focus(label: "9f3a1c2e", orOpen: []), from: .line) == "menu action: focus (line)")
         #expect(MenuLog.finished(.focus(label: "9f3a1c2e", orOpen: open), summary: "tab selected")
                 == "menu action done: focus connect: tab selected")
         #expect(MenuLog.finished(.tabs([open]), summary: "tabs opened: 1")
@@ -105,6 +118,10 @@ private final class Lines: @unchecked Sendable {
         #expect(MenuLog.selectFailure("Terminal did not answer in time.") == "tab not selected (no answer in time)")
         #expect(MenuLog.selectFailure("something about workhorse") == "tab not selected")
         #expect(MenuLog.selectFailure("") == "tab not selected")
+        // A select script that stopped at a step (issue #129): the step's letter and the error number.
+        #expect(MenuLog.selectStopped(.a, error: -1728) == "tab not selected (step A, error -1728)")
+        #expect(MenuLog.selectStopped(.b, error: -1719) == "tab not selected (step B, error -1719)")
+        #expect(MenuLog.selectStopped(.c, error: -10006) == "tab not selected (step C, error -10006)")
     }
 
     @Test func clearedRecordsAreCountedNotNamed() {
@@ -203,12 +220,20 @@ private final class Lines: @unchecked Sendable {
                               save: { _ in }, log: { lines.add($0) })
         await r.perform(.line("website (1 window)", .tab(["connect", "workhorse", "website"])), using: actions())
         #expect(lines.all == [
-            "menu action: tab connect",
+            "menu action: tab connect (line)",
             "menu action done: tab connect: tab opened",
             MenuLog.refreshed(r.menu, workhorses: 1),
         ])
         #expect(lines.all.last?.hasPrefix("menu refreshed: symbol=checkmark.circle workhorses=1 lines=") == true)
         #expect(!lines.all.contains { $0.localizedCaseInsensitiveContains("workhorse ") || $0.contains("website") })
+    }
+
+    /// A desk's row clicked itself says `(row)` (issue #128).
+    @Test func aRowsOwnClickIsLoggedAsTheRow() async {
+        let lines = Lines()
+        let r = MenuRefresher(load: { [] }, gather: { _ in [] }, save: { _ in }, log: { lines.add($0) })
+        await r.perform(.tab(["connect", "workhorse", "website"]), title: "website", from: .row, using: actions())
+        #expect(lines.all.prefix(2) == ["menu action: tab connect (row)", "menu action done: tab connect: tab opened"])
     }
 
     @Test func openingTheMenuIsLoggedAndChecksAgain() async {

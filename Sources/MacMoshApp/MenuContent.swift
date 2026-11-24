@@ -40,13 +40,13 @@ struct MenuContent: View {
         NSApp.activate()
     }
 
-    /// Does what a line or a row asks, then checks again.
-    private func run(_ action: MenuAction, _ row: MenuRow) {
+    /// Does what a line or a row asks, then checks again. `click` says which, for the log.
+    private func run(_ action: MenuAction, _ row: MenuRow, _ click: MenuClick) {
         #if DEBUG
         SampleMenu.rowRan(row.id)   // a sample menu's log line for CI (issue #113); nothing otherwise
         #endif
         let refresher = screen.refresher, actions = actions, title = row.title
-        Task { await refresher.perform(action, title: title, using: actions) }
+        Task { await refresher.perform(action, title: title, from: click, using: actions) }
     }
 }
 
@@ -62,7 +62,8 @@ struct MenuContent: View {
 /// click on it did nothing. None of this has been tried in MacMosh itself on a real Mac yet.
 struct MenuRows: View {
     let rows: [MenuRow]
-    let run: @MainActor (MenuAction, MenuRow) -> Void
+    /// The row's own click (a submenu row's primary action) is `.row`; every other click is `.line`.
+    let run: @MainActor (MenuAction, MenuRow, MenuClick) -> Void
 
     var body: some View {
         ForEach(rows) { row in
@@ -72,12 +73,12 @@ struct MenuRows: View {
             case .text:
                 Text(verbatim: row.label)
             case .button(let action):
-                Button { run(action, row) } label: { Text(verbatim: row.label) }
+                Button { run(action, row, .line) } label: { Text(verbatim: row.label) }
             case .submenu(let lines, nil):
                 Menu { MenuRows(rows: lines, run: run) } label: { Text(verbatim: row.label) }
             case .submenu(let lines, let primary?):
                 Menu { MenuRows(rows: lines, run: run) } label: { Text(verbatim: row.label) } primaryAction: {
-                    run(primary, row)
+                    run(primary, row, .row)
                 }
             }
         }
