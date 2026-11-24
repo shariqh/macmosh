@@ -73,9 +73,34 @@ public enum MenuLog {
     /// A tab that didn't open, in fixed words. The reason is the terminal app's own text and can
     /// carry the command line, so only what it ends with is kept: AppleScript's error number.
     static func tabFailure(_ reason: String) -> String {
-        if reason.hasSuffix("did not answer in time.") { return "tab did not open (no answer in time)" }
-        if let number = errorNumber(in: reason) { return "tab did not open (error \(number))" }
-        return "tab did not open"
+        failure("tab did not open", reason)
+    }
+
+    /// A tab that couldn't be brought forward, in fixed words, as `tabFailure` does.
+    static func selectFailure(_ reason: String) -> String {
+        failure("tab not selected", reason)
+    }
+
+    private static func failure(_ words: String, _ reason: String) -> String {
+        if reason.hasSuffix("did not answer in time.") { return "\(words) (no answer in time)" }
+        if let number = errorNumber(in: reason) { return "\(words) (error \(number))" }
+        return words
+    }
+
+    /// A focus action that found its tab and brought it forward.
+    static let tabSelected = "tab selected"
+
+    /// Why a focus action counted its tab as gone.
+    enum TabGone: String {
+        case noRecord = "no record"
+        case processEnded = "process ended"
+        case noDevice = "no terminal device"
+        case notInTerminal = "not in the terminal"
+    }
+
+    /// `tab gone (no record), opened a new one`: `then` says what came of the new tab.
+    static func tabGone(_ why: TabGone, then: String) -> String {
+        "tab gone (\(why.rawValue)), \(then)"
     }
 
     /// `tabs opened: 3`, or `tabs opened: 3 (another way: 1)` when some were opened with a command file.

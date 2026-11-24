@@ -17,7 +17,7 @@ private final class Lines: @unchecked Sendable {
     private func actions(tabs: RecordingTabs = RecordingTabs(),
                          fake: FakeRunner = FakeRunner { _ in FakeRunner.ok() },
                          path: String = MenuLogTests.path) -> MenuActionRunner {
-        MenuActionRunner(macmoshPath: path, tabs: tabs, runner: fake)
+        MenuActionRunner(macmoshPath: path, tabs: tabs, runner: fake, records: scratchTabRecords())
     }
 
     // MARK: the lines
@@ -78,6 +78,21 @@ private final class Lines: @unchecked Sendable {
                 == "menu action done: focus connect: tab selected")
         #expect(MenuLog.finished(.tabs([open]), summary: "tabs opened: 1")
                 == "menu action done: tabs connect: tabs opened: 1")
+    }
+
+    /// Each way a focus action ends, in fixed words: never a label, a device, a desk or a terminal's text.
+    @Test func theFocusSummariesAreFixedWords() {
+        #expect(MenuLog.tabSelected == "tab selected")
+        #expect(MenuLog.tabGone(.noRecord, then: "opened a new one") == "tab gone (no record), opened a new one")
+        #expect(MenuLog.tabGone(.processEnded, then: "opened a new one") == "tab gone (process ended), opened a new one")
+        #expect(MenuLog.tabGone(.noDevice, then: "opened a new one") == "tab gone (no terminal device), opened a new one")
+        #expect(MenuLog.tabGone(.notInTerminal, then: "then tab did not open")
+                == "tab gone (not in the terminal), then tab did not open")
+        let fromITerm = "31:99: execution error: iTerm got an error: Can’t get window 1 of workhorse. (-1719)"
+        #expect(MenuLog.selectFailure(fromITerm) == "tab not selected (error -1719)")
+        #expect(MenuLog.selectFailure("Terminal did not answer in time.") == "tab not selected (no answer in time)")
+        #expect(MenuLog.selectFailure("something about workhorse") == "tab not selected")
+        #expect(MenuLog.selectFailure("") == "tab not selected")
     }
 
     @Test func theTabsSummariesAreNumbersAndFixedWords() {

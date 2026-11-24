@@ -172,17 +172,18 @@ public struct TabRecordStore: Sendable {
     /// or a label that isn't its file's name) is ignored and left alone; a missing folder has none.
     func records() -> [TabRecord] {
         let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
-        let decoder = JSONDecoder.tabRecord
-        var found: [TabRecord] = []
-        for name in names where name.hasSuffix(".json") {
-            let label = String(name.dropLast(".json".count))
-            guard TabLabel.isValid(label),
-                  let data = try? Data(contentsOf: folder.appendingPathComponent(name)),
-                  let record = try? decoder.decode(TabRecord.self, from: data),
-                  record.label == label else { continue }
-            found.append(record)
-        }
+        let found = names.filter { $0.hasSuffix(".json") }.compactMap { record(label: String($0.dropLast(".json".count))) }
         return found.sorted { ($0.openedAt, $0.label) < ($1.openedAt, $1.label) }
+    }
+
+    /// The record with this label, whether or not its process still runs. nil when the word isn't a label,
+    /// or there is no such file, or the file isn't a record carrying that label.
+    public func record(label: String) -> TabRecord? {
+        guard TabLabel.isValid(label),
+              let data = try? Data(contentsOf: file(for: label)),
+              let record = try? JSONDecoder.tabRecord.decode(TabRecord.self, from: data),
+              record.label == label else { return nil }
+        return record
     }
 
     private func file(for label: String) -> URL { folder.appendingPathComponent("\(label).json") }

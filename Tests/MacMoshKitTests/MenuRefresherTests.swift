@@ -234,7 +234,7 @@ private final class Saved: @unchecked Sendable {
         let r = refresher(missing: [])
         let fake = FakeRunner { argv in argv.contains("screen") ? FakeRunner.failed(1, stderr: "no screen sharing\n") : FakeRunner.ok() }
         let actions = MenuActionRunner(macmoshPath: "/Applications/MacMosh.app/Contents/Helpers/macmosh",
-                                       tabs: RecordingTabs(), runner: fake)
+                                       tabs: RecordingTabs(), runner: fake, records: scratchTabRecords())
         #expect(r.notice == nil)
         await r.perform(.line("Share screen", .run(["screen", "mbp"])), using: actions)
         #expect(r.notice == "no screen sharing")

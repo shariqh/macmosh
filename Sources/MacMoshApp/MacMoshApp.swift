@@ -10,7 +10,8 @@ struct MacMoshApp: App {
     private let actions = MenuActionRunner(
         macmoshPath: Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/macmosh").path,
         tabs: AppTabs(),
-        runner: ProcessRunner())
+        runner: ProcessRunner(),
+        records: TabRecordStore(paths: Paths.standard()))
 
     init() {
         MenuLog.write(MenuLog.started(version: MacMoshInfo.version))
@@ -52,12 +53,21 @@ struct MacMoshApp: App {
 
 /// Opens a tab the way `macmosh open` does: the saved terminal choice, the same temporary folder
 /// for the fallback file, and the real file check. Built on each use, so a changed setting counts.
+/// Bringing a tab forward goes the same way, from this app's own process, which holds the Automation
+/// permission (menu design 6.2).
 struct AppTabs: TabOpening {
     func open(_ command: TabCommand, title: String) async throws -> String? {
+        try await opener().open(command, title: title)
+    }
+
+    func select(tty: String, terminal: TabRecord.Terminal) async throws -> TabSelection {
+        try await opener().select(tty: tty, terminal: terminal)
+    }
+
+    private func opener() -> TabOpener {
         let settings = (try? WorkhorseStore(paths: Paths.standard()).loadSettings()) ?? AppSettings()
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("macmosh-tabs", isDirectory: true)
-        let opener = TabOpener(runner: ProcessRunner(), settings: settings, temporaryFolder: folder,
-                               fileExists: { FileManager.default.fileExists(atPath: $0) })
-        return try await opener.open(command, title: title)
+        return TabOpener(runner: ProcessRunner(), settings: settings, temporaryFolder: folder,
+                         fileExists: { FileManager.default.fileExists(atPath: $0) })
     }
 }

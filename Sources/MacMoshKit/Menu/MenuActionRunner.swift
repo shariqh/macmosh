@@ -1,17 +1,21 @@
 import Foundation
 
-/// Opens a terminal tab. `TabOpener` is the real one; tests use a stand-in that opens nothing.
+/// Opens a terminal tab, or brings one forward. `TabOpener` is the real one; tests use a stand-in that
+/// opens nothing.
 public protocol TabOpening: Sendable {
     func open(_ command: TabCommand, title: String) async throws -> String?
+    func select(tty: String, terminal: TabRecord.Terminal) async throws -> TabSelection
 }
 
 extension TabOpener: TabOpening {}
 
-/// Does what a menu item asks: open a tab that runs the bundled `macmosh`, or run it in the background.
+/// Does what a menu item asks: open a tab that runs the bundled `macmosh`, or several, or bring a tab
+/// forward, all from this process; or run `macmosh` in the background.
 public struct MenuActionRunner: Sendable {
     private let macmoshPath: String
     private let tabs: TabOpening
     private let runner: CommandRunner
+    private let records: TabRecordStore
     private let pause: @Sendable (Duration) async -> Void
 
     /// How long a background command may run before it is stopped.
@@ -24,13 +28,18 @@ public struct MenuActionRunner: Sendable {
     static let moveIt = "MacMosh can't open terminal tabs from where it is now. "
         + "Move it to the Applications folder and open it again."
 
-    /// `macmoshPath` is the command inside the app bundle, `Contents/Helpers/macmosh`. `pause` is how the
-    /// wait between tabs is done; tests pass one that doesn't wait.
-    public init(macmoshPath: String, tabs: TabOpening, runner: CommandRunner,
+    /// The sentence shown when a tab to bring forward had gone and a new one was opened instead.
+    static let tabClosed = "That tab has closed, so MacMosh opened a new one."
+
+    /// `macmoshPath` is the command inside the app bundle, `Contents/Helpers/macmosh`. `records` are this
+    /// Mac's tab records, which a focus action reads. `pause` is how the wait between tabs is done; tests
+    /// pass one that doesn't wait.
+    public init(macmoshPath: String, tabs: TabOpening, runner: CommandRunner, records: TabRecordStore,
                 pause: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }) {
         self.macmoshPath = macmoshPath
         self.tabs = tabs
         self.runner = runner
+        self.records = records
         self.pause = pause
     }
 
@@ -51,8 +60,8 @@ public struct MenuActionRunner: Sendable {
             return await openTab(arguments)
         case .tabs(let list):
             return await openTabs(list)
-        case .focus:
-            return ActionOutcome(summary: "nothing to run", notice: nil)
+        case .focus(let label, let orOpen):
+            return await focus(label: label, orOpen: orOpen)
         case .run(let arguments):
             return await runInBackground(arguments)
         }
@@ -129,6 +138,53 @@ public struct MenuActionRunner: Sendable {
             }
         }
         return ActionOutcome(summary: MenuLog.tabsOpened(opened, anotherWay: anotherWay), notice: notice)
+    }
+
+    /// Brings forward the tab labelled `label` (menu design 6.2). The record is read; one that is missing, whose
+    /// process has ended, or whose terminal device isn't `/dev/ttys` and digits is removed, and `orOpen`
+    /// opens as a new tab instead. Otherwise the record's terminal is asked to select the tab with that device,
+    /// with the device as a separate argument; `gone` is handled as a missing record. A word that isn't a label
+    /// counts as missing, and never names a file.
+    private func focus(label: String, orOpen: [String]) async -> ActionOutcome {
+        guard let record = records.record(label: label) else { return await reopen(orOpen, .noRecord) }
+        guard records.isLive(record) else {
+            records.remove(label: label)
+            return await reopen(orOpen, .processEnded)
+        }
+        guard TabRecord.isTerminalDevice(record.tty) else {
+            records.remove(label: label)
+            return await reopen(orOpen, .noDevice)
+        }
+        do {
+            switch try await tabs.select(tty: record.tty, terminal: record.terminal) {
+            case .selected:
+                return ActionOutcome(summary: MenuLog.tabSelected, notice: nil)
+            case .gone:
+                records.remove(label: label)
+                return await reopen(orOpen, .notInTerminal)
+            }
+        } catch LaunchError.automationDenied(let app) {
+            return ActionOutcome(summary: "not allowed to control the terminal app", notice: Self.notAllowed(app))
+        } catch LaunchError.failed(let reason) {
+            return ActionOutcome(summary: MenuLog.selectFailure(reason), notice: "Couldn't bring that tab forward. \(reason)")
+        } catch {
+            return ActionOutcome(summary: MenuLog.selectFailure(""), notice: "Couldn't bring that tab forward.")
+        }
+    }
+
+    /// Opens `orOpen` as a new tab in place of one that has gone. When it opens, the notice says the tab had
+    /// closed (followed by the opener's own sentence, when it opened another way); when it doesn't, the
+    /// notice is the one a tab that didn't open gives.
+    private func reopen(_ orOpen: [String], _ why: MenuLog.TabGone) async -> ActionOutcome {
+        switch await tryTab(orOpen) {
+        case .opened(nil):
+            return ActionOutcome(summary: MenuLog.tabGone(why, then: "opened a new one"), notice: Self.tabClosed)
+        case .opened(let said?):
+            return ActionOutcome(summary: MenuLog.tabGone(why, then: "opened a new one another way"),
+                                 notice: "\(Self.tabClosed) \(said)")
+        case .failed(let failure):
+            return ActionOutcome(summary: MenuLog.tabGone(why, then: "then \(failure.summary)"), notice: failure.notice)
+        }
     }
 
     private func runInBackground(_ arguments: [String]) async -> ActionOutcome {

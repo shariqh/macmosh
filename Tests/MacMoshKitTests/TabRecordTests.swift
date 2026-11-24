@@ -93,6 +93,25 @@ private func mode(_ url: URL) throws -> Int {
         #expect(store.records().map(\.label) == ["bbbbbbbbbbbbbbbb"])
     }
 
+    /// One record by its label, as `focus` reads it (issue #120), whether or not its process runs.
+    @Test func oneRecordIsReadByItsLabel() throws {
+        let store = TabRecordStore(paths: try temporaryPaths(), probe: FakeProcessProbe(running: [:]))
+        #expect(store.record(label: "aaaaaaaaaaaaaaaa") == nil)   // no folder yet
+        try store.write(sampleTabRecord(label: "aaaaaaaaaaaaaaaa"))
+        try store.write(sampleTabRecord(label: "bbbbbbbbbbbbbbbb", desk: "notes"))
+        #expect(store.record(label: "aaaaaaaaaaaaaaaa") == sampleTabRecord(label: "aaaaaaaaaaaaaaaa"))
+        #expect(store.record(label: "bbbbbbbbbbbbbbbb")?.desk == "notes")
+        #expect(store.record(label: "cccccccccccccccc") == nil)
+        #expect(store.record(label: "../aaaaaaaaaaaaaaaa") == nil)
+        #expect(store.record(label: "") == nil)
+        // A file whose record carries another label is not that label's record.
+        let other = try JSONEncoder.tabRecord.encode(sampleTabRecord(label: "ffffffffffffffff"))
+        try other.write(to: store.folder.appendingPathComponent("1111111111111111.json"))
+        #expect(store.record(label: "1111111111111111") == nil)
+        try Data("not json".utf8).write(to: store.folder.appendingPathComponent("2222222222222222.json"))
+        #expect(store.record(label: "2222222222222222") == nil)
+    }
+
     @Test func aMissingFolderHasNoRecords() throws {
         #expect(TabRecordStore(paths: try temporaryPaths()).records().isEmpty)
     }
