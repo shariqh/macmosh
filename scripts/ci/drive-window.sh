@@ -139,6 +139,15 @@ snap() {
     say "picture $name.png"
 }
 
+# snap_screen <step>: a picture of the whole screen, for what is drawn past the window's edge (a help tag).
+snap_screen() {
+    shotn=$((shotn + 1))
+    local name
+    name=$(printf '%s-window-%s-%02d-%s' "$os" "$sample" "$shotn" "$1")
+    lim 15 screencapture -x "$OUT/pictures/$name.png" >> "$LOG" 2>&1 || say "screencapture failed for $name"
+    say "picture $name.png (the whole screen)"
+}
+
 bar_centre() {
     local b pos size
     b=$(max barpos | grep '^bar' | tail -n 1)
@@ -486,7 +495,7 @@ windows_sample() {
         say "rest the pointer on website's Open at $x,$y"
         lim 10 "$TOOL" move "$x" "$y" >> "$LOG" 2>&1
         sleep 3
-        snap help-tag
+        snap_screen help-tag
         lim 10 "$TOOL" move 600 500 >> "$LOG" 2>&1
         sleep 0.5
     else
