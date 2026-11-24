@@ -685,6 +685,8 @@ cmd_desk_rename() {
             return 1
         fi
     fi
+    # The desk's views, found by their tag, show the new name in their bars (see mm_view_bar).
+    if [ -n "$sid" ]; then mm_name_views "$sid" "$new"; fi
     mm_release_lock
     mm_log desk-rename "renamed $old to $new"
     return 0
@@ -821,6 +823,8 @@ cmd_window_new() {
 # A view can carry a label (@macmosh-label, from attach --label): a short word the daily Mac makes up for
 # one of its terminal tabs, so that it can match the tab to the view's line in the status report. It is
 # set by the view's id with the tag, and only on views; the script never looks a view up by it.
+# A view also carries its desk's name (@macmosh-desk, set with the tag, changed by desk-rename), and its
+# bar at the bottom of the tab shows that name, not the view's own (mm_view_bar).
 
 # True when $1 is a label: 4 to 32 characters, each a digit or a letter from a to f. The letters are
 # listed one by one, because a range such as a-f can take in other letters in some locales.
@@ -883,24 +887,28 @@ mm_open_view() {
     esac
     # The tag and the record by the view's own id: a command with no target acts on the session of
     # the pane it is run from (TMUX_PANE), not on the session just made with -d. The record on the
-    # server outlives the view, for desk-closed. The label, when there is one, goes in the same call.
+    # server outlives the view, for desk-closed. The desk's name (for the view's bar, see mm_view_bar)
+    # and the label, when there is one, go in the same call.
     if [ -n "$vid" ] && [ -n "$label" ]; then
         mm_tmux set-option -t "$vid" @macmosh-view "$sid" \; \
             set-option -s "@macmosh-view-${vid#\$}" "$sid" \; \
+            set-option -t "$vid" @macmosh-desk "$name" \; \
             set-option -t "$vid" @macmosh-label "$label" >/dev/null 2>&1
     elif [ -n "$vid" ]; then
         mm_tmux set-option -t "$vid" @macmosh-view "$sid" \; \
-            set-option -s "@macmosh-view-${vid#\$}" "$sid" >/dev/null 2>&1
+            set-option -s "@macmosh-view-${vid#\$}" "$sid" \; \
+            set-option -t "$vid" @macmosh-desk "$name" >/dev/null 2>&1
     fi
     trap 'exit 130' INT HUP
     trap 'exit 143' TERM
     group=$(mm_session_field "$sid" '#{session_group}')
-    # The tag, the group and the label (when one was given) are read back, so a view that didn't get
-    # them is never used.
+    # The tag, the group, the desk's name and the label (when one was given) are read back, so a view
+    # that didn't get them is never used.
     if [ -n "$label" ]; then
-        check="#{@macmosh-view}$TAB#{session_group}$TAB#{@macmosh-label}" want="$sid$TAB$group$TAB$label"
+        check="#{@macmosh-view}$TAB#{session_group}$TAB#{@macmosh-desk}$TAB#{@macmosh-label}"
+        want="$sid$TAB$group$TAB$name$TAB$label"
     else
-        check="#{@macmosh-view}$TAB#{session_group}" want="$sid$TAB$group"
+        check="#{@macmosh-view}$TAB#{session_group}$TAB#{@macmosh-desk}" want="$sid$TAB$group$TAB$name"
     fi
     if [ -z "$vid" ] || [ -z "$group" ] || [ "$(mm_session_field "$vid" "$check")" != "$want" ]; then
         if [ -n "$vid" ]; then mm_tmux kill-session -t "$vid" >/dev/null 2>&1; fi
@@ -909,6 +917,7 @@ mm_open_view() {
         mm_log attach "failed: no view for $name"
         return 1
     fi
+    mm_view_bar "$vid"
     if [ "$3" = 1 ]; then
         # The desk's own session is the target, so the window starts in the desk's folder as window-new's do.
         wid=$(mm_tmux new-window -d -P -F '#{window_id}' -t "$sid:" 2>/dev/null)
@@ -950,12 +959,86 @@ mm_open_view() {
     return 0
 }
 
+# The status-left text with each place it names the session (#S, #{session_name}) reading the view's
+# @macmosh-desk instead, or nothing (and false) when it names the session nowhere. ## is tmux's escaped
+# #, so ##S is text and stays as it is. Every other character stays as it is.
+mm_bar_with_desk() {
+    local rest="$1" out="" found=1 hash='#' long='#{session_name}'
+    while :; do
+        case "$rest" in
+            *"$hash"*) ;;
+            *) break ;;
+        esac
+        out="$out${rest%%"$hash"*}"
+        rest="$hash${rest#*"$hash"}"
+        case "$rest" in
+            "$hash$hash"*)
+                out="$out##"
+                rest="${rest#"$hash$hash"}"
+                ;;
+            "${hash}S"*)
+                out="$out#{@macmosh-desk}"
+                rest="${rest#"$hash"S}"
+                found=0
+                ;;
+            "$long"*)
+                out="$out#{@macmosh-desk}"
+                rest="${rest#"$long"}"
+                found=0
+                ;;
+            *)
+                out="$out#"
+                rest="${rest#"$hash"}"
+                ;;
+        esac
+    done
+    [ "$found" = 0 ] || return 1
+    printf '%s' "$out$rest"
+}
+
+# Gives the view with this id a bar (status-left) of its own that shows its desk's name where the
+# server's bar shows the session's, which for a view would be "<desk>+<number>". tmux 3.8's own bar is
+# "[#{session_name}] ", so a view's reads "[<desk>] " as a plain tab's does; a bar the person set in his
+# tmux settings keeps everything but the name, and one that names the session nowhere is left alone.
+# The option is set on the view only: a session's own options stay with it, also in a group (man tmux,
+# new-session -t; ViewBarTests). The bar reads the name through #{@macmosh-desk}, so desk-rename only has
+# to change that option (mm_name_views). The name is never pasted into the bar, and even read through
+# the option it could do no harm in a format or in a #() shell command: mm_valid_desk_name lets it hold
+# only letters, digits, - and _.
+# tmux changes a command-line argument that ends in ";" (seen with tmux 3.8), so the bar is read back,
+# and one that didn't come through as written is taken off again. A bar is only for show, so nothing
+# here makes the tab fail.
+mm_view_bar() {
+    local bar
+    bar=$(mm_bar_with_desk "$(mm_tmux show-options -gv status-left 2>/dev/null)") || return 0
+    mm_tmux set-option -t "$1" status-left "$bar" >/dev/null 2>&1
+    if [ "$(mm_tmux show-options -t "$1" -v status-left 2>/dev/null)" != "$bar" ]; then
+        mm_tmux set-option -u -t "$1" status-left >/dev/null 2>&1
+    fi
+    return 0
+}
+
+# The ids of the views of the desk whose session has this id, one per line.
+mm_view_ids() {
+    mm_tmux list-sessions -F "#{session_id}$TAB#{@macmosh-view}" 2>/dev/null |
+        awk -F '\t' -v d="$1" '($2 "") == (d "") { print $1 }'
+}
+
 # Kills every view of the desk whose session has this id, each by its own id.
 mm_kill_views() {
     local vid
-    for vid in $(mm_tmux list-sessions -F "#{session_id}$TAB#{@macmosh-view}" 2>/dev/null |
-        awk -F '\t' -v d="$1" '($2 "") == (d "") { print $1 }'); do
+    for vid in $(mm_view_ids "$1"); do
         mm_tmux kill-session -t "$vid" >/dev/null 2>&1
+    done
+    return 0
+}
+
+# Sets the desk's name ($2) on every view of the desk whose session has id $1, each by its own id, so
+# their bars show it (see mm_view_bar).
+mm_name_views() {
+    local vid
+    for vid in $(mm_view_ids "$1"); do
+        mm_tmux set-option -t "$vid" @macmosh-desk "$2" >/dev/null 2>&1
     done
     return 0
 }
