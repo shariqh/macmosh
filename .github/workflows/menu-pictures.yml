@@ -53,6 +53,8 @@ jobs:
           scripts/build-app.sh --debug
           swiftc -O -o dist/debug/menutool scripts/ci/menutool.swift
           codesign --force --sign - dist/debug/menutool
+          swiftc -O -o dist/debug/windowtool scripts/ci/windowtool.swift
+          codesign --force --sign - dist/debug/windowtool
 
       - name: Drive the menu
         id: menu

@@ -3,7 +3,7 @@
 # opens the MacMosh window from the menu's Open MacMosh line with posted pointer events (menutool),
 # clicks in it, takes pictures, and checks the app's log (main window design, section 8, step 3). It
 # moves the pointer and presses keys: never run it on your own Mac. It needs scripts/build-app.sh
-# --debug and the built menutool first. Kept apart from drive-menu.sh, which another branch changes;
+# --debug and the built menutool and windowtool first. Kept apart from drive-menu.sh, which another branch changes;
 # the small helpers at the top are copies of that script's.
 #
 #   MENU_OUT=<folder> scripts/ci/drive-window.sh
@@ -27,7 +27,7 @@ OUT=${MENU_OUT:?set MENU_OUT to the folder for pictures and logs}
 APP=${MENU_APP:-$root/dist/debug/MacMosh.app}
 TOOL=${MENU_TOOL:-$root/dist/debug/menutool}
 MAX="$here/menu-ax.applescript"
-WAX="$here/window-ax.applescript"
+WTOOL=${WINDOW_TOOL:-$root/dist/debug/windowtool}
 LOG="$OUT/driver.log"
 RESULTS="$OUT/results.tsv"
 mkdir -p "$OUT/pictures" "$OUT/ax"
@@ -56,19 +56,26 @@ result() {
 tool() { lim 20 "$TOOL" "$@" 2>&1 | tee -a "$LOG"; }
 count() { lim 10 "$TOOL" count 2>/dev/null || echo 0; }
 
-# max <args> / wax <args>: one System Events call on the menu or the window; the answer goes to the
-# log and to stdout.
-ask() {
-    local script=$1 tag=$2 r st
-    shift 2
-    r=$(lim 50 osascript "$script" "$@" 2>&1)
+# max <args>: one System Events call on the menu (menu-ax.applescript). wax <args>: one read of the
+# window through the accessibility API (windowtool), for the app started last. Each answer goes to the
+# log and to stdout; a dump goes to the log by its first line only.
+max() {
+    local r st
+    r=$(lim 50 osascript "$MAX" "$@" 2>&1)
     st=$?
-    printf '%s\n' "$r" | sed "s/^/$(now) ${tag}[$1] /" >> "$LOG"
-    [ "$st" -ne 0 ] && say "${tag}[$1] exit=$st"
+    printf '%s\n' "$r" | sed "s/^/$(now) max[$1] /" >> "$LOG"
+    [ "$st" -ne 0 ] && say "max[$1] exit=$st"
     printf '%s\n' "$r"
 }
-max() { ask "$MAX" max "$@"; }
-wax() { ask "$WAX" wax "$@"; }
+wax() {
+    local r st
+    if [ -z "$app_pid" ]; then echo "noapp"; return; fi
+    r=$(lim 20 "$WTOOL" "$app_pid" "$@" 2>&1)
+    st=$?
+    printf '%s\n' "$r" | head -n 1 | sed "s/^/$(now) wax[$1] /" >> "$LOG"
+    [ "$st" -ne 0 ] && say "wax[$1] exit=$st"
+    printf '%s\n' "$r"
+}
 
 # applog <moment>: the app's log lines since then.
 applog() {
@@ -396,6 +403,10 @@ two_workhorses
 no_workhorses
 
 applog "$run_since" > "$OUT/app-log.txt"
+# Any crash report of the app from this job, the menu's step included.
+mkdir -p "$OUT/crashes"
+find "$HOME/Library/Logs/DiagnosticReports" -name 'MacMosh*' -newermt "$run_since" -exec cp {} "$OUT/crashes/" \; 2>/dev/null
+find "$HOME/Library/Logs/DiagnosticReports" -name 'MacMosh*' -exec cp {} "$OUT/crashes/" \; 2>/dev/null
 sample=""
 say "done: $failures failed check(s)"
 if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then

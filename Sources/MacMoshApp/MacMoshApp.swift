@@ -8,6 +8,8 @@ struct MacMoshApp: App {
     /// The only object the app and the menu observe: the menu on screen and its notice (issue #107).
     /// The refresher it follows publishes more, for the main window, and none of that reaches the menu.
     @StateObject private var screen: MenuOnScreen
+    /// Keeps the app running when its last window closes; see `AppDelegate`.
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     /// The window's own object, which only the window's views observe. It is not a state object of the
     /// app, so a new board never makes the app's scenes, and with them the menu, draw again.
     private let board: BoardOnScreen
@@ -54,7 +56,10 @@ struct MacMoshApp: App {
     /// quits itself when the binding turns false, and removing the icon still quits it, as before.
     private var inserted: Binding<Bool> {
         Binding(get: { true }, set: { stillThere in
-            if !stillThere { NSApplication.shared.terminate(nil) }
+            if !stillThere {
+                MenuLog.write(MenuLog.iconRemoved)
+                NSApplication.shared.terminate(nil)
+            }
         })
     }
 
@@ -119,6 +124,28 @@ struct MacMoshApp: App {
         // https://developer.apple.com/documentation/swiftui/scene/windowresizability(_:)). The minimum is
         // the frame `MainWindow` sets.
         .windowResizability(.contentMinSize)
+    }
+}
+
+/// The app's delegate, for two AppKit questions SwiftUI leaves open.
+///
+/// On GitHub's macOS 15 and 26 runners, with the window scene added, the app quit with nothing on
+/// stderr when the menu closed after a click on a desk's line (with no window open), and when the
+/// MacMosh window was closed (pull request #126, first run). A menu-bar app must outlive both.
+/// Apple, `applicationShouldTerminateAfterLastWindowClosed(_:)`
+/// (https://developer.apple.com/documentation/appkit/nsapplicationdelegate/applicationshouldterminateafterlastwindowclosed(_:)):
+/// "If your implementation returns false, control returns to the main event loop and the application
+/// is not terminated." Apple, NSApplicationDelegateAdaptor
+/// (https://developer.apple.com/documentation/swiftui/nsapplicationdelegateadaptor): "SwiftUI
+/// instantiates the delegate and calls the delegate's methods in response to life cycle events."
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        MenuLog.write(MenuLog.lastWindowClosed)
+        return false
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        MenuLog.write(MenuLog.quitting)
     }
 }
 

@@ -37,6 +37,13 @@ private final class Lines: @unchecked Sendable {
         #expect(MenuLog.windowOpened == "window opened")
     }
 
+    /// How the app comes to quit, or not: the icon removed, the last window closed, and the quit itself.
+    @Test func theQuitLinesAreFixedWords() {
+        #expect(MenuLog.iconRemoved == "menu-bar icon removed: quitting")
+        #expect(MenuLog.lastWindowClosed == "last window closed: the app stays")
+        #expect(MenuLog.quitting == "app quitting")
+    }
+
     /// Issue #107: a change held back while the menu is open with a submenu, and when it was shown.
     @Test func theHeldChangeLinesAreFixedWords() {
         #expect(MenuLog.held(.open) == "menu held a change: open with a submenu")
