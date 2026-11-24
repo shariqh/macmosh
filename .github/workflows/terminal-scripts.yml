@@ -1,0 +1,84 @@
+name: Terminal scripts
+
+# Runs the app's own select scripts (ITermLauncher.selectScript and AppleTerminalLauncher.selectScript)
+# against a real iTerm2 and a real Terminal on GitHub's Macs, and reads back which tab is in front
+# (issue #129). A script that drives a terminal app is not merged until it has run here.
+# The test SelectScriptFiles writes the two scripts from the build, so the job runs the same characters
+# the app sends; scripts/ci/try-select.sh says what it checks.
+on:
+  pull_request:
+    paths:
+      - 'Sources/MacMoshKit/Terminal/**'
+      - 'Tests/MacMoshKitTests/SelectScriptFiles.swift'
+      - 'scripts/ci/try-select.sh'
+      - '.github/workflows/terminal-scripts.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: terminal-scripts-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  select:
+    name: select (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-26]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: About the runner
+        timeout-minutes: 2
+        run: |
+          sw_vers
+          xcodebuild -version | head -n 1
+
+      - name: Write the app's select scripts from the build
+        timeout-minutes: 20
+        env:
+          SCRIPTS: ${{ runner.temp }}/select-scripts
+          OUT: ${{ runner.temp }}/select-out
+        run: |
+          set -euo pipefail
+          MACMOSH_SELECT_SCRIPTS_OUT="$SCRIPTS" swift test --filter SelectScriptFiles
+          ls -l "$SCRIPTS"
+          cat "$SCRIPTS/iterm2-select.applescript" "$SCRIPTS/terminal-select.applescript"
+
+      - name: Install iTerm2
+        timeout-minutes: 8
+        run: brew install --cask iterm2
+
+      - name: The terminal versions
+        timeout-minutes: 1
+        run: |
+          echo "iTerm2 $(defaults read /Applications/iTerm.app/Contents/Info.plist CFBundleShortVersionString)"
+          echo "Terminal $(defaults read /System/Applications/Utilities/Terminal.app/Contents/Info.plist CFBundleShortVersionString)"
+
+      - name: Select tabs in iTerm2
+        timeout-minutes: 6
+        env:
+          SCRIPTS: ${{ runner.temp }}/select-scripts
+          OUT: ${{ runner.temp }}/select-out
+        run: scripts/ci/try-select.sh iterm2
+
+      - name: Select tabs in Terminal
+        if: ${{ !cancelled() }}
+        timeout-minutes: 6
+        env:
+          SCRIPTS: ${{ runner.temp }}/select-scripts
+          OUT: ${{ runner.temp }}/select-out
+        run: scripts/ci/try-select.sh terminal
+
+      - name: Upload the logs and pictures
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: terminal-scripts-${{ matrix.os }}
+          path: ${{ runner.temp }}/select-out
+          retention-days: 14
