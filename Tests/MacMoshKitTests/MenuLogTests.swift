@@ -31,6 +31,18 @@ private final class Lines: @unchecked Sendable {
                 == "menu refreshed: symbol=plus.circle workhorses=0 lines=2")
     }
 
+    /// The main window's line (main window design, section 7.3). CI reads it, and checks that it is not
+    /// there at launch.
+    @Test func theWindowOpenedLineIsFixedWords() {
+        #expect(MenuLog.windowOpened == "window opened")
+    }
+
+    /// How the app comes to quit: the icon removed, and the quit itself.
+    @Test func theQuitLinesAreFixedWords() {
+        #expect(MenuLog.iconRemoved == "menu-bar icon removed: quitting")
+        #expect(MenuLog.quitting == "app quitting")
+    }
+
     /// Issue #107: a change held back while the menu is open with a submenu, and when it was shown.
     @Test func theHeldChangeLinesAreFixedWords() {
         #expect(MenuLog.held(.open) == "menu held a change: open with a submenu")
@@ -74,8 +86,10 @@ private final class Lines: @unchecked Sendable {
         #expect(MenuLog.asked(.tab(open), from: .row) == "menu action: tab connect (row)")
         #expect(MenuLog.asked(.tab(open), from: .line) == "menu action: tab connect (line)")
         #expect(MenuLog.asked(.focus(label: "9f3a1c2e", orOpen: open), from: .row) == "menu action: focus connect (row)")
+        #expect(MenuLog.asked(.tab(open), from: .window) == "menu action: tab connect (window)")
         #expect(MenuClick.row.rawValue == "row")
         #expect(MenuClick.line.rawValue == "line")
+        #expect(MenuClick.window.rawValue == "window")
     }
 
     /// The two tab actions of issue #120: the subcommand of the first tab, never a desk, a window or a label.

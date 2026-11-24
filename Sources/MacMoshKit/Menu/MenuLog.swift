@@ -19,6 +19,12 @@ public enum MenuLog {
     }
 
     static let opened = "menu opened"
+    /// The MacMosh window came on screen (main window design, section 7.3). CI checks it is not there at launch.
+    public static let windowOpened = "window opened"
+    /// The person removed the menu-bar icon, so the app quits (main window design, section 7.2).
+    public static let iconRemoved = "menu-bar icon removed: quitting"
+    /// The app is about to quit, by whatever path.
+    public static let quitting = "app quitting"
     static let listUnreadable = "menu refreshed: the saved list can't be read"
 
     /// The app's first line, so one run can be told from the next.
@@ -153,9 +159,10 @@ public enum MenuLog {
 }
 
 /// Where a menu action's click was (issue #128): `row` when a row that opens a submenu was clicked itself (its
-/// primary action), `line` for a line inside a submenu or at the top level.
+/// primary action), `line` for a line inside a submenu or at the top level, and `window` for a button in the
+/// MacMosh window, which runs its action the same way.
 public enum MenuClick: String, Sendable {
-    case row, line
+    case row, line, window
 }
 
 /// The menu a `NSMenu.didBeginTrackingNotification` was sent for, in four fixed words, never a title.
