@@ -285,8 +285,10 @@ six_desks() {
 }
 
 changing() {
-    local since hold_since click_since n idx x y name watch fewest changes lines row_at shown_at base
+    local since open_since hold_since click_since n idx x y name watch fewest changes lines row_at shown_at base
+    local sel_before sel_after quick ms before
     start_app changing || return
+    open_since=$(moment)
     if ! opened_or_fail "first click"; then stop_app; return; fi
     snap menu
 
@@ -302,7 +304,7 @@ changing() {
         base=$(printf '%s-%s' "$os" "$sample")
         ax names top > "$OUT/ax/$base-hold-before-top.txt"
         ax dump "   website" > "$OUT/ax/$base-hold-before-submenu.txt"
-        ax selected top > /dev/null
+        sel_before=$(ax selected top | grep '^selected' | tail -n 1)
         snap submenu-open-before-the-wait
         hold_since=$(moment)
         watch=$(tool watch 7.5 hold)
@@ -310,7 +312,7 @@ changing() {
         snap submenu-open-after-7s
         ax names top > "$OUT/ax/$base-hold-after-top.txt"
         ax dump "   website" > "$OUT/ax/$base-hold-after-submenu.txt"
-        ax selected top > /dev/null
+        sel_after=$(ax selected top | grep '^selected' | tail -n 1)
         n=$(count)
         changes=$(applog "$hold_since" | grep -c "sample changed:")
         if [ "${fewest:-0}" -ge 2 ] && [ "$n" -ge 2 ]; then
@@ -318,12 +320,23 @@ changing() {
         else
             result FAIL "the submenu stays open while the menu changes" "fewest menu windows ${fewest:-?}, now $n; $changes sample changes in that time"
         fi
+        if [[ "$sel_before" == *"website"* ]] && [ "$sel_after" = "$sel_before" ] \
+            && cmp -s "$OUT/ax/$base-hold-before-submenu.txt" "$OUT/ax/$base-hold-after-submenu.txt"; then
+            result PASS "the accessibility tree shows the submenu still open" "website's row still highlighted; the submenu at the same place with the same lines"
+        else
+            result FAIL "the accessibility tree shows the submenu still open" "highlighted before [$sel_before], after [$sel_after]; see ax/$base-hold-*-submenu.txt"
+        fi
+        if applog "$hold_since" | grep -qF "menu showed the held change"; then
+            result DIFFERS "no held change is shown while the menu is open" "a 'menu showed the held change' line during the wait"
+        else
+            result PASS "no held change is shown while the menu is open" "no 'menu showed the held change' line during the wait"
+        fi
         if cmp -s "$OUT/ax/$base-hold-before-top.txt" "$OUT/ax/$base-hold-after-top.txt"; then
             result PASS "the open menu's rows did not change" "the accessibility tree reads the same rows before and after"
         else
             result DIFFERS "the open menu's rows did not change" "see ax/$base-hold-*-top.txt"
         fi
-        if wait_log "$hold_since" "menu held a change: open with a submenu" 5; then
+        if wait_log "$open_since" "menu held a change: open with a submenu" 5; then
             result PASS "the app held a change" "log: menu held a change: open with a submenu"
         else
             result DIFFERS "the app held a change" "no 'menu held a change: open with a submenu' line"
@@ -370,7 +383,14 @@ changing() {
         read -r idx x y name <<< "$(find_xy top "   website")"
         since=$(moment)
         say "quick click on row $idx [$name] at $x,$y"
-        tool rushclick "$x" "$y" > /dev/null
+        quick=$(tool rushclick "$x" "$y")
+        ms=$(sed -n 's/.*button down \([0-9]*\) ms after.*/\1/p' <<< "$quick")
+        before=$(sed -n 's/.*menu windows just before it: \([0-9]*\).*/\1/p' <<< "$quick")
+        if [ "${ms:-999}" -le 100 ] && [ "${before:-0}" -eq 1 ]; then
+            result PASS "the quick click lands before the submenu opens" "button down ${ms} ms after the pointer arrived; 1 menu window just before it"
+        else
+            result NOT-SHOWN "the quick click lands before the submenu opens" "button down ${ms:-?} ms after the pointer arrived; ${before:-?} menu window(s) just before it"
+        fi
         expect_row "a click on a desk's row before its submenu opens runs that desk's row" "$since" "desk:workhorse:website"
         snap after-quick-click
     fi

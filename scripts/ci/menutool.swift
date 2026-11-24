@@ -6,7 +6,7 @@
 //   menutool preflight             what this process may do (post events, capture the screen)
 //   menutool move <x> <y>          moves the pointer there in small steps (CGEvent mouseMoved)
 //   menutool click <x> <y>         moves there, rests 150 ms, then left button down and up
-//   menutool rushclick <x> <y>     one move straight there, and the button down 30 ms after it: a click
+//   menutool rushclick <x> <y>     one move straight there, and the button down about 20 ms after it: a click
 //                                  that lands before a row's submenu can open (it opens about 0.25 s
 //                                  after the pointer reaches the row, on the trial's runners)
 //   menutool keys <code> <count> <gap ms>   posts that key <count> times (CGEvent key down and up)
@@ -99,9 +99,10 @@ case "click":
 case "rushclick":
     let target = point(2)
     let from = pointer()
+    _ = menuWindows()   // the first window list of a process is slow; this one is not timed
     let arrived = Date()
     post(.mouseMoved, target)
-    usleep(30_000)
+    usleep(20_000)
     let before = menuWindows()
     let down = Date()
     post(.leftMouseDown, target)
