@@ -1,0 +1,188 @@
+import MacMoshKit
+import SwiftUI
+
+/// One workhorse's page (main window design, sections 7.1 A and D), drawn from `WorkhorsePage`: the
+/// header, the buttons under the hint, the desks with their detail strips, the greyed list of the last
+/// Ready check, and the rarer buttons at the foot. It decides nothing but which row's strip is open.
+struct WorkhorsePageView: View {
+    let page: WorkhorsePage
+    let notice: String?
+    let run: (BoardButton) -> Void
+    /// The desk whose detail strip is open; one at a time.
+    @State private var openRow: String?
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                header
+                if !page.underHint.isEmpty {
+                    ButtonRow(buttons: page.underHint, run: run)
+                }
+                if let heading = page.desksHeading {
+                    desks(heading)
+                }
+                if let stale = page.stale {
+                    StaleList(stale: stale)
+                }
+                Divider()
+                foot
+            }
+            .padding(20)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text(verbatim: page.headline).font(.title2).bold()
+                    .accessibilityIdentifier(WindowMarks.headline)
+                Spacer()
+                if let checking = page.checking {
+                    Text(verbatim: checking).foregroundStyle(.secondary)
+                }
+                if let checked = page.checked {
+                    Text(verbatim: checked).foregroundStyle(.secondary)
+                }
+                Button { run(page.checkNow) } label: { Text(verbatim: page.checkNow.title) }
+            }
+            if let hint = page.hint {
+                Text(verbatim: hint).fixedSize(horizontal: false, vertical: true)
+            }
+            if let summary = page.summary {
+                Text(verbatim: summary).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            if let result = page.result {
+                Text(verbatim: result).foregroundStyle(.secondary)
+            }
+            NoticeLine(notice: notice)
+        }
+    }
+
+    private func desks(_ heading: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(verbatim: heading).font(.headline)
+                Spacer()
+                ButtonRow(buttons: page.deskButtons, run: run)
+            }
+            Divider()
+            if let none = page.noDesks {
+                Text(verbatim: none).foregroundStyle(.secondary)
+            }
+            ForEach(page.desks) { row in
+                DeskRowView(row: row, isOpen: openRow == row.id, run: run) {
+                    openRow = openRow == row.id ? nil : row.id
+                }
+            }
+        }
+    }
+
+    /// The rarer buttons in the menu's order: all but the checklist on one line, then the checklist with
+    /// the home-address line, as in the design's drawing.
+    private var foot: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if page.foot.count > 1 {
+                ButtonRow(buttons: Array(page.foot.dropLast()), run: run)
+            }
+            HStack(spacing: 12) {
+                ButtonRow(buttons: Array(page.foot.suffix(1)), run: run)
+                if let home = page.home {
+                    Text(verbatim: home).foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+}
+
+/// A desk's short row, and its detail strip under it when it is open. A click on the row (not on its
+/// Open button) opens or closes the strip.
+struct DeskRowView: View {
+    let row: DeskRow
+    let isOpen: Bool
+    let run: (BoardButton) -> Void
+    let toggle: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 12) {
+                        Text(verbatim: row.name).fontWeight(.semibold)
+                            .frame(width: 110, alignment: .leading)
+                            .accessibilityIdentifier(WindowMarks.desk(row.name))
+                        Text(verbatim: row.windows).foregroundStyle(.secondary).lineLimit(1)
+                    }
+                    Text(verbatim: row.second).font(.callout).foregroundStyle(.secondary)
+                        .padding(.leading, 122)
+                        .lineLimit(1)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                // Apple, onTapGesture(count:perform:) (https://developer.apple.com/documentation/swiftui/view/ontapgesture(count:perform:)):
+                // "Use this method to perform the specified action when the user clicks or taps on the view".
+                // The shape makes the gaps between the texts count as the row too.
+                .contentShape(Rectangle())
+                .onTapGesture(perform: toggle)
+                if let tabs = row.tabs {
+                    Text(verbatim: tabs).foregroundStyle(.secondary)
+                }
+                if let open = row.open {
+                    Button { run(open) } label: { Text(verbatim: open.title) }
+                        .accessibilityIdentifier(WindowMarks.open(row.name))
+                }
+            }
+            if isOpen {
+                DeskDetail(row: row, run: run)
+            }
+            Divider()
+        }
+    }
+}
+
+/// The detail strip: Folder, Starts with, After a restart, When its last shell exits, "Keeps its
+/// command running" when set, and New window, Rename…, Remove….
+struct DeskDetail: View {
+    let row: DeskRow
+    let run: (BoardButton) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if !row.detail.isEmpty {
+                Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 3) {
+                    ForEach(Array(row.detail.enumerated()), id: \.offset) { _, line in
+                        GridRow {
+                            Text(verbatim: line.label).foregroundStyle(.secondary)
+                            Text(verbatim: line.value)
+                        }
+                    }
+                }
+            }
+            ForEach(Array(row.facts.enumerated()), id: \.offset) { _, fact in
+                Text(verbatim: fact)
+            }
+            ButtonRow(buttons: row.detailButtons, run: run)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.1)))
+        .padding(.leading, 122)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(WindowMarks.strip(row.name))
+    }
+}
+
+/// The desks of the last Ready check under a workhorse that is not Ready, greyed, with no buttons.
+struct StaleList: View {
+    let stale: StaleDesks
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(verbatim: stale.heading).font(.headline)
+            ForEach(Array(stale.lines.enumerated()), id: \.offset) { _, line in
+                Text(verbatim: line).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .foregroundStyle(.secondary)
+        .padding(.top, 8)
+    }
+}
