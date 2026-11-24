@@ -81,12 +81,17 @@ public struct BoardWindow: Sendable, Equatable {
     /// tmux's window id, `@` and digits.
     public var id: String?
     public var tabs: Int?
+    /// The menu's line for this window, its words ("claude (in a tab)", "vim") and its action (go to its tab,
+    /// or open one), when the desk is past the menu's gate and has more than one window (issue #134); nil
+    /// otherwise, as the menu then has no such line.
+    public var button: BoardButton?
 
-    public init(index: Int, name: String, id: String?, tabs: Int?) {
+    public init(index: Int, name: String, id: String?, tabs: Int?, button: BoardButton? = nil) {
         self.index = index
         self.name = name
         self.id = id
         self.tabs = tabs
+        self.button = button
     }
 }
 
@@ -99,7 +104,8 @@ public struct BoardDesk: Sendable, Equatable {
     public var windows: [BoardWindow]
     /// The report's count of its windows; 0 when closed.
     public var windowCount: Int
-    /// How many terminal tabs are attached to it; 0 when closed.
+    /// How many terminal tabs show it; 0 when closed. Past the menu's gate, the tabs on its windows, counted
+    /// as the menu counts them (`DeskWindows.tabs`); otherwise the tabs the report says are attached.
     public var tabsOpen: Int
     /// Shown the short way (`BoardModel.shortFolder`).
     public var folder: String?
@@ -112,9 +118,11 @@ public struct BoardDesk: Sendable, Equatable {
     /// Stays, closed, after its last shell exits.
     public var permanent: Bool?
     public var madeByMacMosh: Bool
-    /// What a click on the desk's row does: the menu's `Open <desk>`. nil in the greyed list.
+    /// What the desk's Open button does: the menu's click on that desk, with its words (`Go to <desk>`, `Open the
+    /// 1 window not in a tab`, `Open <desk>`, …). nil in the greyed list.
     public var open: BoardButton?
-    /// New window (when open), Rename…, Remove…; none in the greyed list.
+    /// New window (when open; in a tab of its own past the menu's gate, as the menu's), Rename…, Remove…; none in
+    /// the greyed list.
     public var buttons: [BoardButton]
 
     /// The window names that are not empty, in window order.
@@ -221,6 +229,8 @@ public enum WindowAction: Sendable, Equatable {
     case startAgain(workhorse: String, desk: String, keepIt: Bool)
     /// Takes an ended desk off the list.
     case forget(workhorse: String, desk: String)
-    /// Opens a tab on each of these running desks, which have none (section 7.1 A).
-    case openAllWithoutTab(workhorse: String, desks: [String])
+    /// Opens these tabs, one after another: a tab on each window no tab shows, on every running desk, and a
+    /// plain tab on a desk with none that is not past the menu's gate (section 7.1 A, issue #134). Each is a
+    /// list of `macmosh` arguments.
+    case openAllWithoutTab(workhorse: String, tabs: [[String]])
 }

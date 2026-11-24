@@ -210,6 +210,76 @@ private func titles(_ buttons: [BoardButton]) -> [String] { buttons.map(\.title)
         #expect(DeskRow(two).windows == "2 windows")
     }
 
+    // MARK: Going to a tab, and a desk's windows, by the menu's rules (issue #134)
+
+    /// The row's one button says "Go to" when a click goes to a tab, and "Open" for anything else.
+    @Test func theRowsButtonSaysGoToOnlyWhenItGoesToATab() {
+        #expect(WindowWords.goTo == "Go to" && WindowWords.open == "Open")
+        #expect(WindowWords.openOrGoTo(.menu(.focus(label: "3f9a2c71e5b7d4a6", orOpen: ["connect", "attic", "notes"]))) == "Go to")
+        let others: [BoardAction] = [
+            .menu(.tab(["connect", "attic", "blog", "--window", "@8"])), .menu(.tab(["connect", "attic", "garden", "--view"])),
+            .menu(.tabs([["connect", "attic", "api", "--window", "@5"]])), .menu(.tab(["connect", "attic", "website"])),
+            .menu(.run(["desk", "window", "attic", "website"])), .window(.newDesk(workhorse: "attic")),
+        ]
+        for action in others { #expect(WindowWords.openOrGoTo(action) == "Open", "\(action)") }
+    }
+
+    /// The rows of the menu design's example, with the records and the time the menu's last build had.
+    private func rowsWithTabs() throws -> [String: DeskRow] {
+        let r = CheckResult.sample(.ready(signIns: true), workhorse: attic, status: windowsReport(), homeReachable: true,
+                                   checkedAt: checkedAt)
+        let board = BoardModel.build(latest: ["attic": r], lastReady: [:], checking: [], order: [attic],
+                                     waitingForDeskServer: [],
+                                     tabs: TabsSeen(tabs: TabsOnThisMac(records: windowsRecords, terminal: .iterm2), at: windowsNow),
+                                     now: formatNow, timeZone: formatZone)
+        let page = WorkhorsePage(try #require(board.workhorses.first), now: formatNow, timeZone: formatZone)
+        return Dictionary(uniqueKeysWithValues: page.desks.map { ($0.name, $0) })
+    }
+
+    /// The row's button is "Open" or "Go to", with the menu's own words beside it for the help tag; the tabs are
+    /// counted on the desk's windows; the strip lists each window with the menu's words and a small button.
+    @Test func aDeskRowCarriesTheMenusActionsAndWords() throws {
+        let r = try rowsWithTabs()
+        func onWindow(_ desk: String, _ id: String) -> [String] { ["connect", "attic", desk, "--window", id] }
+        let website = try #require(r["website"])
+        #expect(website.open == BoardButton(title: "Open", action: .menu(.tabs([onWindow("website", "@3")]))))
+        #expect(website.openWords == "Open the 1 window not in a tab")
+        #expect(website.tabs == "In 2 tabs")
+        #expect(website.windowLines == [
+            WindowLine(id: "@1", words: "claude (in a tab)",
+                       button: BoardButton(title: "Go to", action: .menu(.focus(label: "3f9a2c71e5b7d4a6",
+                                                                               orOpen: onWindow("website", "@1"))))),
+            WindowLine(id: "@2", words: "zsh (in a tab)",
+                       button: BoardButton(title: "Go to", action: .menu(.focus(label: "b04e5d12c3a4f5e6",
+                                                                               orOpen: onWindow("website", "@2"))))),
+            WindowLine(id: "@3", words: "vim", button: BoardButton(title: "Open", action: .menu(.tab(onWindow("website", "@3"))))),
+        ])
+        #expect(website.detailButtons.map(\.title) == ["New window", "Rename…", "Remove…"])
+        #expect(website.detailButtons.first?.action == .menu(.tab(["connect", "attic", "website", "--new-window"])))
+
+        let notes = try #require(r["notes"])
+        #expect(notes.open == BoardButton(title: "Go to", action: .menu(.focus(label: "c1d2e3f4a5b6c7d8",
+                                                                              orOpen: onWindow("notes", "@7")))))
+        #expect(notes.openWords == "Go to notes" && notes.tabs == "In 1 tab" && notes.windowLines.isEmpty)
+
+        let api = try #require(r["api"])
+        #expect(api.open?.title == "Open" && api.openWords == "Open api in 2 tabs" && api.tabs == "No tab")
+        #expect(api.windowLines.map(\.words) == ["server", "tests"] && api.windowLines.map(\.button.title) == ["Open", "Open"])
+        #expect(r["blog"]?.windowLines == [])   // one window: the row's button is that window's
+        let garden = try #require(r["garden"])
+        #expect(garden.open == BoardButton(title: "Open", action: .menu(.tab(["connect", "attic", "garden", "--view"]))))
+        #expect(garden.openWords == "Open garden" && garden.tabs == nil)
+        #expect(try #require(r["shop"]).windowLines.map(\.words) == ["web (open in another tab)", "db"])
+    }
+
+    /// Without the menu's tabs (before its first build), a row is what it was: Open, the desk's own connect, and
+    /// no window lines.
+    @Test func withoutTheMenusTabsARowIsWhatItWas() throws {
+        let website = try #require(try rows()["website"])
+        #expect(website.open == BoardButton(title: "Open", action: .menu(.tab(["connect", "attic", "website"]))))
+        #expect(website.openWords == "Open website" && website.windowLines.isEmpty)
+    }
+
     // MARK: The greyed list under a workhorse that is not Ready
 
     @Test func lockedHasItsHintItsOneButtonAndTheGreyedListWithItsHeading() throws {

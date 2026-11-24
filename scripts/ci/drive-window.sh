@@ -17,8 +17,10 @@
 #                 NOT-SHOWN (the step could not be done, so nothing is known)
 #
 # The job fails only when the app does not start, the window shows at launch or does not open from the
-# menu, a click runs the wrong button or none, or closing the window ends the app or stops the menu
-# from opening. How a picture looks never fails it.
+# menu, a click runs the wrong button or none, closing the window ends the app or stops the menu from
+# opening, or, in the "windows" sample (issue #134), a desk's details do not list its windows, a window's
+# button does not run the menu's action for that window, or a desk whose tab can be found opens a tab
+# instead of going to it. How a picture looks never fails it.
 set -uo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -135,6 +137,15 @@ snap() {
         lim 15 screencapture -x "$OUT/pictures/$name.png" >> "$LOG" 2>&1 || say "screencapture failed for $name"
     fi
     say "picture $name.png"
+}
+
+# snap_screen <step>: a picture of the whole screen, for what is drawn past the window's edge (a help tag).
+snap_screen() {
+    shotn=$((shotn + 1))
+    local name
+    name=$(printf '%s-window-%s-%02d-%s' "$os" "$sample" "$shotn" "$1")
+    lim 15 screencapture -x "$OUT/pictures/$name.png" >> "$LOG" 2>&1 || say "screencapture failed for $name"
+    say "picture $name.png (the whole screen)"
 }
 
 bar_centre() {
@@ -440,6 +451,123 @@ long_folder() {
     stop_app
 }
 
+# no_tab_opened <check> <moment>: since then the app brought a tab forward and opened none (the sample's
+# stand-in opener writes one line for each).
+no_tab_opened() {
+    local log
+    log=$(applog "$2")
+    if grep -qF "sample: no tab brought forward" <<< "$log" && ! grep -qF "sample: no tab opened" <<< "$log"; then
+        result PASS "$1" "the log says: sample: no tab brought forward; no 'sample: no tab opened'"
+    else
+        result FAIL "$1" "brought forward: $(grep -cF "sample: no tab brought forward" <<< "$log"), opened: $(grep -cF "sample: no tab opened" <<< "$log")"
+    fi
+}
+
+# The "windows" sample (issue #134): the menu's sample with window details and stand-in tab records. A desk's
+# Open button goes to its tab when this Mac can find it, and a desk's details list its windows with the
+# menu's words and actions. website: claude in a tab this Mac can find, zsh in one it can't, vim in none;
+# notes: one window in a findable tab; api: two windows, no tab; blog: one, no tab; shop: web in two
+# findable tabs, a second web in none; garden: closed.
+windows_sample() {
+    local since v t line missing
+    start_app windows || return
+    if ! open_window; then stop_app; return; fi
+    sleep 1
+    v=$(wax value "desk.notes.open" | grep '^value' | tail -n 1)
+    if [ "${v#value }" = "Go to" ]; then
+        result PASS "a desk whose tab can be found has Go to" "desk.notes.open reads ${v#value }"
+    else
+        result DIFFERS "a desk whose tab can be found has Go to" "desk.notes.open reads ${v:-nothing}"
+    fi
+    v=$(wax value "button.openAllWithoutTab" | grep '^value' | tail -n 1)
+    if [ "${v#value }" = "Open the 5 not in a tab" ]; then
+        result PASS "Open the N not in a tab counts the windows with no tab" "${v#value }"
+    else
+        result DIFFERS "Open the N not in a tab counts the windows with no tab" "the button reads ${v:-nothing}"
+    fi
+    snap page
+
+    # The row's button keeps the menu's words for its click as its help tag: a picture with the pointer
+    # resting on website's Open, which opens the 1 window not in a tab. A picture only, never a failure.
+    local x y
+    read -r _ x y _ <<< "$(wax find "desk.website.open" | grep '^found' | tail -n 1)"
+    if [ -n "${y:-}" ]; then
+        say "rest the pointer on website's Open at $x,$y"
+        lim 10 "$TOOL" move "$x" "$y" >> "$LOG" 2>&1
+        sleep 3
+        snap_screen help-tag
+        lim 10 "$TOOL" move 600 500 >> "$LOG" 2>&1
+        sleep 0.5
+    else
+        result NOT-SHOWN "the row's button has the menu's words as its help tag" "no Open button for website"
+    fi
+
+    # website's details list its three windows with the menu's words, each with its own button.
+    if click_id "desk.website"; then
+        sleep 1
+        missing=""
+        for line in "claude (in a tab)" "zsh (open in another tab)" "vim"; do
+            t=$(wax text "$line" | grep '^text' | tail -n 1)
+            [ "${t#text }" = "$line" ] || missing="$missing [$line]"
+        done
+        for line in "@1" "@2" "@3"; do
+            wax find "desk.website.win.$line" | grep -q '^found' || missing="$missing [button $line]"
+        done
+        if [ -z "$missing" ]; then
+            result PASS "a desk's details list its windows" "website: claude (in a tab), zsh (open in another tab), vim, each with a button"
+        else
+            result FAIL "a desk's details list its windows" "missing:$missing"
+        fi
+        v=$(wax value "desk.website.win.@1" | grep '^value' | tail -n 1)
+        [ "${v#value }" = "Go to" ] || result DIFFERS "a window in a findable tab has Go to" "desk.website.win.@1 reads ${v:-nothing}"
+        snap website-windows
+    else
+        result FAIL "a desk's details list its windows" "no row for website"
+    fi
+
+    # A window's button runs the menu's action for that window: vim has no tab, so a tab on it.
+    since=$(moment)
+    if click_id "desk.website.win.@3"; then
+        expect_ran "a window's button runs that window's action (no tab)" "$since" "tab connect workhorse website --window @3"
+    else
+        result FAIL "a window's button runs that window's action (no tab)" "no button for vim"
+    fi
+    sleep 1
+    # claude is in a tab this Mac can find: going to it, not a new tab.
+    since=$(moment)
+    if click_id "desk.website.win.@1"; then
+        expect_ran "a window's button runs that window's action (its tab)" "$since" \
+            "focus 5a3c9e1f7b2d4c60 connect workhorse website --window @1"
+        no_tab_opened "a window in a findable tab is brought forward, no tab opened" "$since"
+    else
+        result FAIL "a window's button runs that window's action (its tab)" "no button for claude"
+    fi
+    sleep 1
+
+    # notes' tab can be found: its Open button goes to it and opens no new tab.
+    since=$(moment)
+    if click_id "desk.notes.open"; then
+        expect_ran "a desk's button goes to its tab when it can be found" "$since" \
+            "focus 8e1f2a3b4c5d6e70 connect workhorse notes --window @7"
+        no_tab_opened "a desk whose tab can be found is brought forward, no tab opened" "$since"
+    else
+        result FAIL "a desk's button goes to its tab when it can be found" "no Open button for notes"
+    fi
+    sleep 1
+
+    # Open the 5 not in a tab: a tab on each window with none, desk by desk in the board's order.
+    since=$(moment)
+    if click_id "button.openAllWithoutTab"; then
+        expect_ran "Open the N not in a tab opens each window with no tab" "$since" \
+            "tabs connect workhorse api --window @5 connect workhorse api --window @6 connect workhorse blog --window @8 connect workhorse shop --window @10 connect workhorse website --window @3"
+    else
+        result FAIL "Open the N not in a tab opens each window with no tab" "no such button: the sample must have it"
+    fi
+    sleep 1
+    snap after-clicks
+    stop_app
+}
+
 # The saved list can't be read: the window says what the menu says, not Add a Mac.
 unreadable_list() {
     start_app unreadable-list || return
@@ -471,6 +599,7 @@ tool preflight > /dev/null
 lim 10 "$TOOL" move 600 500 > /dev/null
 
 six_desks
+windows_sample
 ready_then_locked
 two_workhorses
 long_folder

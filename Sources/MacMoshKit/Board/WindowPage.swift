@@ -14,6 +14,7 @@ public enum WindowWords {
     public static let desks = "Desks"
     public static let noDesks = "No desks yet."
     public static let open = "Open"
+    public static let goTo = "Go to"
     public static let closed = "(closed)"
     public static let keptWhenItExits = "Kept when it exits"
     public static let doesntComeBack = "Doesn't come back after a restart"
@@ -46,6 +47,14 @@ public enum WindowWords {
         case 1: return "In 1 tab"
         default: return "In \(count) tabs"
         }
+    }
+
+    /// The title of a desk's button, or of a window's in its strip: "Go to" when a click brings a tab
+    /// forward (the menu's `.focus`), "Open" for anything else (issue #134). The menu's full words for it are
+    /// the button's help tag.
+    public static func openOrGoTo(_ action: BoardAction) -> String {
+        if case .menu(.focus) = action { return goTo }
+        return open
     }
 
     /// "1 window", "2 windows": for an open desk whose windows have no names.
@@ -135,6 +144,22 @@ public struct DetailLine: Sendable, Equatable {
     }
 }
 
+/// One window of a desk in its detail strip (issue #134): the menu's words for it ("claude (in a tab)",
+/// "vim", "zsh (open in another tab)") and a small button, "Go to" or "Open", that runs the menu's action
+/// for that window.
+public struct WindowLine: Sendable, Equatable, Identifiable {
+    /// tmux's window id, `@` and digits.
+    public var id: String
+    public var words: String
+    public var button: BoardButton
+
+    public init(id: String, words: String, button: BoardButton) {
+        self.id = id
+        self.words = words
+        self.button = button
+    }
+}
+
 /// One desk's short row and its detail strip (main window design, section 7.1 A).
 public struct DeskRow: Sendable, Equatable, Identifiable {
     public var id: String { name }
@@ -143,8 +168,12 @@ public struct DeskRow: Sendable, Equatable, Identifiable {
     public var windows: String
     /// "In 2 tabs" or "No tab"; nil for a closed desk.
     public var tabs: String?
-    /// Opens a tab on it (the menu's `connect`), titled "Open".
+    /// The menu's click on the desk (issue #134), titled "Go to" when it goes to a tab and "Open" otherwise.
     public var open: BoardButton?
+    /// The menu's words for that click, "Go to website" or "Open the 1 window not in a tab": the button's help tag.
+    public var openWords: String?
+    /// One line per window when the desk has the menu's line per window and more than one window; none otherwise.
+    public var windowLines: [WindowLine]
     /// The folder and the unusual facts: "~/notes · Kept when it exits".
     public var second: String
     /// Folder, Starts with, After a restart, When its last shell exits; none for a desk made by hand.
@@ -164,7 +193,13 @@ public struct DeskRow: Sendable, Equatable, Identifiable {
             windows = desk.windowNames.joined(separator: ", ")
         }
         tabs = desk.isOpen ? WindowWords.tabs(desk.tabsOpen) : nil
-        open = desk.open.map { BoardButton(title: WindowWords.open, note: $0.note, action: $0.action) }
+        open = desk.open.map { BoardButton(title: WindowWords.openOrGoTo($0.action), note: $0.note, action: $0.action) }
+        openWords = desk.open?.title
+        windowLines = desk.windows.compactMap { w in
+            guard let id = w.id, let b = w.button else { return nil }
+            return WindowLine(id: id, words: b.title,
+                              button: BoardButton(title: WindowWords.openOrGoTo(b.action), action: b.action))
+        }
         if desk.madeByMacMosh {
             var parts = [desk.folder ?? ""]
             if desk.permanent == true { parts.append(WindowWords.keptWhenItExits) }
