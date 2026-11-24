@@ -312,8 +312,8 @@ window_click() {
 }
 
 # The sample with a line per window (issue #124): the top level, a desk's submenu with a window in a tab, one
-# open in another tab and one with no tab, a click on a window line with no tab and on one in a tab, and the
-# workhorse's submenu with the summary one fact per line.
+# open in another tab and one with no tab, a click on a window line with no tab and on one in a tab, the
+# workhorse's submenu with the summary one fact per line, and the submenus of shop and garden.
 windows_sample() {
     local n base
     start_app windows || return
@@ -343,6 +343,9 @@ windows_sample() {
         else
             result FAIL "the summary is one fact per line" "see ax/$base-workhorse-submenu-names.txt"
         fi
+        # Two more desks: a window in two tabs beside a window of the same name, and a closed permanent desk.
+        rest_on "   shop" shop-submenu
+        rest_on "   garden" garden-submenu
     fi
     stop_app
 }
