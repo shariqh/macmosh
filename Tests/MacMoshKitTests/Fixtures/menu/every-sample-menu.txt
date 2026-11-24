@@ -12,7 +12,7 @@
 # action is what a click on the row does), and sub-line or sub-separator inside a submenu. A submenu's
 # lines come right after its row, one level in; the lines after them at the row's own level are back in
 # the top level.
-# The action is none, refresh, "tab <arguments>" or "run <arguments>".
+# The action is none, refresh, "tab <arguments>" or "run <arguments>" (and, in windows-menu.txt, "tabs" and "focus").
 menu 0 symbol=checkmark.circle
 0	submenu	none	MacBook Pro · Ready
 1	sub-line	run screen mbp	Share screen
