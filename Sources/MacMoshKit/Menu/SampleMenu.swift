@@ -70,7 +70,10 @@ public enum SampleMenu: String, CaseIterable, Sendable {
     /// Does what a line asks the way the app does (`MenuActionRunner`), with a tab opener and a
     /// command runner that open and run nothing.
     public static var actions: MenuActionRunner {
-        MenuActionRunner(macmoshPath: "/sample/macmosh", tabs: SampleNoTabs(), runner: SampleNoCommands())
+        // Tab records go in a folder of the sample's own under the temporary folder, never the real support folder.
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("macmosh-sample", isDirectory: true)
+        return MenuActionRunner(macmoshPath: "/sample/macmosh", tabs: SampleNoTabs(), runner: SampleNoCommands(),
+                                records: TabRecordStore(paths: Paths(supportDir: folder, sshDir: folder)))
     }
 
     // MARK: The samples
@@ -152,6 +155,11 @@ struct SampleNoTabs: TabOpening {
     func open(_ command: TabCommand, title: String) async throws -> String? {
         MenuLog.write("sample: no tab opened")
         return nil
+    }
+
+    func select(tty: String, terminal: TabRecord.Terminal) async throws -> TabSelection {
+        MenuLog.write("sample: no tab selected")
+        return .gone
     }
 }
 

@@ -51,6 +51,16 @@ public struct TabRecord: Codable, Sendable, Equatable {
         self.terminal = terminal
         self.openedAt = openedAt
     }
+
+    /// True for `/dev/ttys` followed by one or more digits 0 to 9, the shape of a terminal tab's device. Only
+    /// such a device is handed to a terminal to find its tab; anything else counts as a tab that has gone.
+    /// Compared one Unicode scalar at a time, so no look-alike or combining mark passes.
+    public static func isTerminalDevice(_ tty: String) -> Bool {
+        let prefix = Array("/dev/ttys".unicodeScalars)
+        let scalars = Array(tty.unicodeScalars)
+        guard scalars.count > prefix.count, Array(scalars.prefix(prefix.count)) == prefix else { return false }
+        return scalars.dropFirst(prefix.count).allSatisfy { ("0"..."9").contains($0) }
+    }
 }
 
 extension JSONEncoder {
@@ -162,17 +172,18 @@ public struct TabRecordStore: Sendable {
     /// or a label that isn't its file's name) is ignored and left alone; a missing folder has none.
     func records() -> [TabRecord] {
         let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
-        let decoder = JSONDecoder.tabRecord
-        var found: [TabRecord] = []
-        for name in names where name.hasSuffix(".json") {
-            let label = String(name.dropLast(".json".count))
-            guard TabLabel.isValid(label),
-                  let data = try? Data(contentsOf: folder.appendingPathComponent(name)),
-                  let record = try? decoder.decode(TabRecord.self, from: data),
-                  record.label == label else { continue }
-            found.append(record)
-        }
+        let found = names.filter { $0.hasSuffix(".json") }.compactMap { record(label: String($0.dropLast(".json".count))) }
         return found.sorted { ($0.openedAt, $0.label) < ($1.openedAt, $1.label) }
+    }
+
+    /// The record with this label, whether or not its process still runs. nil when the word isn't a label,
+    /// or there is no such file, or the file isn't a record carrying that label.
+    public func record(label: String) -> TabRecord? {
+        guard TabLabel.isValid(label),
+              let data = try? Data(contentsOf: file(for: label)),
+              let record = try? JSONDecoder.tabRecord.decode(TabRecord.self, from: data),
+              record.label == label else { return nil }
+        return record
     }
 
     private func file(for label: String) -> URL { folder.appendingPathComponent("\(label).json") }

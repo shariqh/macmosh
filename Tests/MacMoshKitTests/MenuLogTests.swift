@@ -17,7 +17,7 @@ private final class Lines: @unchecked Sendable {
     private func actions(tabs: RecordingTabs = RecordingTabs(),
                          fake: FakeRunner = FakeRunner { _ in FakeRunner.ok() },
                          path: String = MenuLogTests.path) -> MenuActionRunner {
-        MenuActionRunner(macmoshPath: path, tabs: tabs, runner: fake)
+        MenuActionRunner(macmoshPath: path, tabs: tabs, runner: fake, records: scratchTabRecords())
     }
 
     // MARK: the lines
@@ -65,6 +65,45 @@ private final class Lines: @unchecked Sendable {
         #expect(MenuLog.asked(.none) == "menu action: none")
         #expect(MenuLog.finished(.tab(["connect", "workhorse", "website"]), summary: "tab opened")
                 == "menu action done: tab connect: tab opened")
+    }
+
+    /// The two tab actions of issue #120: the subcommand of the first tab, never a desk, a window or a label.
+    @Test func theTabsAndFocusLinesNameOnlyTheSubcommand() {
+        let open = ["connect", "workhorse", "website", "--window", "@3"]
+        #expect(MenuLog.asked(.tabs([open, open])) == "menu action: tabs connect")
+        #expect(MenuLog.asked(.tabs([])) == "menu action: tabs")
+        #expect(MenuLog.asked(.focus(label: "9f3a1c2e", orOpen: open)) == "menu action: focus connect")
+        #expect(MenuLog.asked(.focus(label: "9f3a1c2e", orOpen: [])) == "menu action: focus")
+        #expect(MenuLog.finished(.focus(label: "9f3a1c2e", orOpen: open), summary: "tab selected")
+                == "menu action done: focus connect: tab selected")
+        #expect(MenuLog.finished(.tabs([open]), summary: "tabs opened: 1")
+                == "menu action done: tabs connect: tabs opened: 1")
+    }
+
+    /// Each way a focus action ends, in fixed words: never a label, a device, a desk or a terminal's text.
+    @Test func theFocusSummariesAreFixedWords() {
+        #expect(MenuLog.tabSelected == "tab selected")
+        #expect(MenuLog.tabGone(.noRecord, then: "opened a new one") == "tab gone (no record), opened a new one")
+        #expect(MenuLog.tabGone(.processEnded, then: "opened a new one") == "tab gone (process ended), opened a new one")
+        #expect(MenuLog.tabGone(.noDevice, then: "opened a new one") == "tab gone (no terminal device), opened a new one")
+        #expect(MenuLog.tabGone(.notInTerminal, then: "then tab did not open")
+                == "tab gone (not in the terminal), then tab did not open")
+        let fromITerm = "31:99: execution error: iTerm got an error: Can’t get window 1 of workhorse. (-1719)"
+        #expect(MenuLog.selectFailure(fromITerm) == "tab not selected (error -1719)")
+        #expect(MenuLog.selectFailure("Terminal did not answer in time.") == "tab not selected (no answer in time)")
+        #expect(MenuLog.selectFailure("something about workhorse") == "tab not selected")
+        #expect(MenuLog.selectFailure("") == "tab not selected")
+    }
+
+    @Test func clearedRecordsAreCountedNotNamed() {
+        #expect(MenuLog.recordsCleared(2) == "tab records cleared: 2")
+    }
+
+    @Test func theTabsSummariesAreNumbersAndFixedWords() {
+        #expect(MenuLog.tabsOpened(3, anotherWay: 0) == "tabs opened: 3")
+        #expect(MenuLog.tabsOpened(3, anotherWay: 2) == "tabs opened: 3 (another way: 2)")
+        #expect(MenuLog.tabsStopped(opened: 1, of: 3, then: "tab did not open (error -1728)")
+                == "tabs opened: 1 of 3, then tab did not open (error -1728)")
     }
 
     @Test func aTabFailureKeepsOnlyTheErrorNumber() {

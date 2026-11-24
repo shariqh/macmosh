@@ -33,6 +33,22 @@ import Testing
         #expect(desk.first?.kind == .button(.tab(["connect", "mbp", "website"])))
     }
 
+    /// The two tab actions of issue #120 are drawn as any other action: a line that does one is a button, and a
+    /// row that opens a submenu carries one as its primary action. Nothing builds them yet.
+    @Test func theTabsAndFocusActionsAreButtonsAndPrimaryActions() {
+        let open = ["connect", "mbp", "website", "--window", "@1"]
+        let focus = MenuAction.focus(label: "9f3a1c2e", orOpen: open)
+        let tabs = MenuAction.tabs([open, ["connect", "mbp", "website", "--window", "@2"]])
+        let menu = MenuLines(symbol: "checkmark.circle", entries: [
+            MenuEntry(id: "desk:mbp:website", title: "website", action: focus,
+                      submenu: [MenuEntry(id: "desk:mbp:website:open", title: "Open website in 2 tabs", action: tabs)]),
+        ])
+        #expect(menu.rows.map(\.kind) == [.submenu([MenuRow(id: "desk:mbp:website:open", label: "Open website in 2 tabs",
+                                                           title: "Open website in 2 tabs", kind: .button(tabs))],
+                                                   primaryAction: focus)])
+        #expect(menu.items.map(\.action) == [focus, tabs])
+    }
+
     /// A menu with no submenu is drawn as before: each line at its indent, three spaces a level; a line
     /// with no action is text, a separator a divider, anything else a button.
     @Test func aMenuWithNoSubmenuIsDrawnLineForLineAsBefore() {

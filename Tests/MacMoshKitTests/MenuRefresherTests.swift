@@ -234,7 +234,7 @@ private final class Saved: @unchecked Sendable {
         let r = refresher(missing: [])
         let fake = FakeRunner { argv in argv.contains("screen") ? FakeRunner.failed(1, stderr: "no screen sharing\n") : FakeRunner.ok() }
         let actions = MenuActionRunner(macmoshPath: "/Applications/MacMosh.app/Contents/Helpers/macmosh",
-                                       tabs: RecordingTabs(), runner: fake)
+                                       tabs: RecordingTabs(), runner: fake, records: scratchTabRecords())
         #expect(r.notice == nil)
         await r.perform(.line("Share screen", .run(["screen", "mbp"])), using: actions)
         #expect(r.notice == "no screen sharing")
@@ -272,6 +272,85 @@ private final class Saved: @unchecked Sendable {
         let script = Script(steps.map { [$0] })
         return MenuRefresher(load: { [.sample(id: "mbp", name: "MacBook Pro")] },
                              gather: { _ in script.next() }, save: { _ in })
+    }
+
+    // MARK: clearing old tab records (issue #120)
+
+    private static let liveLabel = "aaaaaaaaaaaaaaaa", deadLabel = "bbbbbbbbbbbbbbbb"
+    private static let otherLabel = "cccccccccccccccc", newLabel = "dddddddddddddddd"
+
+    /// A Ready report from `id` whose desk has a view line for each label.
+    private static func report(_ labels: [String], id: String = "mbp") -> Gathered {
+        var status = HostStatus.sampleWithDesk
+        status.desks[0].views = labels.enumerated().map {
+            HostStatus.View(name: "website+\($0.offset)", windowId: "@\($0.offset)", tabs: 1, label: $0.element)
+        }
+        return .checked(.sample(.ready(signIns: true), workhorse: .sample(id: id, name: "MacBook Pro"), status: status))
+    }
+
+    /// Records of `mbp` (one live and seen, one dead, one live and new) and one dead record of `attic`.
+    private func storeWithRecords() throws -> TabRecordStore {
+        let store = scratchTabRecords(running: [1: 10, 3: 30, 4: 40])
+        try store.write(sampleTabRecord(label: Self.liveLabel, workhorse: "mbp", pid: 1, started: 10,
+                                        openedAt: Self.t0.addingTimeInterval(-3600)))
+        try store.write(sampleTabRecord(label: Self.deadLabel, workhorse: "mbp", pid: 2, started: 20,
+                                        openedAt: Self.t0.addingTimeInterval(-3600)))
+        try store.write(sampleTabRecord(label: Self.newLabel, workhorse: "mbp", pid: 4, started: 40, openedAt: Self.t0))
+        try store.write(sampleTabRecord(label: Self.otherLabel, workhorse: "attic", pid: 9, started: 90,
+                                        openedAt: Self.t0.addingTimeInterval(-3600)))
+        return store
+    }
+
+    private func sweeping(_ steps: [[Gathered]], store: TabRecordStore, clock: Box<Date>,
+                          lines: LockedLines = LockedLines()) -> MenuRefresher {
+        let script = Script(steps)
+        return MenuRefresher(load: { [.sample(id: "mbp", name: "MacBook Pro"), .sample(id: "attic", name: "Attic")] },
+                             gather: { _ in script.next() }, save: { _ in }, log: { lines.add($0) },
+                             pause: { _ in }, tabRecords: store, now: { clock.value })
+    }
+
+    @Test func aGoodReportClearsThatWorkhorsesDeadAndLongUnseenRecordsOnly() async throws {
+        let store = try storeWithRecords()
+        let clock = Box(Self.t0)
+        let lines = LockedLines()
+        // Locked, with no report: not a miss, so no second look takes the next step.
+        let r = sweeping([[Self.report([Self.liveLabel]), .checked(.sample(.locked, workhorse: .sample(id: "attic")))],
+                          [Self.report([]), .stillChecking(.sample(id: "attic"))],
+                          [Self.report([])]],
+                         store: store, clock: clock, lines: lines)
+        await r.refresh()
+        // The dead one goes at once; the other workhorse's dead record stays, as it had no good report.
+        #expect(store.records().map(\.label).sorted() == [Self.liveLabel, Self.otherLabel, Self.newLabel].sorted())
+        #expect(lines.all.contains("tab records cleared: 1"))
+
+        clock.value = Self.t0.addingTimeInterval(120)
+        await r.refresh()
+        // Two minutes exactly since the live one was last seen and the new one opened: both stay.
+        #expect(store.records().map(\.label).sorted() == [Self.liveLabel, Self.otherLabel, Self.newLabel].sorted())
+
+        clock.value = Self.t0.addingTimeInterval(121)
+        await r.refresh()
+        #expect(store.records().map(\.label) == [Self.otherLabel])
+        #expect(lines.all.filter { $0.hasPrefix("tab records cleared") } == ["tab records cleared: 1", "tab records cleared: 2"])
+    }
+
+    @Test func aCheckWithNoReportClearsNothing() async throws {
+        let store = try storeWithRecords()
+        let r = sweeping([[.checked(.sample(.locked, workhorse: .sample(id: "mbp"))), .stillChecking(.sample(id: "attic"))],
+                          [.checked(.sample(.cantReach(.tailscaleOff), workhorse: .sample(id: "mbp")))],
+                          [.checked(.sample(.cantReach(.tailscaleOff), workhorse: .sample(id: "mbp")))]],
+                         store: store, clock: Box(Self.t0.addingTimeInterval(3600)))
+        await r.refresh()
+        #expect(store.records().count == 4)
+        await r.refresh()   // can't reach it, and the second look the same
+        #expect(store.records().count == 4)
+    }
+
+    /// The refresher's default has no records to clear, so a test that gives none touches no folder.
+    @Test func withNoRecordStoreNothingIsCleared() async {
+        let r = scripted([Self.report([])])
+        await r.refresh()
+        #expect(r.menu.symbol == "checkmark.circle")
     }
 
     @Test func theSitting2LoginGoesFromWaitingForLoginToReady() async {

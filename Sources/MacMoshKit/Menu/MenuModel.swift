@@ -3,9 +3,25 @@ import Foundation
 /// What clicking a menu line does. The arguments are for the `macmosh` command.
 public enum MenuAction: Sendable, Equatable {
     case tab([String])               // macmosh arguments to run in a new terminal tab
+    /// Several lists of macmosh arguments, each run in a new terminal tab of its own, in order (menu design 6.2).
+    case tabs([[String]])
+    /// Bring the tab MacMosh labelled `label` to the front; when that tab has gone, run `orOpen` in a new
+    /// terminal tab instead (menu design 6.2 and 8.4).
+    case focus(label: String, orOpen: [String])
     case run([String])               // macmosh arguments to run in the background, then check again
     case refresh
     case none
+
+    /// Every word the action hands on: each macmosh argument of every tab, and a focus action's label.
+    /// The plain-words rule (`PlainWords`) holds for each of them.
+    public var words: [String] {
+        switch self {
+        case .tab(let arguments), .run(let arguments): return arguments
+        case .tabs(let list): return list.flatMap { $0 }
+        case .focus(let label, let orOpen): return [label] + orOpen
+        case .refresh, .none: return []
+        }
+    }
 }
 
 /// One line of the menu flattened (`MenuEntry.flatten`).

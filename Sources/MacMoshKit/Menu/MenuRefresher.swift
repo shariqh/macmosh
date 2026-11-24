@@ -31,6 +31,10 @@ public final class MenuRefresher: ObservableObject {
     private let save: @Sendable (CheckResult) -> Void
     private let log: @Sendable (String) -> Void
     private let pause: @Sendable (Duration) async -> Void
+    /// This Mac's tab records, cleared after each good report (`TabRecordSweep`); nil clears nothing.
+    private let tabRecords: TabRecordStore?
+    private let now: @Sendable () -> Date
+    private var sweep = TabRecordSweep()
     /// The last "menu refreshed" line written, so that a check that changes nothing writes nothing.
     private var lastRefreshLine: String?
     private var refreshAgain = false
@@ -46,16 +50,21 @@ public final class MenuRefresher: ObservableObject {
     /// taught about one of them. Until the first refresh the menu is one line, `Checking…`.
     /// `log` takes the lines of `MenuLog`; the real one writes them to the Mac's system log.
     /// `pause` is how the wait before a second look is done; tests pass one that doesn't wait.
+    /// `tabRecords` are the tab records to clear after good reports, with `now` the time that counts.
     public init(load: @escaping @Sendable () throws -> [Workhorse],
                 gather: @escaping @Sendable ([Workhorse]) async -> [Gathered],
                 save: @escaping @Sendable (CheckResult) -> Void,
                 log: @escaping @Sendable (String) -> Void = { MenuLog.write($0) },
-                pause: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }) {
+                pause: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) },
+                tabRecords: TabRecordStore? = nil,
+                now: @escaping @Sendable () -> Date = { Date() }) {
         self.load = load
         self.gather = gather
         self.save = save
         self.log = log
         self.pause = pause
+        self.tabRecords = tabRecords
+        self.now = now
         self.menu = MenuLines(symbol: MenuModel.stillCheckingSymbol,
                               entries: [MenuEntry(id: "top:checking", title: "Checking…")])
     }
@@ -114,6 +123,7 @@ public final class MenuRefresher: ObservableObject {
         // The saved list is written under a file lock, so it is done off the main thread.
         await Task.detached { for result in checked { save(result) } }.value
         keep(gathered, list: list)
+        await clearTabRecords(after: gathered)
         let waiting = deskServerWait.update(gathered)
         if waitingForDeskServer != waiting { waitingForDeskServer = waiting }
         menu = MenuModel.build(gathered, waitingForDeskServer: waiting)
@@ -136,6 +146,23 @@ public final class MenuRefresher: ObservableObject {
         if self.latest != latest { self.latest = latest }
         if self.lastReady != lastReady { self.lastReady = lastReady }
         if self.checking != checking { self.checking = checking }
+    }
+
+    /// Removes the tab records `TabRecordSweep` says to, after the good reports among `gathered`. The files
+    /// are read and removed off the main thread; "last seen" is kept here, in memory.
+    private func clearTabRecords(after gathered: [Gathered]) async {
+        guard let store = tabRecords else { return }
+        let reports = TabRecordSweep.reports(gathered)
+        guard !reports.isEmpty else { return }
+        let before = sweep, now = self.now()
+        let (after, cleared) = await Task.detached { () -> (TabRecordSweep, Int) in
+            var sweep = before
+            let labels = sweep.clear(store.records(), reports: reports, isLive: store.isLive, now: now)
+            for label in labels { store.remove(label: label) }
+            return (sweep, labels.count)
+        }.value
+        sweep = after
+        if cleared > 0 { log(MenuLog.recordsCleared(cleared)) }
     }
 
     /// The checks repeat every 30 seconds or so; only a change is worth a line.
@@ -188,7 +215,8 @@ public final class MenuRefresher: ObservableObject {
         return MenuRefresher(
             load: { try store.load() },
             gather: { list in await MenuData.gather(list, checker: checker, budget: .seconds(20)) },
-            save: { try? store.absorb($0) })
+            save: { try? store.absorb($0) },
+            tabRecords: TabRecordStore(paths: paths))
     }
 }
 

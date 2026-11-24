@@ -446,12 +446,43 @@ private func menu(_ state: WorkhorseState, workhorse: Workhorse = .sample(), sta
                     seen += 1
                     #expect(!args.isEmpty)
                     for word in args { #expect(PlainWords.isPlain(word), "\(word)") }
+                case .tabs(let list):
+                    seen += 1
+                    #expect(!list.isEmpty)
+                    for args in list {
+                        #expect(!args.isEmpty)
+                        for word in args { #expect(PlainWords.isPlain(word), "\(word)") }
+                    }
+                case .focus(let label, let orOpen):
+                    seen += 1
+                    #expect(!orOpen.isEmpty)
+                    #expect(PlainWords.isPlain(label), "\(label)")
+                    for word in orOpen { #expect(PlainWords.isPlain(word), "\(word)") }
                 case .refresh, .none:
                     break
                 }
+                for word in item.action.words { #expect(PlainWords.isPlain(word), "\(word)") }
             }
         }
         #expect(seen > 20)
+    }
+
+    /// Every word an action hands on: each argument of every tab, and a focus action's label (issue #120).
+    @Test func anActionsWordsAreEveryArgumentAndTheLabel() {
+        let one = ["connect", "workhorse", "website", "--window", "@1"]
+        let two = ["connect", "workhorse", "website", "--window", "@2"]
+        #expect(MenuAction.tab(one).words == one)
+        #expect(MenuAction.run(["desk", "window", "workhorse", "website"]).words == ["desk", "window", "workhorse", "website"])
+        #expect(MenuAction.tabs([one, two]).words == one + two)
+        #expect(MenuAction.tabs([]).words.isEmpty)
+        #expect(MenuAction.focus(label: "9f3a1c2e", orOpen: one).words == ["9f3a1c2e"] + one)
+        #expect(MenuAction.refresh.words.isEmpty)
+        #expect(MenuAction.none.words.isEmpty)
+        for word in MenuAction.tabs([one, two]).words + MenuAction.focus(label: "9f3a1c2e", orOpen: one).words {
+            #expect(PlainWords.isPlain(word), "\(word)")
+        }
+        #expect(!MenuAction.focus(label: "9f3a 1c2e", orOpen: one).words.allSatisfy(PlainWords.isPlain))
+        #expect(!MenuAction.tabs([one, ["connect", "a b"]]).words.allSatisfy(PlainWords.isPlain))
     }
 
     @Test func plainWordsAreLettersDigitsAndTheListedMarks() {
