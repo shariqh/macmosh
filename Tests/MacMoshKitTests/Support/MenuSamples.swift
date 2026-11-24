@@ -41,8 +41,23 @@ extension CheckResult {
     }
 }
 
+/// What one sample menu is built from, so a test can build the window's board from the same checks.
+struct SampleMenuInput {
+    var gathered: [Gathered]
+    var waitingForDeskServer: Set<String> = []
+    var now = Date()
+    var timeZone = TimeZone.current
+
+    var menu: MenuLines {
+        MenuModel.build(gathered, waitingForDeskServer: waitingForDeskServer, now: now, timeZone: timeZone)
+    }
+}
+
 /// One menu for every state the design names, and one with no workhorses, for tests that look at all of them.
-func everySampleMenu() -> [MenuLines] {
+func everySampleMenu() -> [MenuLines] { everySampleInput().map(\.menu) }
+
+/// What `everySampleMenu()` is built from, in its order.
+func everySampleInput() -> [SampleMenuInput] {
     let able = Workhorse.sample(osVersion: "27.3", arch: "arm64")
     let readyOff = CheckResult.sample(.ready(signIns: false), status: .sampleWithDesk, homeReachable: false)
     let results: [CheckResult] = [
@@ -55,9 +70,9 @@ func everySampleMenu() -> [MenuLines] {
         .sample(.notSetUp(.notPaired)),
         .sample(.notSetUp(.hostScriptMissing)),
     ]
-    var menus = results.map { MenuModel.build([.checked($0)]) }
-    menus.append(MenuModel.build([.stillChecking(.sample())]))
-    menus.append(MenuModel.build([]))
-    menus.append(MenuModel.build(results.map(Gathered.checked)))
-    return menus
+    var inputs = results.map { SampleMenuInput(gathered: [.checked($0)]) }
+    inputs.append(SampleMenuInput(gathered: [.stillChecking(.sample())]))
+    inputs.append(SampleMenuInput(gathered: []))
+    inputs.append(SampleMenuInput(gathered: results.map(Gathered.checked)))
+    return inputs
 }
