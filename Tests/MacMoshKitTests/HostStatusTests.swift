@@ -227,40 +227,104 @@ private func versionLine(in text: String) -> String {
         #expect(indexes == [0, 1])
     }
 
-    /// Script 0.7.0 adds a "windowinfo" line per window and a "view" line per view after a desk's
-    /// window lines. This version reads the desk and its windows as before and skips both.
-    @Test func theWindowInfoAndViewLinesOfScript070AreSkipped() throws {
-        let desk: [[String]] = [
-            ["desk", "website", "2", "2"],
-            ["window", "website", "0", "zsh"],
-            ["window", "website", "1", "claude"],
-        ]
-        let added: [[String]] = [
-            ["windowinfo", "website", "0", "@0", "1", "1"],
-            ["windowinfo", "website", "1", "@1", "0", "1"],
-            ["view", "website", "website+4242", "@1", "1"],
-        ]
-        let before = try HostStatus.parse(report(desk))
-        let after = try HostStatus.parse(report(desk + added))
-        #expect(after == before)
-        #expect(after.desks.count == 1)
-        #expect(after.desks[0].attached == 2)
-        #expect(after.desks[0].windows.map(\.name) == ["zsh", "claude"])
+    // MARK: windowinfo and view (script 0.7.0 and later)
 
-        // Script 0.8.0 adds the view's label at the end of its line, empty when it has none. Read
-        // exactly as before.
-        let labelled: [[String]] = [
+    private static let twoWindows: [[String]] = [
+        ["desk", "website", "2", "2"],
+        ["window", "website", "0", "zsh"],
+        ["window", "website", "1", "claude"],
+    ]
+
+    /// A report without the new lines reads as before: no window ids, no tab counts, no views.
+    @Test func aReportWithoutTheNewLinesHasNoNewValues() throws {
+        let s = try HostStatus.parse(report(Self.twoWindows))
+        let desk = s.desks[0]
+        #expect(desk.windows.map(\.name) == ["zsh", "claude"])
+        #expect(desk.windows.allSatisfy { $0.id == nil && $0.tabs == nil && $0.deskShows == nil })
+        #expect(desk.views.isEmpty)
+        #expect(!desk.hasWindowInfo)
+    }
+
+    /// `windowinfo`: desk, index, window id, 1 when the desk's own session shows it, the tabs showing it.
+    @Test func aWindowInfoLineGivesTheWindowItsIdAndTabs() throws {
+        let s = try HostStatus.parse(report(Self.twoWindows + [
             ["windowinfo", "website", "0", "@0", "1", "1"],
+            ["windowinfo", "website", "1", "@7", "0", "2"],
+        ]))
+        let desk = s.desks[0]
+        #expect(desk.hasWindowInfo)
+        #expect(desk.windows.map(\.name) == ["zsh", "claude"])
+        #expect(desk.windows.map(\.id) == ["@0", "@7"])
+        #expect(desk.windows.map(\.deskShows) == [true, false])
+        #expect(desk.windows.map(\.tabs) == [1, 2])
+    }
+
+    /// Script 0.8.0's `view` line: desk, view name, the window it shows now, its tabs, its label.
+    @Test func aViewLineOfScript080GivesTheDeskAViewWithItsLabel() throws {
+        let s = try HostStatus.parse(report(Self.twoWindows + [
             ["windowinfo", "website", "1", "@1", "0", "2"],
             ["view", "website", "website+4242", "@1", "1", "0a1b2c3d"],
             ["view", "website", "website+4243", "@1", "1", ""],
-        ]
-        let newer = try HostStatus.parse(report(desk + labelled + [["def", "website", "1", "0", "0", "/tmp", ""]]))
-        let newerBefore = try HostStatus.parse(report(desk + [["def", "website", "1", "0", "0", "/tmp", ""]]))
-        #expect(newer == newerBefore)
-        #expect(newer.desks.map(\.name.value) == ["website"])
-        #expect(newer.definitions.count == 1)
-        #expect(newer.desks[0].windows.map(\.name) == ["zsh", "claude"])
+        ]))
+        let views = s.desks[0].views
+        #expect(views == [
+            HostStatus.View(name: "website+4242", windowId: "@1", tabs: 1, label: "0a1b2c3d"),
+            HostStatus.View(name: "website+4243", windowId: "@1", tabs: 1, label: nil),
+        ])
+    }
+
+    /// Script 0.7.0 printed the view line without the label.
+    @Test func aViewLineOfScript070HasNoLabel() throws {
+        let s = try HostStatus.parse(report(Self.twoWindows + [
+            ["windowinfo", "website", "0", "@0", "1", "1"],
+            ["windowinfo", "website", "1", "@1", "0", "1"],
+            ["view", "website", "website+4242", "@1", "1"],
+        ]))
+        #expect(s.desks[0].views == [HostStatus.View(name: "website+4242", windowId: "@1", tabs: 1, label: nil)])
+        #expect(s.desks[0].windows.map(\.tabs) == [1, 1])
+    }
+
+    /// The new lines change nothing that an older reader had: the desks, their windows' names and
+    /// indexes, and the lines after them.
+    @Test func theNewLinesLeaveEverythingElseAsItWas() throws {
+        let def: [[String]] = [["def", "website", "1", "0", "0", "/tmp", ""]]
+        let before = try HostStatus.parse(report(Self.twoWindows + def))
+        let after = try HostStatus.parse(report(Self.twoWindows + [
+            ["windowinfo", "website", "0", "@0", "1", "1"],
+            ["view", "website", "website+4242", "@0", "1", "0a1b2c3d"],
+        ] + def))
+        #expect(after.definitions == before.definitions)
+        #expect(after.desks.map(\.name) == before.desks.map(\.name))
+        #expect(after.desks[0].attached == 2 && after.desks[0].windowCount == 2)
+        #expect(after.desks[0].windows.map(\.index) == [0, 1])
+        #expect(after.desks[0].windows.map(\.name) == ["zsh", "claude"])
+    }
+
+    /// A line that breaks its shape is left out; a label that breaks the rule counts as none.
+    @Test func aBrokenWindowInfoOrViewLineIsLeftOut() throws {
+        let s = try HostStatus.parse(report(Self.twoWindows + [
+            ["windowinfo", "website", "0", "0", "1", "1"],      // id without @
+            ["windowinfo", "website", "1", "@1", "0", "many"],  // tabs not a number
+            ["windowinfo", "website", "9", "@9", "0", "1"],     // no such window
+            ["windowinfo", "website"],
+            ["windowinfo", "ghost", "0", "@0", "1", "1"],       // no such desk
+            ["view", "website", "v1", "@x", "1", ""],           // id not @ and digits
+            ["view", "website", "v2", "@1", "-1", ""],          // tabs below 0
+            ["view", "website", "v3", "@1", "1", "NOT-HEX"],    // label breaks the rule
+            ["view", "website", "v4"],
+            ["view", "ghost", "v5", "@1", "1", "abcd"],
+        ]))
+        let desk = try #require(s.desks.first)
+        #expect(desk.windows.map(\.id) == [nil, nil])
+        #expect(!desk.hasWindowInfo)
+        #expect(desk.views == [HostStatus.View(name: "v3", windowId: "@1", tabs: 1, label: nil)])
+    }
+
+    /// A record type this version doesn't know is still skipped.
+    @Test func anUnknownLineIsStillSkipped() throws {
+        let s = try HostStatus.parse(report(Self.twoWindows + [["windowinfo2", "website", "0", "@0", "1", "1"],
+                                                              ["viewer", "website", "x", "@0", "1", ""]]))
+        #expect(s.desks[0].views.isEmpty && !s.desks[0].hasWindowInfo)
     }
 
     @Test func aWindowWithoutADeskIsLeftOut() throws {
