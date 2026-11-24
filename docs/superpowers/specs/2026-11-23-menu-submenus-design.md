@@ -43,7 +43,7 @@ The v1 design's words (its section 2) and the main-window design's (its section 
 
 Three more names are used below:
 
-- **Label**: a short random word, 8 lowercase hex characters such as `9f3a1c2e`, that MacMosh gives each tab it opens, so it can find that tab again.
+- **Label**: a short random word, 16 lowercase hex characters such as `9f3a1c2e5b7d4a60`, that MacMosh gives each tab it opens, so it can find that tab again. (Corrected on 2026-11-23 from 8: the script doesn't check that labels are unique, so the daily Mac makes them longer; v1 design, call 50.)
 - **Tab record**: a small file on the daily Mac, one per tab, that says which tab (by its terminal device) carries which label.
 - **Primary action**: what a row with a submenu does when it is clicked, as opposed to when the pointer rests on it.
 
@@ -504,7 +504,7 @@ The terminal device alone is never trusted, because nothing read says a device n
 `macmosh connect <id> <desk> [--window @n | --new-window | --view]`:
 
 - With one of these options (only the menu sends them, and only when the gate below passes), `connect` makes a label from the system's random generator, writes the record, and runs `attach --label <word>` with the matching option (`--view` sends none).
-- The mosh line becomes `/bin/sh -c 'exec "$HOME/.macmosh/macmosh-host" attach "$@"' macmosh-host --label 9f3a1c2e --window @3 website`. The plain ssh mode's host command changes the same way.
+- The mosh line becomes `/bin/sh -c 'exec "$HOME/.macmosh/macmosh-host" attach "$@"' macmosh-host --label 9f3a1c2e5b7d4a60 --window @3 website`. The plain ssh mode's host command changes the same way.
 - In Tabs mode the options are refused with `Tabs mode already shows every window as its own tab.`
 - Plain `connect <id> <desk>` behaves exactly as today.
 
