@@ -30,7 +30,9 @@ public struct ConnectRunner: Sendable {
         await run(plan, title: title, workhorse: nil, ui: ui)
     }
 
-    func run(_ plan: ConnectPlan, title: String, workhorse: Workhorse?, ui: Interaction) async -> Int32 {
+    /// `connectionEnded` runs once the connection is over for good, before the tab says why and waits for a key.
+    func run(_ plan: ConnectPlan, title: String, workhorse: Workhorse?, ui: Interaction,
+             connectionEnded: () -> Void = {}) async -> Int32 {
         ui.say(plan.intro)
         ui.say(TabTitle.escape(title))
         var code = await interactive.runAttached(plan.argv, environment: plan.environment)
@@ -42,11 +44,13 @@ public struct ConnectRunner: Sendable {
             case .ready, .cantReach:
                 code = await interactive.runAttached(plan.argv, environment: plan.environment)
             default:
+                connectionEnded()
                 let result = Self.result(state, workhorse)
                 ui.say(StatusFormat.headline(result))
                 return ui.finish(code, reason: StatusFormat.hint(result))
             }
         }
+        connectionEnded()
         return ui.finish(code, reason: Self.reason(for: code, tool: plan.argv.first, desk: title))
     }
 
@@ -74,8 +78,15 @@ public struct ConnectRunner: Sendable {
     ///
     /// `requestedMode` is `--mode`; without it the workhorse's own setting is used. Tabs outside iTerm2
     /// (`TERM_PROGRAM` isn't `iTerm.app`) becomes mosh, and says so. `findMosh` finds mosh on this Mac.
+    ///
+    /// `tab` is `--window`, `--new-window` or `--view` (menu design 8.3). With one, the tab gets a label, a
+    /// record (through `noting`, this process by default) and `attach --label <word>` with the option; the
+    /// record is removed when the connection ends. Tabs mode refuses them, since it shows every window as its
+    /// own tab already. The workhorse's script version is not checked: an older script refuses the option
+    /// itself, and its message shows like any other `attach` failure.
     public func connect(_ check: CheckResult, desk: DeskName, requestedMode: ConnectionMode?, paths: Paths,
-                        environment: [String: String], findMosh: () -> String?, ui: Interaction) async -> Int32 {
+                        environment: [String: String], findMosh: () -> String?, ui: Interaction,
+                        tab: TabTarget? = nil, noting: TabNoting? = nil) async -> Int32 {
         let w = check.workhorse
         guard Self.mayConnect(check.state) else {
             ui.say(StatusFormat.headline(check))
@@ -87,6 +98,9 @@ public struct ConnectRunner: Sendable {
             ui.say("Tabs mode needs iTerm2, and this isn't iTerm2. Opening over mosh instead.")
             mode = .mosh
         }
+        if tab != nil, mode == .tabs {
+            return ui.finish(1, reason: "Tabs mode already shows every window as its own tab.")
+        }
         var moshPath = ""
         if mode == .mosh {
             guard let found = findMosh() else {
@@ -95,10 +109,41 @@ public struct ConnectRunner: Sendable {
             moshPath = found
         }
 
+        var request: TabRequest?
+        var noted: (store: TabRecordStore, label: String)?
+        if let tab {
+            let noting = noting ?? TabNoting.thisProcess(paths: paths)
+            let label = noting.makeLabel()
+            request = TabRequest(label: label, target: tab)
+            if Self.note(tab, label: label, workhorse: w, desk: desk, environment: environment, noting: noting) {
+                noted = (noting.store, label)
+            } else {
+                ui.say("MacMosh couldn't note this tab, so the menu may not find it later.")
+            }
+        }
+
         let plan = ConnectPlanner.plan(workhorse: w, desk: desk, mode: mode, address: check.answeredAt ?? w.mainAddress,
                                        paths: paths, moshPath: moshPath, localeEnvironment: environment,
-                                       path: environment["PATH"] ?? ProcessInfo.processInfo.environment["PATH"])
-        return await run(plan, title: desk.value, workhorse: w, ui: ui)
+                                       path: environment["PATH"] ?? ProcessInfo.processInfo.environment["PATH"],
+                                       tab: request)
+        return await run(plan, title: desk.value, workhorse: w, ui: ui,
+                         connectionEnded: { if let noted { noted.store.remove(label: noted.label) } })
+    }
+
+    /// Writes the tab's record. False when it can't: without this process's start time the record could
+    /// never be trusted, so none is written.
+    private static func note(_ tab: TabTarget, label: String, workhorse w: Workhorse, desk: DeskName,
+                             environment: [String: String], noting: TabNoting) -> Bool {
+        guard let started = noting.started else { return false }
+        let record = TabRecord(label: label, workhorse: w.id, desk: desk.value, askedWindow: tab.askedWindow,
+                               pid: noting.pid, started: started, tty: noting.tty,
+                               terminal: TabRecord.Terminal(environment: environment), openedAt: noting.now())
+        do {
+            try noting.store.write(record)
+            return true
+        } catch {
+            return false
+        }
     }
 
     static func mayConnect(_ state: WorkhorseState) -> Bool {
