@@ -226,7 +226,36 @@ extension HostScriptTests {
         #expect(log(h).sorted() == ["global \(two)", "own \(one)"], "\(log(h))")
     }
 
-    // MARK: 5. Formats
+    // MARK: 5. Ending a session from a hook
+
+    /// A session ended by a command that a hook runs (kill-session, or kill-session through run-shell -C
+    /// -d) runs no session-closed hook, so the exit path would never see it. A view whose client is
+    /// detached from a hook, with destroy-unattached on as a tab's view has, is ended by tmux itself
+    /// after the hook, and session-closed runs for it. Every client of the three views exits.
+    @Test func onlyAViewEndedThroughItsDetachedClientRunsSessionClosed() throws {
+        let h = try HostHarness(); defer { h.cleanUp() }
+        _ = h.run(["start"])
+        let desk = try makeDesk(h, "website", windows: 4)
+        let ids = windowIDs(h, desk)
+        let path = h.home.appendingPathComponent(logName).path
+        _ = h.tmux(["set-hook", "-g", "session-closed[7]", "run-shell \"echo 'closed #{hook_session}' >> '\(path)'\""])
+        var made: [String] = []
+        for (n, end) in ["kill-session -t 'V'", "run-shell -C -d 0 \"kill-session -t 'V'\"", "detach-client -s 'V'"].enumerated() {
+            let vid = try makeView(h, desk: desk, "website+\(n)", on: ids[n + 1])
+            try h.startClient("c\(n)", ["tmux", "-L", h.socket, "attach-session", "-t", vid,
+                                        ";", "set-option", "-t", vid, "destroy-unattached", "on"])
+            try waitFor(seconds: 30) { h.sessionFormat(vid, "#{session_attached}|#{destroy-unattached}") == "1|on" }
+            _ = h.tmux(["set-hook", "-t", vid, "session-window-changed[1089]", end.replacingOccurrences(of: "V", with: vid)])
+            made.append(vid)
+        }
+        clearLog(h)
+        for n in 0..<3 { #expect(h.tmux(["kill-window", "-t", ids[n + 1]]).exitCode == 0) }
+        try waitFor(seconds: 30) { h.sessionNames() == ["website"] && h.clients().isEmpty }
+        Thread.sleep(forTimeInterval: 1)
+        #expect(log(h) == ["closed \(made[2])"], "\(log(h))")
+    }
+
+    // MARK: 6. Formats
 
     /// The formats a hook can decide with, read for a session named by its id (as if-shell -F -t and
     /// set-option -F -t read them): a user option of the session inside a window loop, the group's
