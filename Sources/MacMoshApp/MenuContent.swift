@@ -1,12 +1,13 @@
 import MacMoshKit
 import SwiftUI
 
-/// The menu: the notice line, the rows `MenuLines.rows` gives, and Quit. It observes only
+/// The menu: the notice line, the rows `MenuLines.rows` gives, Open MacMosh and Quit. It observes only
 /// `MenuOnScreen`, which changes when `HoldStill` lets a different menu through (issue #107). Every
 /// choice about a row is made in `MenuRow`, where it is tested; this only draws it.
 struct MenuContent: View {
     @ObservedObject var screen: MenuOnScreen
     let actions: MenuActionRunner
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         Group {
@@ -17,11 +18,26 @@ struct MenuContent: View {
             }
             MenuRows(rows: screen.shown.menu.rows, run: run)
             Divider()
+            // A plain button like Quit, not a line of the menu's model, so the menu's lines and the log's
+            // "lines=" count do not change (main window design 7.2).
+            Button { openMacMosh() } label: { Text(verbatim: WindowWords.openLine) }
             Button("Quit MacMosh") { NSApplication.shared.terminate(nil) }
                 .keyboardShortcut("q")
         }
         // No `onAppear` here: macOS runs it once, when the app starts, not each time the menu
         // opens (seen on the first run, Task 20). The label in `MacMoshApp` hears the menu open.
+    }
+
+    /// Opens the MacMosh window, or brings it to the front, then asks for the app to come forward.
+    /// Apple, openWindow (macOS 13.0, https://developer.apple.com/documentation/swiftui/environmentvalues/openwindow):
+    /// "If the targeted scene is a Window, the system orders it to the front." An app with no Dock icon
+    /// is not made active by that, so: Apple, NSApplication `activate()` (macOS 14.0,
+    /// https://developer.apple.com/documentation/appkit/nsapplication/activate()): "Use this method to
+    /// request app activation; calling this method doesn't guarantee app activation." Whether it comes
+    /// in front of the terminal on a real Mac is for the sitting (design, section 11).
+    private func openMacMosh() {
+        openWindow(id: WindowWords.windowID)
+        NSApp.activate()
     }
 
     /// Does what a line or a row asks, then checks again.

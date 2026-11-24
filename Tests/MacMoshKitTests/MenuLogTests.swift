@@ -31,6 +31,18 @@ private final class Lines: @unchecked Sendable {
                 == "menu refreshed: symbol=plus.circle workhorses=0 lines=2")
     }
 
+    /// The main window's line (main window design, section 7.3). CI reads it, and checks that it is not
+    /// there at launch.
+    @Test func theWindowOpenedLineIsFixedWords() {
+        #expect(MenuLog.windowOpened == "window opened")
+    }
+
+    /// How the app comes to quit: the icon removed, and the quit itself.
+    @Test func theQuitLinesAreFixedWords() {
+        #expect(MenuLog.iconRemoved == "menu-bar icon removed: quitting")
+        #expect(MenuLog.quitting == "app quitting")
+    }
+
     /// Issue #107: a change held back while the menu is open with a submenu, and when it was shown.
     @Test func theHeldChangeLinesAreFixedWords() {
         #expect(MenuLog.held(.open) == "menu held a change: open with a submenu")
