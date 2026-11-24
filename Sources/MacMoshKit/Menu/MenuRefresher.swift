@@ -1,7 +1,8 @@
 import Combine
 import Foundation
 
-/// Holds the menu the app shows and refreshes it. All logic the app needs that can be tested lives here, not in a view.
+/// Builds the menu and refreshes it; the menu's view reads it through `MenuOnScreen`, which holds it still
+/// while it is open with a submenu. All logic the app needs that can be tested lives here, not in a view.
 @MainActor
 public final class MenuRefresher: ObservableObject {
     @Published public private(set) var menu: MenuLines
@@ -163,10 +164,15 @@ public final class MenuRefresher: ObservableObject {
     /// Does what a menu item asks, keeps the sentence it gives back as the `notice`, and checks again.
     /// The notice from the action before is cleared first.
     public func perform(_ item: MenuItem, using actions: MenuActionRunner) async {
+        await perform(item.action, title: item.title, using: actions)
+    }
+
+    /// The same for one action and the title of its line: a row's primary action, or a line in a submenu.
+    public func perform(_ action: MenuAction, title: String, using actions: MenuActionRunner) async {
         notice = nil
-        log(MenuLog.asked(item.action))
-        let outcome = await actions.outcome(of: item.action, title: item.title)
-        log(MenuLog.finished(item.action, summary: outcome.summary))
+        log(MenuLog.asked(action))
+        let outcome = await actions.outcome(of: action, title: title)
+        log(MenuLog.finished(action, summary: outcome.summary))
         notice = outcome.notice
         await refresh()
     }

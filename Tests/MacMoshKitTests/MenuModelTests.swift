@@ -13,30 +13,37 @@ private func menu(_ state: WorkhorseState, workhorse: Workhorse = .sample(), sta
 }
 
 @Suite struct MenuModelTests {
+    /// Changed on purpose for issue #107: the headline's submenu first, then the desk's row and its
+    /// submenu, then New desk….
     @Test func theReadyMenuMatchesTheDesign() {
         let menu = MenuModel.build([.checked(.sampleReady(id: "mbp", name: "MacBook Pro"))])
         let expected: [String] = [
-            "MacBook Pro · Ready", "website (2 windows: zsh, vim, open in 1 tab)", "New window in website",
-            "Rename website…", "Remove website…",
-            "New desk…", "Share screen", "Restart…", "Turn on lid-closed mode…",
+            "MacBook Pro · Ready", "Share screen", "Turn on lid-closed mode…", "Restart…", "",
             "Sign-ins working · Awake on power · Lid-closed mode off · On power, 82%",
-            "Home address reachable from here: yes",
+            "Home address reachable from here: yes", "", "Run the checklist…",
+            "website (2 windows: zsh, vim, open in 1 tab)", "Open website", "New window", "",
+            "Rename website…", "Remove website…", "New desk…",
         ]
         #expect(Array(titles(menu).prefix(expected.count)) == expected)
         #expect(menu.symbol == "checkmark.circle")
-        #expect(menu.items[1].action == .tab(["connect", "mbp", "website"]))
+        #expect(menu.items[9].action == .tab(["connect", "mbp", "website"]))
+        #expect(menu.items[10].action == .tab(["connect", "mbp", "website"]))
     }
 
+    /// Changed on purpose for issue #107: the positions are the new ones, and each line says whether it
+    /// opens a submenu or is inside one.
     @Test func theReadyMenuHasTheDesignsActionsAndIndents() {
         let menu = MenuModel.build([.checked(.sampleReady(id: "mbp"))])
-        #expect(menu.items[0].indent == 0)
-        #expect(menu.items[1].indent == 1)
-        #expect(menu.items[2].indent == 2)
-        #expect(menu.items[2].action == .run(["desk", "window", "mbp", "website"]))
+        #expect(menu.items[0].indent == 0 && menu.items[0].opensSubmenu && menu.items[0].action == .none)
+        #expect(menu.items[9].indent == 1 && menu.items[9].opensSubmenu && !menu.items[9].inSubmenu)
+        #expect(menu.items[11].indent == 2 && menu.items[11].inSubmenu)
+        #expect(menu.items[11].action == .run(["desk", "window", "mbp", "website"]))
         #expect(item(menu, "New desk…")?.action == .tab(["desk", "new", "mbp"]))
+        #expect(item(menu, "New desk…")?.inSubmenu == false)
         #expect(item(menu, "Share screen")?.action == .run(["screen", "mbp"]))
         #expect(item(menu, "Restart…")?.action == .tab(["restart", "mbp"]))
         #expect(item(menu, "Restart…")?.indent == 1)
+        #expect(item(menu, "Restart…")?.inSubmenu == true)
     }
 
     // MARK: the lid-closed switch
@@ -63,11 +70,13 @@ private func menu(_ state: WorkhorseState, workhorse: Workhorse = .sample(), sta
         #expect(item(m, "Turn on lid-closed mode…") == nil)
     }
 
-    @Test func theLidItemComesRightAfterRestart() {
+    /// Changed on purpose for issue #107: the headline's submenu reads Share screen, the lid line, Restart….
+    @Test func theLidItemComesRightBeforeRestart() {
         let t = titles(lidMenu(lid: 1))
         let restart = t.firstIndex(of: "Restart…")
         #expect(restart != nil)
-        #expect(restart.map { t[$0 + 1] } == "Turn off lid-closed mode…")
+        #expect(restart.map { t[$0 - 1] } == "Turn off lid-closed mode…")
+        #expect(restart.map { t[$0 - 2] } == "Share screen")
     }
 
     @Test func aMacWithNoBatteryHasNoLidItem() {
@@ -84,11 +93,15 @@ private func menu(_ state: WorkhorseState, workhorse: Workhorse = .sample(), sta
         #expect(!titles(m).contains { $0.contains("lid-closed mode") })
     }
 
-    @Test func theMenuEndsWithTheChecklistAndTheTwoButtons() {
+    /// Changed on purpose for issue #107: a Ready block ends with New desk…; its checklist is the last
+    /// line of the headline's submenu.
+    @Test func theMenuEndsWithNewDeskAndTheTwoButtons() {
         let menu = MenuModel.build([.checked(.sampleReady(id: "mbp"))])
         let last = Array(menu.items.suffix(4))
-        #expect(last[0].title == "Run the checklist…")
-        #expect(last[0].action == .tab(["prepare", "mbp", "--pause"]))
+        #expect(last[0].title == "New desk…")
+        #expect(last[0].action == .tab(["desk", "new", "mbp"]))
+        #expect(item(menu, "Run the checklist…")?.action == .tab(["prepare", "mbp", "--pause"]))
+        #expect(item(menu, "Run the checklist…")?.inSubmenu == true)
         #expect(last[1].isSeparator)
         #expect(last[2].title == "Add a Mac…")
         #expect(last[2].action == .tab(["pair"]))
@@ -133,18 +146,22 @@ private func menu(_ state: WorkhorseState, workhorse: Workhorse = .sample(), sta
         #expect(closed?.action == .tab(["connect", "mbp", "notes"]))
         #expect(closed?.indent == 1)
         // After the open desks and before New desk…, with no New window line: there is no desk to add one to.
+        // Changed on purpose for issue #107: its submenu starts with Open notes, then a separator.
         let at = titles(m).firstIndex(of: "notes (closed)")
-        #expect(at != nil && titles(m)[at! + 1] == "Rename notes…")
+        #expect(at.map { Array(titles(m)[($0 + 1)...($0 + 4)]) } == ["Open notes", "", "Rename notes…", "Remove notes…"])
         #expect(at != nil && titles(m)[at! - 1] == "Remove website…")
-        #expect(!titles(m).contains("New window in notes"))
+        #expect(item(m, "Open notes")?.action == .tab(["connect", "mbp", "notes"]))
     }
 
     // MARK: rename and remove under each desk
 
+    /// Changed on purpose for issue #107: the line reads New window, and a separator comes before Rename.
     @Test func anOpenDeskHasARenameLineAfterItsNewWindowLine() {
         let m = MenuModel.build([.checked(.sampleReady(id: "mbp"))])
-        let at = titles(m).firstIndex(of: "New window in website")
-        #expect(at.map { titles(m)[$0 + 1] } == "Rename website…")
+        let at = titles(m).firstIndex(of: "New window")
+        #expect(at.map { m.items[$0].action } == .run(["desk", "window", "mbp", "website"]))
+        #expect(at.map { m.items[$0 + 1].isSeparator } == true)
+        #expect(at.map { titles(m)[$0 + 2] } == "Rename website…")
         let rename = item(m, "Rename website…")
         #expect(rename?.action == .tab(["desk", "rename", "mbp", "website"]))
         #expect(rename?.indent == 2)
@@ -160,7 +177,8 @@ private func menu(_ state: WorkhorseState, workhorse: Workhorse = .sample(), sta
         #expect(remove?.indent == 2)
     }
 
-    /// The order the design draws: each desk, then its own lines, then New desk….
+    /// The order the design draws: each desk, then its own lines, then New desk…. Changed on purpose for
+    /// issue #107: each desk's lines are its submenu's, starting with Open.
     @Test func theLinesUnderEachDeskComeInTheDesignsOrder() {
         var status = HostStatus.sampleWithDesk
         status.definitions = [
@@ -169,13 +187,15 @@ private func menu(_ state: WorkhorseState, workhorse: Workhorse = .sample(), sta
         ]
         let m = menu(.ready(signIns: true), workhorse: .sample(id: "mbp"), status: status)
         let from = titles(m).firstIndex { $0.hasPrefix("website (") }
-        let lines = from.map { Array(titles(m)[$0..<($0 + 7)]) }
+        let lines = from.map { Array(titles(m)[$0..<($0 + 11)]) }
         #expect(lines == [
-            "website (2 windows: zsh, vim, open in 1 tab)", "New window in website", "Rename website…", "Remove website…",
-            "notes (closed)", "Rename notes…", "Remove notes…",
+            "website (2 windows: zsh, vim, open in 1 tab)", "Open website", "New window", "", "Rename website…",
+            "Remove website…", "notes (closed)", "Open notes", "", "Rename notes…", "Remove notes…",
         ])
-        #expect(from.map { titles(m)[$0 + 7] } == "New desk…")
-        #expect(from.map { m.items[$0..<($0 + 7)].map(\.indent) } == [1, 2, 2, 2, 1, 2, 2])
+        #expect(from.map { titles(m)[$0 + 11] } == "New desk…")
+        #expect(from.map { m.items[$0..<($0 + 11)].map(\.indent) } == [1, 2, 2, 2, 2, 2, 1, 2, 2, 2, 2])
+        #expect(from.map { m.items[$0..<($0 + 11)].map(\.inSubmenu) }
+                == [false, true, true, true, true, true, false, true, true, true, true])
         #expect(item(m, "Remove notes…")?.action == .tab(["desk", "remove", "mbp", "notes", "--ask"]))
     }
 
@@ -186,8 +206,9 @@ private func menu(_ state: WorkhorseState, workhorse: Workhorse = .sample(), sta
                   permanent: true),
         ]
         let m = menu(.ready(signIns: true), workhorse: .sample(id: "mbp"), status: status)
+        // Changed on purpose for issue #107: Open notes and a separator come first.
         let at = titles(m).firstIndex(of: "notes (closed)")
-        #expect(at.map { titles(m)[$0 + 1] } == "Rename notes…")
+        #expect(at.map { titles(m)[$0 + 3] } == "Rename notes…")
         #expect(item(m, "Rename notes…")?.action == .tab(["desk", "rename", "mbp", "notes"]))
         #expect(item(m, "Rename notes…")?.indent == 2)
     }
@@ -224,11 +245,15 @@ private func menu(_ state: WorkhorseState, workhorse: Workhorse = .sample(), sta
 
     // MARK: one test per row of the state table
 
+    /// Changed on purpose for issue #107: the hint is the first line at the top level under the headline,
+    /// after the headline's submenu in the flat lines.
     @Test func readyWithSignInsOffAddsTheHintAndFix() {
         let m = menu(.ready(signIns: false), status: .sampleWithDesk)
         #expect(m.symbol == "exclamationmark.circle")
         #expect(titles(m)[0] == "MacBook Pro · Ready, sign-ins off")
-        #expect(titles(m)[1] == "Tools that keep logins in the keychain look signed out here.")
+        let top = m.items.filter { !$0.inSubmenu }.map(\.title)
+        #expect(top[1] == "Tools that keep logins in the keychain look signed out here.")
+        #expect(top[2] == "Fix…")
         #expect(item(m, "Fix…")?.action == .tab(["prepare", "mbp", "--restart-desk-server", "--pause"]))
         #expect(item(m, "Share screen") != nil)
     }

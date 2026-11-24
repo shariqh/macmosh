@@ -49,27 +49,52 @@ import Testing
         }
     }
 
+    /// Changed on purpose for issue #107: the lid switch comes before Restart…, the menu's order.
     @Test func aLaptopAlsoGetsItsLidSwitch() {
         for (lid, title, word) in [(1, "Turn off lid-closed mode…", "off"), (0, "Turn on lid-closed mode…", "on")] as [(Int?, String, String)] {
             var status = HostStatus.sampleWithDesk
             status.power.disableSleep = lid
             let buttons = ButtonRules.forReady(.sample(.ready(signIns: true), status: status))
-            #expect(titles(buttons) == ["New desk…", "Share screen", "Restart…", title])
-            #expect(buttons.last == ActionButton(key: "lid", title: title, action: .tab(["power", "mbp", "lid", word])))
+            #expect(titles(buttons) == ["New desk…", "Share screen", title, "Restart…"])
+            #expect(buttons[2] == ActionButton(key: "lid", title: title, action: .tab(["power", "mbp", "lid", word])))
         }
         var unknown = HostStatus.sampleWithDesk
         unknown.power.disableSleep = nil
-        #expect(titles(ButtonRules.forReady(.sample(.ready(signIns: true), status: unknown))).last == "Turn on lid-closed mode…")
+        #expect(titles(ButtonRules.forReady(.sample(.ready(signIns: true), status: unknown)))[2] == "Turn on lid-closed mode…")
     }
 
+    /// Changed on purpose for issue #107: a desk's buttons start with Open (what a click on the desk's row
+    /// does too), and the window line reads New window, since it is in the desk's own submenu.
     @Test func anOpenDeskGetsANewWindowLineAndAClosedOneDoesNot() {
         #expect(ButtonRules.forDesk(workhorse: "mbp", desk: "website", isOpen: true) == [
-            ActionButton(key: "window", title: "New window in website", action: .run(["desk", "window", "mbp", "website"])),
+            ActionButton(key: "open", title: "Open website", action: .tab(["connect", "mbp", "website"])),
+            ActionButton(key: "window", title: "New window", action: .run(["desk", "window", "mbp", "website"])),
             ActionButton(key: "rename", title: "Rename website…", action: .tab(["desk", "rename", "mbp", "website"])),
             ActionButton(key: "remove", title: "Remove website…", action: .tab(["desk", "remove", "mbp", "website", "--ask"])),
         ])
-        #expect(titles(ButtonRules.forDesk(workhorse: "mbp", desk: "notes", isOpen: false)) == ["Rename notes…", "Remove notes…"])
+        #expect(titles(ButtonRules.forDesk(workhorse: "mbp", desk: "notes", isOpen: false))
+                == ["Open notes", "Rename notes…", "Remove notes…"])
         #expect(ButtonRules.connect(workhorse: "mbp", desk: "website") == .tab(["connect", "mbp", "website"]))
+    }
+
+    /// The headline's submenu (issue #107): Share screen, a laptop's lid-closed switch, Restart…. New desk…
+    /// stays at the top level. None in any other state.
+    @Test func aReadyHeadlineGetsShareTheLidSwitchAndRestart() {
+        var lid = HostStatus.sampleWithDesk
+        lid.power.disableSleep = 1
+        #expect(ButtonRules.forHeadline(.sample(.ready(signIns: true), status: lid)) == [
+            ActionButton(key: "share", title: "Share screen", action: .run(["screen", "mbp"])),
+            ActionButton(key: "lid", title: "Turn off lid-closed mode…", action: .tab(["power", "mbp", "lid", "off"])),
+            ActionButton(key: "restart", title: "Restart…", action: .tab(["restart", "mbp"])),
+        ])
+        var desktop = HostStatus.sampleWithDesk
+        desktop.battery = .init(present: false, onAC: nil, percent: nil)
+        #expect(titles(ButtonRules.forHeadline(.sample(.ready(signIns: false), status: desktop))) == ["Share screen", "Restart…"])
+        #expect(ButtonRules.forHeadline(.sample(.locked, status: .sampleWithDesk)).isEmpty)
+        #expect(ButtonRules.newDesk("mbp") == ActionButton(key: "newDesk", title: "New desk…", action: .tab(["desk", "new", "mbp"])))
+        // forReady is exactly what the menu builds, in its order: New desk…, then the headline's buttons.
+        let r = CheckResult.sample(.ready(signIns: true), status: lid)
+        #expect(ButtonRules.forReady(r) == [ButtonRules.newDesk("mbp")] + ButtonRules.forHeadline(r))
     }
 
     @Test func everyWorkhorseHasTheChecklistAndTheMenuEndsWithTwoButtons() {
