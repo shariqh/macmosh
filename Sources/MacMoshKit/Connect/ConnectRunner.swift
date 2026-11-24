@@ -136,6 +136,7 @@ public struct ConnectRunner: Sendable {
                              environment: [String: String], noting: TabNoting) -> Bool {
         guard let started = noting.started else { return false }
         let record = TabRecord(label: label, workhorse: w.id, desk: desk.value, askedWindow: tab.askedWindow,
+                               target: tab.recordWord,
                                pid: noting.pid, started: started, tty: noting.tty,
                                terminal: TabRecord.Terminal(environment: environment), openedAt: noting.now())
         do {

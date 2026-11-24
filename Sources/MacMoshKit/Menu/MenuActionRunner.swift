@@ -17,6 +17,7 @@ public struct MenuActionRunner: Sendable {
     private let runner: CommandRunner
     private let records: TabRecordStore
     private let pause: @Sendable (Duration) async -> Void
+    private let now: @Sendable () -> Date
 
     /// How long a background command may run before it is stopped.
     static let runLimit: Duration = .seconds(30)
@@ -33,14 +34,16 @@ public struct MenuActionRunner: Sendable {
 
     /// `macmoshPath` is the command inside the app bundle, `Contents/Helpers/macmosh`. `records` are this
     /// Mac's tab records, which a focus action reads. `pause` is how the wait between tabs is done; tests
-    /// pass one that doesn't wait.
+    /// pass one that doesn't wait. `now` is the clock that says whether a record is fresh.
     public init(macmoshPath: String, tabs: TabOpening, runner: CommandRunner, records: TabRecordStore,
-                pause: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }) {
+                pause: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) },
+                now: @escaping @Sendable () -> Date = { Date() }) {
         self.macmoshPath = macmoshPath
         self.tabs = tabs
         self.runner = runner
         self.records = records
         self.pause = pause
+        self.now = now
     }
 
     /// Does what a menu item asks. Returns a sentence to show the user when there is one
@@ -81,13 +84,52 @@ public struct MenuActionRunner: Sendable {
     }
 
     /// How one tab's opening went: opened (with the opener's sentence, when it had to open it another
-    /// way), or not, with the summary and sentence that say why.
+    /// way), a tab opened a moment ago for the same thing brought forward instead, or not, with the summary
+    /// and sentence that say why.
     private enum TabTry {
         case opened(notice: String?)
+        case alreadyOpen
         case failed(ActionOutcome)
     }
 
+    /// The tab this Mac opened a moment ago for what `arguments` would open, when there is one (menu design
+    /// 8.2): for `connect <id> <desk> --window @n`, a record of that workhorse and desk that asked for `@n`;
+    /// for `connect <id> <desk> --view`, one made with `--view`. It must be younger than `DeskTabs.freshFor`
+    /// (either way, in case the clock moved back), its process still the one that wrote it, and its device a
+    /// terminal tab's; the newest such. The menu shows such a tab only once a check has seen it, and the tab
+    /// writes its record only after its own check, so a second click in between would open a second tab.
+    private func freshTab(for arguments: [String]) -> TabRecord? {
+        guard arguments.count >= 4, arguments[0] == "connect" else { return nil }
+        let (id, desk, option) = (arguments[1], arguments[2], Array(arguments.dropFirst(3)))
+        let same: (TabRecord) -> Bool
+        if option.count == 2, option[0] == "--window", HostStatus.isWindowId(option[1]) {
+            same = { $0.askedWindow == option[1] }
+        } else if option == ["--view"] {
+            same = { $0.target == TabTarget.view.recordWord }
+        } else {
+            return nil
+        }
+        let time = now()
+        return records.records().last { record in
+            record.workhorse == id && record.desk == desk && same(record)
+                && abs(time.timeIntervalSince(record.openedAt)) < DeskTabs.freshFor
+                && records.isLive(record) && TabRecord.isTerminalDevice(record.tty)
+        }
+    }
+
     private func tryTab(_ arguments: [String]) async -> TabTry {
+        if let record = freshTab(for: arguments) {
+            do {
+                if try await tabs.select(tty: record.tty, terminal: record.terminal) == .selected { return .alreadyOpen }
+                records.remove(label: record.label)
+            } catch LaunchError.automationDenied(let app) {
+                return .failed(ActionOutcome(summary: "not allowed to control the terminal app", notice: Self.notAllowed(app)))
+            } catch LaunchError.failed(let reason) {
+                return .failed(ActionOutcome(summary: MenuLog.selectFailure(reason), notice: "Couldn't bring that tab forward. \(reason)"))
+            } catch {
+                return .failed(ActionOutcome(summary: MenuLog.selectFailure(""), notice: "Couldn't bring that tab forward."))
+            }
+        }
         let command: TabCommand
         do {
             command = try TabCommand(macmoshPath: macmoshPath, arguments: arguments)
@@ -111,6 +153,8 @@ public struct MenuActionRunner: Sendable {
         switch await tryTab(arguments) {
         case .opened(let notice):
             return ActionOutcome(summary: notice == nil ? "tab opened" : "tab opened another way", notice: notice)
+        case .alreadyOpen:
+            return ActionOutcome(summary: MenuLog.tabAlreadyOpen, notice: nil)
         case .failed(let outcome):
             return outcome
         }
@@ -118,9 +162,10 @@ public struct MenuActionRunner: Sendable {
 
     /// Each tab in order, through the same path as one tab, with `tabsPause` between two. It stops at the
     /// first that doesn't open and says so as one tab would, after how many opened when any did. When
-    /// tabs opened another way, the first such sentence is kept.
+    /// tabs opened another way, the first such sentence is kept. A tab opened a moment ago that is brought
+    /// forward instead counts as opened.
     private func openTabs(_ list: [[String]]) async -> ActionOutcome {
-        var opened = 0, anotherWay = 0
+        var opened = 0, anotherWay = 0, alreadyOpen = 0
         var notice: String?
         for (i, arguments) in list.enumerated() {
             if i > 0 { await pause(Self.tabsPause) }
@@ -131,13 +176,16 @@ public struct MenuActionRunner: Sendable {
                     anotherWay += 1
                     notice = notice ?? said
                 }
+            case .alreadyOpen:
+                opened += 1
+                alreadyOpen += 1
             case .failed(let failure):
                 let sentence = failure.notice ?? "The tab didn't open."
                 return ActionOutcome(summary: MenuLog.tabsStopped(opened: opened, of: list.count, then: failure.summary),
                                      notice: opened == 0 ? sentence : "\(opened) of \(list.count) tabs opened. \(sentence)")
             }
         }
-        return ActionOutcome(summary: MenuLog.tabsOpened(opened, anotherWay: anotherWay), notice: notice)
+        return ActionOutcome(summary: MenuLog.tabsOpened(opened, anotherWay: anotherWay, alreadyOpen: alreadyOpen), notice: notice)
     }
 
     /// Brings forward the tab labelled `label` (menu design 6.2). The record is read; one that is missing, whose
@@ -182,6 +230,8 @@ public struct MenuActionRunner: Sendable {
         case .opened(let said?):
             return ActionOutcome(summary: MenuLog.tabGone(why, then: "opened a new one another way"),
                                  notice: "\(Self.tabClosed) \(said)")
+        case .alreadyOpen:
+            return ActionOutcome(summary: MenuLog.tabGone(why, then: "selected another tab on its window"), notice: nil)
         case .failed(let failure):
             return ActionOutcome(summary: MenuLog.tabGone(why, then: "then \(failure.summary)"), notice: failure.notice)
         }

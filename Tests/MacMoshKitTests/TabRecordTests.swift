@@ -46,6 +46,25 @@ private func mode(_ url: URL) throws -> Int {
         #expect((object["pid"] as? NSNumber)?.intValue == 4242)
     }
 
+    /// The option the tab was opened with is kept as `target` (review of #127); a record written before
+    /// it existed has no such key and still reads, with no target.
+    @Test func theTargetIsKeptAndAnOlderRecordWithoutItStillReads() throws {
+        let store = TabRecordStore(paths: try temporaryPaths())
+        var record = sampleTabRecord(label: "00ff00ff00ff00ff", askedWindow: "")
+        record.target = "view"
+        try store.write(record)
+        let file = store.folder.appendingPathComponent("00ff00ff00ff00ff.json")
+        let object = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any])
+        #expect(object["target"] as? String == "view")
+        #expect(store.record(label: "00ff00ff00ff00ff") == record)
+
+        let older = #"{"askedWindow":"@3","desk":"website","label":"0a0a0a0a0a0a0a0a","openedAt":"2027-01-15T08:00:00Z","pid":4242,"started":1,"terminal":"iterm2","tty":"/dev/ttys004","workhorse":"mbp"}"#
+        try Data(older.utf8).write(to: store.folder.appendingPathComponent("0a0a0a0a0a0a0a0a.json"))
+        let read = try #require(store.record(label: "0a0a0a0a0a0a0a0a"))
+        #expect(read.target == nil)
+        #expect(read.askedWindow == "@3")
+    }
+
     @Test func onlyThePersonCanReadTheFolderAndTheFile() throws {
         let paths = try temporaryPaths()
         let store = TabRecordStore(paths: paths)

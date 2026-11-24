@@ -182,7 +182,7 @@ import Testing
                                  environment: ["TERM_PROGRAM": "Apple_Terminal"], interactive: interactive)
         #expect(code == 0)
         #expect(seen.value == [TabRecord(label: Self.label, workhorse: "mbp", desk: "website", askedWindow: "@3",
-                                         pid: 777, started: 1_800_000_000_000_001, tty: "/dev/ttys009",
+                                         target: "window", pid: 777, started: 1_800_000_000_000_001, tty: "/dev/ttys009",
                                          terminal: .terminal, openedAt: Date(timeIntervalSince1970: 1_800_000_100))])
         #expect(TabRecordStore(paths: paths).records().isEmpty)
         let words = mode == .mosh ? Array(interactive.calls[0].suffix(5)) : [interactive.calls[0].last ?? ""]
@@ -197,6 +197,7 @@ import Testing
             let interactive = FakeInteractive(onRun: { _ in seen.value = TabRecordStore(paths: paths).records() })
             _ = await connect(check(), mode: .ssh, tab: target, noting: noting(paths), interactive: interactive)
             #expect(seen.value.map(\.askedWindow) == [""])
+            #expect(seen.value.map(\.target) == [target.recordWord])
             #expect(seen.value.map(\.terminal) == [.iterm2])
         }
     }
