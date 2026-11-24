@@ -165,6 +165,17 @@ private func locked(_ w: Workhorse = attic) -> Gathered {
         #expect(s2.board.workhorses.first?.hint?.hasPrefix("Last seen 14:02") == false)
     }
 
+    /// The page the window shows for a workhorse is laid out with the time and time zone passed in.
+    @Test func aWorkhorsesPageUsesTheTimePassedIn() async throws {
+        let (refresher, screen) = make(Script([[ready()]]), saved: SavedList([attic]))
+        await screen.reloadList()
+        await refresher.refresh()
+        let w = try #require(screen.board.workhorses.first)
+        #expect(screen.page("attic") == WorkhorsePage(w, now: formatNow, timeZone: formatZone))
+        #expect(screen.page("attic")?.checked == "Checked 14:02")
+        #expect(screen.page("gone") == nil)
+    }
+
     /// The window adds exactly one check, when it opens, and the log says it opened.
     @Test func openingTheWindowLogsItAndChecksOnce() async {
         let script = Script([[ready()]])

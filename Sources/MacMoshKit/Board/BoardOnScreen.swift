@@ -39,6 +39,8 @@ public final class BoardOnScreen: ObservableObject {
     private var order: [Workhorse] = []
     /// Numbers each read of the saved list, so that a slow earlier read can't replace a later one.
     private var reads: UInt64 = 0
+    /// The number of the read whose list the board uses.
+    private var shownRead: UInt64 = 0
     private var watches: [AnyCancellable] = []
 
     /// Follows `refresher` from now on. `load` reads the saved list (the refresher's own), `log` takes
@@ -84,6 +86,12 @@ public final class BoardOnScreen: ObservableObject {
         startReading()
     }
 
+    /// The page for the workhorse with that id, laid out with the time and time zone passed in; nil when
+    /// it is not on the board.
+    public func page(_ id: String) -> WorkhorsePage? {
+        board.workhorses.first { $0.id == id }.map { WorkhorsePage($0, now: now(), timeZone: timeZone) }
+    }
+
     /// The window came on screen: says so in the log, reads the saved list, and asks for one check.
     /// This is the only check the window adds; Check now asks for another.
     public func opened() async {
@@ -93,12 +101,13 @@ public final class BoardOnScreen: ObservableObject {
     }
 
     /// Reads the saved list off the main thread and rebuilds the board with it. A list that can't be
-    /// read, or a read that a later one has overtaken, changes nothing.
+    /// read changes nothing, and neither does a read that started before one already shown.
     public func reloadList() async {
         reads &+= 1
         let mine = reads
         let load = self.load
-        guard let list = try? await Task.detached(operation: { try load() }).value, mine == reads else { return }
+        guard let list = try? await Task.detached(operation: { try load() }).value, mine > shownRead else { return }
+        shownRead = mine
         order = list
         rebuild()
     }
