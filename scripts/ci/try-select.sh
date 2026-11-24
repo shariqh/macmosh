@@ -7,7 +7,8 @@
 #
 # SCRIPTS holds iterm2-select.applescript and terminal-select.applescript, which the test
 # SelectScriptFiles writes from the app's own constants. Each select runs as the app runs it:
-# osascript -e <script> <tty>, the script's text unchanged.
+# osascript -e <script> <tty>, the script's text unchanged. Before the first Apple event it writes the
+# kind of privacy rows GitHub's runner images use to let the runner's agent control the app (grant).
 #
 # The cases: (a) a tab in a window that is not in front (for iTerm2 also not the selected tab of its
 # window); (b) a tab in a minimized window; (c) the tab that is already in front; (d) a tty no tab
@@ -211,60 +212,64 @@ finish() {
 say "$name $(defaults read "$bundle/Contents/Info.plist" CFBundleShortVersionString) on $os ($(sw_vers -productVersion))"
 say "select script: $(printf '%s' "$select_script" | shasum -a 256 | cut -d' ' -f1), $(printf '%s' "$select_script" | wc -c | tr -d ' ') bytes"
 bundle_id=$(defaults read "$bundle/Contents/Info.plist" CFBundleIdentifier)
-lim 20 open -a "$bundle"
-sleep 8
-snap started
 
-# tcc_log <step>: what macOS's privacy service (TCC) said about Apple events in the last 3 minutes.
+# tcc_log <step>: what macOS's privacy service (TCC) logged in the last 3 minutes about Apple events,
+# the runner's agent, osascript or this app.
 tcc_log() {
     lim 60 /usr/bin/log show --last 3m --style compact --predicate 'subsystem == "com.apple.TCC"' 2>/dev/null \
-        | grep -E "AppleEvents|$bundle_id" | tail -n 60 > "$OUT/$app-tcc-$1.txt"
+        | grep -E "AppleEvents|hosted-compute|osascript|$bundle_id" | tail -n 80 > "$OUT/$app-tcc-$1.txt"
     say "TCC log ($1): $(wc -l < "$OUT/$app-tcc-$1.txt" | tr -d ' ') lines in $app-tcc-$1.txt"
-    grep -m 5 -oE "(responsible|attribution)[^}]{0,200}" "$OUT/$app-tcc-$1.txt" | sed 's/^/  /' | tee -a "$LOG"
-}
-
-# probe <step>: one real Apple event (AppleScript answers an app's `version` without one). True when it answered.
-probe() {
-    osa 20 "tell application \"$name\" to count windows"
-    snap "probe-$1"
-    tcc_log "$1"
-    if [ "$STATUS" -eq 0 ]; then
-        result PASS "osascript drives $name ($1)" "$name counted $ANSWER window(s)"
-        return 0
-    fi
-    if [ "$STATUS" -eq 142 ]; then
-        result NOTE "osascript drives $name ($1)" "no answer in 20 s (a consent window may be waiting; see probe-$1.png)"
-    else
-        result NOTE "osascript drives $name ($1)" "osascript exit $STATUS: $ERR"
-    fi
-    return 1
 }
 
 # grant: what GitHub's runner images do to let a process send Apple events (actions/runner-images,
-# images/macos/scripts/build/configure-tccdb-macos.sh: a kTCCServiceAppleEvents row in the user's and the
-# system's TCC.db with sqlite3), for this app's bundle id and the clients the image names.
+# images/macos/scripts/build/configure-tccdb-macos.sh): a kTCCServiceAppleEvents row in the user's and the
+# system's TCC.db, written with sqlite3, here for this app. As the image's rows for the runner's agent do,
+# each row carries the target's code requirement, compiled with csreq from what codesign says.
+#
+# Why: on the first two runs, with no row, the first Apple event to either app brought up "“hosted-compute-
+# agent” wants access to control “iTerm”." (or “Terminal”), and osascript waited until it was stopped. Rows
+# added while that window was up did not help, so they are written before the first Apple event.
 grant() {
-    local ts client row
+    local ts client row req hex db
     ts=$(date +%s)
+    req=$(codesign -d -r- "$bundle" 2>&1 | sed -n 's/^designated => //p')
+    printf '%s' "$req" | lim 20 csreq -r- -b "$OUT/$app-requirement.bin" >> "$LOG" 2>&1
+    hex=$(xxd -p "$OUT/$app-requirement.bin" | tr -d '\n')
+    say "code requirement of $bundle_id: $req (${#hex} hex digits)"
     for client in /opt/hca/hosted-compute-agent /usr/bin/osascript /bin/bash; do
-        row="'kTCCServiceAppleEvents','$client',1,2,3,1,NULL,NULL,0,'$bundle_id',NULL,NULL,$ts,NULL,NULL,'UNUSED',$ts"
+        row="'kTCCServiceAppleEvents','$client',1,2,3,1,NULL,NULL,0,'$bundle_id',X'$hex',NULL,$ts,NULL,NULL,'UNUSED',$ts"
         lim 20 sqlite3 "$HOME/Library/Application Support/com.apple.TCC/TCC.db" "INSERT OR REPLACE INTO access VALUES($row);" >> "$LOG" 2>&1
         say "user TCC.db: $client -> $bundle_id: exit $?"
         lim 20 sudo sqlite3 "/Library/Application Support/com.apple.TCC/TCC.db" "INSERT OR REPLACE INTO access VALUES($row);" >> "$LOG" 2>&1
         say "system TCC.db: $client -> $bundle_id: exit $?"
     done
+    for db in "$HOME/Library/Application Support/com.apple.TCC/TCC.db" "/Library/Application Support/com.apple.TCC/TCC.db"; do
+        lim 20 sudo sqlite3 "$db" "SELECT client, indirect_object_identifier, auth_value, length(indirect_object_code_identity) FROM access WHERE service = 'kTCCServiceAppleEvents' AND indirect_object_identifier = '$bundle_id';" 2>&1 \
+            | sed "s|^|read back ($db): |" | tee -a "$LOG"
+    done
     say "restart the privacy service: user $(killall tccd 2>&1; echo "exit $?"), system $(sudo killall tccd 2>&1; echo "exit $?")"
     sleep 3
 }
 
-if ! probe as-is; then
-    say "osascript could not drive $name as the runner comes; adding the runner image's kind of privacy rows"
-    grant
-    if ! probe after-grant; then
-        result SKIPPED "osascript drives $name" "the runner would not let osascript control $name, as it comes or with the runner image's privacy rows; see $app-driver.log and $app-tcc-*.txt"
-        finish
+grant
+lim 20 open -a "$bundle"
+sleep 8
+snap started
+
+# One real Apple event (AppleScript answers an app's `version` without sending one).
+osa 20 "tell application \"$name\" to count windows"
+snap probe
+tcc_log probe
+if [ "$STATUS" -ne 0 ]; then
+    if [ "$STATUS" -eq 142 ]; then
+        why="no answer in 20 s; see pictures/$os-$app-probe.png for a consent window"
+    else
+        why="osascript exit $STATUS: $ERR"
     fi
+    result SKIPPED "osascript drives $name" "the runner would not let osascript control $name, with the runner image's kind of privacy rows ($why)"
+    finish
 fi
+result PASS "osascript drives $name" "$name counted $ANSWER window(s)"
 
 osa 60 "$make_windows"
 if [ "$STATUS" -ne 0 ]; then
