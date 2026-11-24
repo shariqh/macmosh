@@ -138,6 +138,13 @@ import Testing
         #expect(outcome.notice == "macOS hasn't let MacMosh control iTerm2, so the tab was opened another way.")
     }
 
+    @Test func oneTabOpensWithNoPause() async {
+        let tabs = RecordingTabs()
+        let outcome = await pausing(tabs).outcome(of: .tabs([Self.windows[0]]), title: "x")
+        #expect(outcome == ActionOutcome(summary: "tabs opened: 1", notice: nil))
+        #expect(tabs.events == ["open \(Self.path) connect mbp website --window @1"])
+    }
+
     @Test func noTabsOpensNothingAndDoesNotPause() async {
         let tabs = RecordingTabs()
         #expect(await pausing(tabs).outcome(of: .tabs([]), title: "x") == ActionOutcome(summary: "tabs opened: 0", notice: nil))
@@ -275,6 +282,19 @@ import Testing
                                      tabs: RecordingTabs(), runner: FakeRunner { _ in FakeRunner.ok() },
                                      records: scratchTabRecords())
         #expect(await moved.outcome(of: Self.focus, title: "x").notice == MenuActionRunner.moveIt)
+    }
+
+    /// The terminal answers `gone` and the new tab doesn't open either: the record is still removed, and the
+    /// notice is a single tab's.
+    @Test func aGoneTabWhoseFallbackFailsIsRemovedAndSaysWhy() async throws {
+        let tabs = RecordingTabs(failure: LaunchError.failed("execution error: iTerm2 got an error. (-1728)"),
+                                 selection: .success(.gone))
+        let store = try records()
+        let outcome = await focusing(tabs, store).outcome(of: Self.focus, title: "x")
+        #expect(tabs.events == ["select /dev/ttys004 iterm2", "open \(Self.path) connect mbp website --window @3"])
+        #expect(outcome == ActionOutcome(summary: "tab gone (not in the terminal), then tab did not open (error -1728)",
+                                         notice: "The tab didn't open. execution error: iTerm2 got an error. (-1728)"))
+        #expect(store.record(label: Self.label) == nil)
     }
 
     @Test func aFallbackOpenedAnotherWaySaysBoth() async throws {

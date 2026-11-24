@@ -14,7 +14,8 @@ import Testing
                   fileExists: { installed.contains($0) })
     }
 
-    /// The scripts of the design's section 8.4, word for word.
+    /// The scripts of the design's section 8.4, changed after review so that nothing acts on a loop's
+    /// positional reference once a window may have moved (see `aMatchIsHeldByAReferenceThatDoesNotMove`).
     static let iTermScript = """
     on run argv
         set wanted to item 1 of argv
@@ -23,9 +24,13 @@ import Testing
                 repeat with t in tabs of w
                     repeat with s in sessions of t
                         if (tty of s) is wanted then
-                            select w
-                            select t
-                            select s
+                            set theWindow to contents of w
+                            set theTab to contents of t
+                            set theSession to contents of s
+                            select theTab
+                            select theSession
+                            if miniaturized of theWindow then set miniaturized of theWindow to false
+                            select theWindow
                             activate
                             return "ok"
                         end if
@@ -44,9 +49,10 @@ import Testing
             repeat with w in windows
                 repeat with t in tabs of w
                     if (tty of t) is wanted then
-                        if miniaturized of w then set miniaturized of w to false
+                        set theWindowID to id of w
                         set selected of t to true
-                        set index of w to 1
+                        if miniaturized of window id theWindowID then set miniaturized of window id theWindowID to false
+                        set index of window id theWindowID to 1
                         activate
                         return "ok"
                     end if
@@ -77,6 +83,31 @@ import Testing
         #expect(answer == .selected)
         #expect(runner.calls.map(\.argv) == [["osascript", "-e", Self.terminalScript, "/dev/ttys012"]])
         #expect(AppleTerminalLauncher.selectScript == Self.terminalScript)
+    }
+
+    /// A loop variable over `windows` is a reference by position ("item 2 of windows"), looked up again each
+    /// time it is used, and both terminals list their windows front to back. Once a window is raised or
+    /// un-minimized the positions move, so after a match no select or set may go through `w`, `t` or `s`
+    /// except before anything has moved: iTerm2 takes the app's own references first (`contents of`), and
+    /// Terminal selects the tab first and then names the window by its id.
+    @Test func aMatchIsHeldByAReferenceThatDoesNotMove() {
+        func afterMatch(_ script: String) -> [String] {
+            let lines = script.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
+            let start = lines.firstIndex { $0.hasPrefix("if (tty of") }!
+            return Array(lines[(start + 1)...].prefix { $0 != "return \"ok\"" })
+        }
+        func words(_ line: String) -> Set<String> { Set(line.split(separator: " ").map(String.init)) }
+        let iTerm = afterMatch(ITermLauncher.selectScript)
+        #expect(Array(iTerm.prefix(3)) == ["set theWindow to contents of w", "set theTab to contents of t",
+                                           "set theSession to contents of s"])
+        for line in iTerm.dropFirst(3) {
+            #expect(words(line).isDisjoint(with: ["w", "t", "s"]), "\(line)")
+        }
+        let terminal = afterMatch(AppleTerminalLauncher.selectScript)
+        #expect(Array(terminal.prefix(2)) == ["set theWindowID to id of w", "set selected of t to true"])
+        for line in terminal.dropFirst(2) {
+            #expect(words(line).isDisjoint(with: ["w", "t"]), "\(line)")
+        }
     }
 
     /// The device is never part of the script's text.

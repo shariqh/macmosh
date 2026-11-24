@@ -26,12 +26,25 @@ public struct ITermLauncher: TerminalLauncher {
     /// the script's text.
     ///
     /// This script has never run on a real Mac: it is tried on the daily Mac before the rollout, with several
-    /// windows, a minimized window, a window on another Space, and no new permission prompt (design 11.1).
-    /// Every term in it is in iTerm2's dictionary, as the design quotes it (section 4.3): a window's `select`,
-    /// "Gives the window keyboard focus and brings it to the front."; a tab's `select`, "Selects the tab,
-    /// making it the current tab for the window."; the `select` command, "Make receiver visible and
-    /// selected."; and a session's `tty`, "The name of the session's tty (e.g., /dev/ttys01). Returns a
-    /// string." What selecting does with a minimized window or one on another Space is not documented.
+    /// windows and the wanted one not in front, a minimized window, a window on another Space, and no new
+    /// permission prompt (design 11.1).
+    ///
+    /// It differs from design 8.4 after review. A loop variable is a reference by position: the AppleScript
+    /// Language Guide ("repeat with loopVariable (in list)") says it "takes on the value of item 1 of list,
+    /// item 2 of list, item 3 of list, and so on", and "To access the actual value of an item in the list,
+    /// rather than a reference to the item, use the contents of property". iTerm2 lists its windows front
+    /// to back (`<element type="window">` with `<cocoa key="orderedScriptingWindows"/>`), so once a window
+    /// is raised, `item 2 of windows` is another window. The script therefore takes `contents of` each
+    /// match before any select, selects the tab and session before the window, and un-minimizes the window
+    /// (`miniaturized`, "Whether the window is currently minimized.", which is writable).
+    ///
+    /// Its terms are in iTerm2's installed dictionary (`sdef`, 3.7.7): window, tab and session respond to
+    /// `select`, the command "Make receiver visible and selected."; a session has `tty`; a window has
+    /// `miniaturized`. The dictionary describes no further what each `select` does. iTerm2's page "Scripting
+    /// with AppleScript" (design source [10]) says a window's `select` "Gives the window keyboard focus and
+    /// brings it to the front.", a tab's "Selects the tab, making it the current tab for the window.", and a
+    /// session's `tty` is "The name of the session's tty (e.g., /dev/ttys01). Returns a string." What
+    /// selecting does with a window on another Space is not documented.
     static let selectScript = """
     on run argv
         set wanted to item 1 of argv
@@ -40,9 +53,13 @@ public struct ITermLauncher: TerminalLauncher {
                 repeat with t in tabs of w
                     repeat with s in sessions of t
                         if (tty of s) is wanted then
-                            select w
-                            select t
-                            select s
+                            set theWindow to contents of w
+                            set theTab to contents of t
+                            set theSession to contents of s
+                            select theTab
+                            select theSession
+                            if miniaturized of theWindow then set miniaturized of theWindow to false
+                            select theWindow
                             activate
                             return "ok"
                         end if
