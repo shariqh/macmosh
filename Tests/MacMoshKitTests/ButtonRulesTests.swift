@@ -209,9 +209,18 @@ import Testing
             // A saved list edited by hand can repeat an id: the board shows it once, from its first block.
             let blocks = menu.entries.filter { $0.id.hasPrefix("wh:") && !$0.id.contains("#") }
             #expect(blocks.count == board.workhorses.count, "case \(i)")
+            // The same symbol, unless an id repeats: then the menu counts every block's state, the board the first.
+            if menu.entries.filter({ $0.id.hasPrefix("wh:") && !$0.isSeparator }).count == blocks.count {
+                #expect(board.symbol == menu.symbol, "case \(i)")
+            }
             for (block, w) in zip(blocks, board.workhorses) {
                 #expect(block.id == "wh:\(w.id)", "case \(i)")
                 #expect(block.title == w.headline, "case \(i)")
+                // The text lines the two faces share: the hint, and the headline submenu's summary and home line.
+                #expect(block.children.first { $0.id == "\(block.id):hint" }?.title == w.hint, "case \(i)")
+                #expect(block.submenu.first { $0.id == "\(block.id):summary" }?.title == w.summary, "case \(i)")
+                #expect(block.submenu.first { $0.id == "\(block.id):home" }?.title
+                        == w.homeReachable.map(WorkhorseBlock.homeLine), "case \(i)")
                 let menuSide = actionLines(block.children.filter { !$0.id.hasPrefix("desk:") } + block.submenu)
                 let boardSide = w.buttons.filter { !isWindowOnly($0.action) }
                 windowOnly += w.buttons.count - boardSide.count

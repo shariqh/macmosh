@@ -45,8 +45,8 @@ public enum ButtonRules {
     }
 
     /// Every button a Ready workhorse has besides its desks', in the menu's order (issue #107): New desk…,
-    /// then the headline's submenu (Share screen, a laptop's lid-closed switch, Restart…). The window
-    /// reads this so its buttons come in the menu's order. None in any other state.
+    /// then the headline's submenu (Share screen, a laptop's lid-closed switch, Restart…). None in any
+    /// other state. The order both faces use is `WorkhorseBlock.buttons`; a test holds this list to it.
     public static func forReady(_ r: CheckResult) -> [ActionButton] {
         guard case .ready = r.state else { return [] }
         return [newDesk(r.workhorse.id)] + forHeadline(r)

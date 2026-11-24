@@ -238,9 +238,11 @@ private func titles(_ buttons: [BoardButton]) -> [String] { buttons.map(\.title)
     @Test func waitingForTheDeskServerShowsTheWaitAndAddsNothingToTheSymbol() throws {
         let report = try boardReport { $0.replacingOccurrences(of: "server\tup", with: "server\tdown") }
         let down = result(.notSetUp(.deskServerDown), status: report)
-        let b = board([down], waiting: ["attic"])
+        let ready = result(.ready(signIns: true), status: try boardReport(), at: readyAt)
+        let b = board([down], lastReady: [ready], waiting: ["attic"])
         let w = try #require(b.workhorses.first)
         #expect(w.isWaitingForDeskServer)
+        #expect(w.lastReadyDesks?.count == 6 && w.lastReadyAt == readyAt)
         #expect(w.headline == "Attic · Waiting for the desk server")
         #expect(w.hint == MenuModel.waitingForDeskServerHint)
         #expect(titles(w.buttons) == ["Run the checklist…"])
@@ -275,6 +277,8 @@ private func titles(_ buttons: [BoardButton]) -> [String] { buttons.map(\.title)
         #expect(w.isChecking)
         #expect(!(try #require(done.workhorses.first)).isChecking)
         #expect(w.headline == "Attic · Ready" && w.desks.count == 6 && w.checkedAt == checkedAt)
+        // A Ready workhorse has no greyed list, though it has a last Ready result.
+        #expect(w.lastReadyDesks == nil && w.lastReadyAt == nil)
         var unmarked = w
         unmarked.isChecking = false
         #expect(unmarked == done.workhorses.first)
@@ -332,6 +336,7 @@ private func titles(_ buttons: [BoardButton]) -> [String] { buttons.map(\.title)
         #expect(BoardModel.shortFolder("/Users/alex/Development/api", user: "alex") == "~/Development/api")
         #expect(BoardModel.shortFolder("/Users/alex/notes", user: "alex") == "~/notes")
         #expect(BoardModel.shortFolder("/Users/alex", user: "alex") == "~")
+        #expect(BoardModel.shortFolder("/Users/alex/", user: "alex") == "~/")
     }
 
     @Test func aFolderOutsideTheUsersHomeIsShownInFull() {
