@@ -16,7 +16,7 @@ public enum BoardModel {
     /// - `latest`, `lastReady`, `checking`, `waitingForDeskServer` and `tabs`: what `MenuRefresher` publishes.
     ///   With no `tabs` (no menu built yet), no desk has the menu's line per window.
     /// - `order`: the saved list of workhorses. Only these are on the board, in this order, each once.
-    /// - `ended`: the ended desks by workhorse id (none until the tracker exists).
+    /// - `ended`: the ended desks by workhorse id (`MenuRefresher.ended`, from `EndedDeskTracker`).
     /// - `results`: the last action's sentence by workhorse id.
     public static func build(latest: [String: CheckResult], lastReady: [String: CheckResult], checking: Set<String>,
                              order: [Workhorse], waitingForDeskServer: Set<String>, tabs: TabsSeen? = nil,
@@ -56,7 +56,10 @@ public enum BoardModel {
                 headline: block.headline, hint: block.hint, checkedAt: r?.checkedAt,
                 isChecking: checking.contains(id), isWaitingForDeskServer: block.kind == .waitingForDeskServer,
                 summary: block.summary, homeReachable: block.homeReachable, desks: desks,
-                ended: (ended[id] ?? []).map { onBoard($0, workhorse: id, user: user) },
+                ended: (ended[id] ?? []).map {
+                    onBoard($0, workhorse: id, name: r?.workhorse.name ?? saved.name, user: user,
+                            taken: r.map(DeskNameRule.taken) ?? [])
+                },
                 lastReadyDesks: lastReadyDesks, lastReadyAt: lastReadyAt,
                 buttons: buttons(block, desks: lines, workhorse: id), result: results[id],
                 scriptVersion: r?.status?.scriptVersion))
@@ -150,10 +153,13 @@ public enum BoardModel {
             madeByMacMosh: saved != nil, open: open, buttons: buttons)
     }
 
-    /// An ended desk with its folder shown the short way and the window's three buttons for it.
-    private static func onBoard(_ desk: EndedDesk, workhorse id: String, user: String) -> EndedDesk {
+    /// An ended desk with its folder shown the short way, the window's three buttons for it, and why Start again
+    /// is off when its name is taken again by the script's rule in the last check (`DeskNameRule`, section 7.5).
+    private static func onBoard(_ desk: EndedDesk, workhorse id: String, name: String, user: String,
+                                taken: Set<String>) -> EndedDesk {
         var desk = desk
         desk.shownFolder = shortFolder(desk.folder, user: user)
+        desk.taken = taken.contains(desk.name) ? DeskNameRule.problem(desk.name, taken: taken, workhorse: name) : nil
         desk.buttons = [
             BoardButton(title: "Start again", action: .window(.startAgain(workhorse: id, desk: desk.name, keepIt: false))),
             BoardButton(title: "Start again and keep it",

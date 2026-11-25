@@ -12,8 +12,8 @@ import SwiftUI
 struct MainWindow: View {
     @ObservedObject var screen: BoardOnScreen
     let actions: MenuActionRunner
-    /// New desk, Rename, Remove and naming a window, run in this process (step 4, issue 144). The app's, not the window's, so an action
-    /// started just before the window closes still finishes.
+    /// New desk, Rename, Remove, naming a window, Start again and Forget, run in this process (steps 4 and 5, issue
+    /// 144). The app's, not the window's, so an action started just before the window closes still finishes.
     @ObservedObject var forms: WindowActionRunner
     /// What the person chose in the sidebar. A choice that is no longer on the board falls back as
     /// `WindowSelection.resolve` says. Lost when the window closes, which is harmless.
@@ -100,6 +100,18 @@ struct MainWindow: View {
             open(form)
             return
         }
+        // An ended desk's buttons (step 5): run by the app's runner, in a task of its own.
+        switch button.action {
+        case .window(.startAgain(let id, let desk, let keepIt)):
+            let forms = forms
+            Task { _ = await forms.startAgain(id, desk: desk, keepIt: keepIt) }
+            return
+        case .window(.forget(let id, let desk)):
+            forms.forget(id, desk: desk)
+            return
+        default:
+            break
+        }
         guard let action = WindowRun.menuAction(for: button.action) else { return }
         #if DEBUG
         SampleRun.windowRan(action)   // a sample's log line for CI; nothing otherwise
@@ -157,13 +169,18 @@ enum WindowMarks {
         case .window(.remove): return "button.remove"
         case .window(.nameWindow): return "button.nameWindow"
         case .window(.openAllWithoutTab): return "button.openAllWithoutTab"
-        case .window(.startAgain), .window(.forget): return "button.ended"
+        case .window(.startAgain(_, let desk, let keepIt)): return "ended.\(desk).\(keepIt ? "keep" : "startAgain")"
+        case .window(.forget(_, let desk)): return "ended.\(desk).forget"
         case .menu(.refresh): return "button.checkNow"
         case .menu(let action): return (["button.menu"] + action.words).joined(separator: ".")
         }
     }
     /// The text after a desk's name: its tabs, or "Updating…" and the like.
     static func status(_ name: String) -> String { "desk.\(name).status" }
+    /// An ended desk's block (step 5), its time, its second line and its note: `ended.recipes`, `ended.recipes.when`.
+    static func ended(_ name: String) -> String { "ended.\(name)" }
+    static func ended(_ name: String, _ part: String) -> String { "ended.\(name).\(part)" }
+    static let endedHeading = "ended.heading"
     static let result = "page.result"
     static let headline = "page.headline"
     static let addMac = "page.addMac"

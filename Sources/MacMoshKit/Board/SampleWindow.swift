@@ -21,11 +21,14 @@ public enum SampleWindow: String, CaseIterable, Sendable {
     /// Step 4: Attic, Ready, with no projects folder saved, whose desks the window's New desk, Rename and
     /// Remove change through a stand-in ssh (`SampleForms`).
     case forms = "window-forms"
+    /// Step 5: Attic, Ready, whose desks end at the first click on Check now, so the window lists them under
+    /// Ended (`SampleEnded`).
+    case ended = "window-ended"
 
     var workhorses: [Workhorse] {
         switch self {
         case .unreadableList: return []
-        case .forms: return [SampleForms.attic]
+        case .forms, .ended: return [SampleForms.attic]
         default: return [SampleMenu.main]
         }
     }
@@ -54,6 +57,8 @@ public enum SampleWindow: String, CaseIterable, Sendable {
             return []
         case .forms:
             return [.checked(SampleForms.result(SampleForms.attic))]
+        case .ended:
+            return [.checked(SampleEnded.result(SampleForms.attic))]
         }
     }
 
@@ -71,6 +76,7 @@ public enum SampleWindow: String, CaseIterable, Sendable {
     /// The real refresher, with the saved list and the checks replaced.
     @MainActor public func refresher() -> MenuRefresher {
         if self == .forms { return SampleForms.refresher() }
+        if self == .ended { return SampleEnded.refresher() }
         let sample = self
         let checks = OSAllocatedUnfairLock(initialState: 0)
         return MenuRefresher(
@@ -112,15 +118,27 @@ public enum SampleWindow: String, CaseIterable, Sendable {
         if let window = SampleWindow(rawValue: name) {
             return SampleRun(startedLine: "sample menu: \(window.rawValue)", workhorses: window.workhorses,
                              load: { try window.load() }, refresher: window.refresher(), actions: SampleMenu.actions,
-                             ssh: window == .forms ? SampleSSH() : SampleNoCommands(), paths: SampleForms.paths)
+                             ssh: Self.ssh(window), paths: SampleForms.paths)
         }
         return nil
     }
 
+    /// The stand-in ssh of a window sample: the forms' and the ended desks' answer as the script would.
+    private static func ssh(_ window: SampleWindow) -> CommandRunner {
+        switch window {
+        case .forms: return SampleSSH()
+        case .ended: return SampleSSH(desks: SampleEnded.desks)
+        default: return SampleNoCommands()
+        }
+    }
+
     /// A window button ran this action: `sample window ran: tab connect workhorse api`. Written only when a
-    /// sample is shown; the words hold only the sample's made-up names.
+    /// sample is shown; the words hold only the sample's made-up names. In the `window-ended` sample, the first
+    /// Check now also ends the stand-in's shells (`SampleEnded`).
     public nonisolated static func windowRan(_ action: MenuAction) {
-        if SampleMenu.requested != nil { MenuLog.write(ranLine(action)) }
+        guard let name = SampleMenu.requested else { return }
+        MenuLog.write(ranLine(action))
+        if name == SampleWindow.ended.rawValue, case .refresh = action { SampleEnded.checkNowClicked() }
     }
 
     nonisolated static func ranLine(_ action: MenuAction) -> String {

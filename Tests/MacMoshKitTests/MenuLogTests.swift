@@ -42,6 +42,9 @@ private final class Lines: @unchecked Sendable {
         #expect(MenuLog.windowAction(.newDesk, ok: true) == "window action: newDesk ok")
         #expect(MenuLog.windowAction(.rename, ok: false) == "window action: rename failed")
         #expect(MenuLog.windowAction(.remove, ok: true) == "window action: remove ok")
+        #expect(MenuLog.windowAction(.startAgain, ok: true) == "window action: startAgain ok")
+        #expect(MenuLog.windowAction(.startAgain, ok: false) == "window action: startAgain failed")
+        #expect(MenuLog.windowAction(.forget, ok: true) == "window action: forget ok")
     }
 
     /// How the app comes to quit: the icon removed, and the quit itself.

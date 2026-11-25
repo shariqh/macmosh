@@ -2,9 +2,9 @@ import Combine
 import Foundation
 
 /// The window's desk actions, in the log's words (main window design, section 7.3), naming a window among them
-/// (issue 144).
+/// (issue 144), and Start again and Forget on an ended desk (step 5).
 public enum WindowActionKind: String, Sendable, Equatable {
-    case newDesk, rename, remove, nameWindow
+    case newDesk, rename, remove, nameWindow, startAgain, forget
 
     /// What the action's button reads while it runs.
     public var progress: String {
@@ -13,6 +13,8 @@ public enum WindowActionKind: String, Sendable, Equatable {
         case .rename: return RenameForm.Words.renaming
         case .remove: return RemoveConfirmation.removing
         case .nameWindow: return WindowNameForm.Words.naming
+        case .startAgain: return EndedRow.starting
+        case .forget: return EndedRow.forgetting
         }
     }
 }
@@ -45,7 +47,8 @@ public struct WindowActivity: Sendable, Equatable {
     public static let updatingWords = "Updating…"
 }
 
-/// Runs the MacMosh window's New desk, Rename, Remove and naming a window (issue 144) in this process (main window design, section 7.2),
+/// Runs the MacMosh window's New desk, Rename, Remove, naming a window (issue 144) and Start again on an ended desk
+/// (step 5) in this process (main window design, section 7.2),
 /// through `DeskFlow` with a `QuietInteraction`, so nothing can wait on a question. Each is one key-only,
 /// batch ssh call with its input closed and a 15-second limit (`HostCommands`), to the address that last
 /// answered (the refresher's last check). It belongs to the app, not to the window, so an action started just
@@ -176,12 +179,14 @@ public final class WindowActionRunner: ObservableObject {
         guard let new = form.newName else { return .failed(form.problem ?? DeskFormat.nameRule) }
         guard let check = refresher.latest[id], let old = DeskName(desk) else { return .failed(Self.noCheck(form.workhorseName)) }
         busy[id, default: [:]][desk] = .rename
+        // Before the call, so a check that lands while it runs doesn't count the old name as ended.
+        refresher.expectGone(id: id, desk: desk)
         let result = await flow.renameDesk(check, from: desk, to: new.value, ui: QuietInteraction())
         busy[id]?[desk] = nil
         log(MenuLog.windowAction(.rename, ok: result.code == 0))
         guard result.code == 0 else { return failed(.rename, id: id, desk: desk, reason: result.reason, on: check.workhorse) }
         let line = DeskFormat.windowDone(.rename, desk: old, to: new, on: check.workhorse)
-        follow(id, marking: desk, line: line)
+        follow(id, marking: desk, line: line, expecting: desk)
         return .done(line)
     }
 
@@ -238,13 +243,74 @@ public final class WindowActionRunner: ObservableObject {
             refresher.finishWindowAction(id: id, result: DeskFormat.windowFailed(.remove, desk: desk, reason: confirmation.changed))
             return .failed(confirmation.changed)
         }
+        refresher.expectGone(id: id, desk: desk)
         let result = await flow.removeDesk(check, name: desk, kill: true, ui: QuietInteraction())
         busy[id]?[desk] = nil
         log(MenuLog.windowAction(.remove, ok: result.code == 0))
         guard result.code == 0 else { return failed(.remove, id: id, desk: desk, reason: result.reason, on: check.workhorse) }
         let line = DeskFormat.windowDone(.remove, desk: name, to: nil, on: check.workhorse)
-        follow(id, marking: desk, line: line)
+        follow(id, marking: desk, line: line, expecting: desk)
         return .done(line)
+    }
+
+    // MARK: Ended desks (step 5)
+
+    /// Start again, or Start again and keep it (`keepIt`): makes the ended desk again as the report that last showed
+    /// it open had it, through one `DeskFlow.newDesk` call: the same name, the folder exactly as the report gave it,
+    /// its startup command, its reopen and keep flags, and permanent only with `keepIt`. Nothing is sent when the
+    /// name is taken again by the script's rule in the last check, or, with `keepIt`, when the workhorse's script is
+    /// older than 0.5.0. A desk open again by the time of the call is refused by the script; that says so in one
+    /// line, and nothing open is touched.
+    ///
+    /// When it worked, it does what New desk does after making a desk: the entry leaves the list, the new row is
+    /// marked arriving until the check after it lands, a tab opens on it, and the result line says so. When it
+    /// failed, the entry stays with the reason in one line; after a timeout the reason is the unsure one, and the
+    /// entry stays until a check shows the desk open.
+    public func startAgain(_ id: String, desk: String, keepIt: Bool) async -> WindowActionResult {
+        if let refused = startRefused(id, desk) { return refused }
+        guard let check = refresher.latest[id] else { return .failed(Self.noCheck(refresher.lastReady[id]?.workhorse.name ?? id)) }
+        let w = check.workhorse
+        guard let entry = refresher.ended[id]?.first(where: { $0.name == desk }), let name = DeskName(desk) else {
+            return .failed("\(desk) is no longer among the ended desks of \(w.name).")
+        }
+        let taken = DeskNameRule.taken(check)
+        if taken.contains(desk), let why = DeskNameRule.problem(desk, taken: taken, workhorse: w.name) {
+            return .failed(why)
+        }
+        let version = check.status?.scriptVersion ?? ""
+        if keepIt, case .ready = check.state, !HostInstaller.isAtLeast(version, WorkhorsePage.keepClosedNeeds) {
+            return .failed("Start again and keep it needs the workhorse script \(WorkhorsePage.keepClosedNeeds) or newer, "
+                           + "and \(w.name) has \(version.isEmpty ? "an older one" : version).")
+        }
+        busy[id, default: [:]][desk] = .startAgain
+        let request = NewDeskRequest(name: desk, folder: entry.folder, reopen: entry.reopen, keep: entry.keep,
+                                     permanent: keepIt, command: entry.command)
+        let result = await flow.newDesk(check, request: request, ui: QuietInteraction())
+        busy[id]?[desk] = nil
+        log(MenuLog.windowAction(.startAgain, ok: result.code == 0))
+        guard result.code == 0 else {
+            var why = result.reason ?? "It didn't work."
+            // The script's "already exists": open again since the last check, or taken by a permanent desk.
+            if why == DeskFormat.message(HostCommandError.alreadyExists, workhorse: w, for: .window) {
+                why = DeskNameRule.problem(desk, taken: [desk], workhorse: w.name) ?? why
+            }
+            let outcome = failed(.startAgain, id: id, desk: desk, reason: why, on: w)
+            if case .failed(let line) = outcome { refresher.endedFailed(id: id, desk: desk, reason: line) }
+            return outcome
+        }
+        refresher.forgetEnded(id: id, desk: desk)
+        var line = DeskFormat.windowDone(.startAgain, desk: name, to: nil, on: w)
+        if keepIt { line += " " + DeskFormat.keptWhenItExits }
+        follow(id, marking: desk, isNew: true, line: line, open: ButtonRules.connect(workhorse: id, desk: desk),
+               title: "Open \(desk)")
+        return .done(line)
+    }
+
+    /// Forget: takes the ended desk off the list. Nothing is sent. Not while an action for that name runs.
+    public func forget(_ id: String, desk: String) {
+        guard startRefused(id, desk) == nil else { return }
+        refresher.forgetEnded(id: id, desk: desk)
+        log(MenuLog.windowAction(.forget, ok: true))
     }
 
     // MARK: Pieces
@@ -256,14 +322,20 @@ public final class WindowActionRunner: ObservableObject {
     /// A failed action: its result line and the menu's notice say what did not happen and why, and a check
     /// follows, as after any action. A call that passed the time limit may still have done its work on the
     /// workhorse, so its line claims neither outcome and a renamed or removed desk's row waits for the check.
+    ///
+    /// A desk the window was removing or renaming keeps its mark for the ended desks (`MenuRefresher.expectGone`)
+    /// until that check after a timeout, and loses it at once after any other failure, when nothing was done.
     private func failed(_ kind: WindowActionKind, id: String, desk: String, reason: String?, on w: Workhorse) -> WindowActionResult {
         let why = reason ?? "It didn't work."
+        let marked = kind == .rename || kind == .remove ? desk : nil
         if why == HostCommands.noAnswer {
             let unsure = DeskFormat.windowUnsure(kind, desk: desk, on: w)
             refresher.finishWindowAction(id: id, result: unsure)
-            follow(id, marking: kind == .newDesk ? nil : desk, line: nil)
+            // A desk made by New desk or Start again has no row to mark until a check brings it.
+            follow(id, marking: kind == .newDesk || kind == .startAgain ? nil : desk, line: nil, expecting: marked)
             return .failed(unsure)
         }
+        if let marked { refresher.stopExpecting(id: id, desk: marked) }
         refresher.finishWindowAction(id: id, result: DeskFormat.windowFailed(kind, desk: desk, reason: why))
         follow(id, marking: nil, line: nil)
         return .failed(why)
@@ -272,8 +344,9 @@ public final class WindowActionRunner: ObservableObject {
     /// What follows an action, in a task of the runner's own: the row marked "Updating…"; the new desk's tab
     /// when asked for, run through the refresher as the menu's line runs; the result line and the notice (with
     /// what the tab said, when it said anything); then a check, and the mark taken off once it has landed.
+    /// `expecting` is a desk the window removed or renamed, whose mark for the ended desks is taken back then too.
     private func follow(_ id: String, marking desk: String?, isNew: Bool = false, line: String?, open: MenuAction? = nil,
-                        title: String = "") {
+                        title: String = "", expecting gone: String? = nil) {
         if let desk {
             if isNew { arriving[id, default: []].insert(desk) } else { updating[id, default: []].insert(desk) }
         }
@@ -289,6 +362,7 @@ public final class WindowActionRunner: ObservableObject {
                 refresher.finishWindowAction(id: id, result: said)
             }
             await checkAndWait()
+            if let gone { refresher.stopExpecting(id: id, desk: gone) }
             if let desk {
                 if isNew {
                     arriving[id]?.remove(desk)
