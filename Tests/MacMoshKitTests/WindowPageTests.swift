@@ -421,14 +421,21 @@ private func titles(_ buttons: [BoardButton]) -> [String] { buttons.map(\.title)
     }
 
     @Test func aRowSaysUpdatingUntilTheCheckLands() throws {
-        let p = try activePage(WindowActivity(updating: ["website", "garden-planner"]))
+        let p = try activePage(WindowActivity(updating: ["website", "gone"], arriving: ["garden-planner"]))
         #expect(p.desks.first { $0.name == "website" }?.status == "Updating…")
-        // A new desk the check has not brought yet has a row of its own, in name order.
+        #expect(p.desks.first { $0.name == "website" }?.hasStrip == true)
+        // A new desk the check has not brought yet has a row of its own, in name order. A desk renamed or
+        // removed has none once the check has taken it away.
         let names = p.desks.map(\.name)
         #expect(names == ["api", "blog", "garden", "garden-planner", "notes", "recipes", "website"])
         let placeholder = try #require(p.desks.first { $0.name == "garden-planner" })
-        #expect(placeholder.status == "Updating…" && placeholder.open == nil && placeholder.detailButtons.isEmpty)
-        #expect(placeholder.second == "" && placeholder.detail.isEmpty)
+        #expect(placeholder.status == "Updating…" && placeholder.windows == "" && placeholder.open == nil)
+        #expect(placeholder.detailButtons.isEmpty && placeholder.second == "" && placeholder.detail.isEmpty)
+        #expect(!placeholder.hasStrip)
+        // Once the check has brought it, its own row says Updating… until the mark is taken off.
+        let arrived = try activePage(WindowActivity(arriving: ["website"]))
+        #expect(arrived.desks.filter { $0.name == "website" }.count == 1)
+        #expect(arrived.desks.first { $0.name == "website" }?.status == "Updating…")
     }
 
     /// Section 7.2: Rename needs script 0.6.0, so with an older one its button is hidden.

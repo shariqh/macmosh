@@ -654,7 +654,7 @@ expect_value() {
 # "window-forms" is Attic, Ready, with no projects folder saved, whose desks a stand-in ssh changes. It writes
 # each call's exact remote command to the log (`sample ssh: ... run=<command>`) and answers as the script would.
 forms_sample() {
-    local since start v x y paste want typed
+    local since start v x y paste want typed deadline
     start=$(moment)
     start_app window-forms || return
     if ! open_window; then stop_app; return; fi
@@ -754,6 +754,14 @@ forms_sample() {
     result "$([ "$v" = "Updating…" ] && echo PASS || echo DIFFERS)" "the new desk's row says Updating… until the check lands" "it reads: ${v:-nothing}"
     snap updating
     expect_value "the page says what happened" "page.result" "Created the desk garden-planner on Attic." 10
+    v=$(val "desk.garden-planner.status")
+    deadline=$((SECONDS + 8))
+    while [ "$v" = "Updating…" ] && [ "$SECONDS" -lt "$deadline" ]; do sleep 0.5; v=$(val "desk.garden-planner.status"); done
+    if [ "$v" = "No tab" ]; then
+        result PASS "once the check lands the new desk's row is the check's" "desk.garden-planner.status reads: $v"
+    else
+        result FAIL "once the check lands the new desk's row is the check's" "desk.garden-planner.status reads: ${v:-nothing}"
+    fi
     expect_log "Open it in a tab now runs the menu's open for the new desk" "$since" "menu action: tab connect (window)"
     sleep 2
     snap after-new-desk
@@ -779,6 +787,11 @@ forms_sample() {
             result FAIL "the Rename form closes once renamed" "the sheet is still there"
         fi
         expect_value "the page says what Rename did" "page.result" "Renamed api to api-v2 on Attic." 10
+        if gone_id "desk.api" 8 && wait_id "desk.api-v2" 2; then
+            result PASS "after the check the row has the new name only" "desk.api gone, desk.api-v2 there"
+        else
+            result FAIL "after the check the row has the new name only" "desk.api still there, or no desk.api-v2"
+        fi
         sleep 2
         snap after-rename
     else
@@ -807,6 +820,11 @@ forms_sample() {
                 "sample ssh: to=alex@192.168.1.20 batch=yes stdin=closed limit=15s run=~/.macmosh/macmosh-host desk-remove website --kill"
             expect_log "Remove writes its log line" "$since" "window action: remove ok"
             expect_value "the page says what Remove did" "page.result" "Removed the desk website from Attic." 10
+            if gone_id "desk.website" 8; then
+                result PASS "after the check the removed desk's row is gone" "desk.website gone"
+            else
+                result FAIL "after the check the removed desk's row is gone" "desk.website still there"
+            fi
             sleep 2
             snap after-remove
         else

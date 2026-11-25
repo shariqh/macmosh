@@ -32,6 +32,9 @@ public final class MenuRefresher: ObservableObject {
     /// By workhorse id, what the window's last desk action on it said (main window design, section 7.2): its
     /// result line. Set only by `finishWindowAction`.
     @Published public private(set) var results: [String: String] = [:]
+    /// How many checks have ended since the app started, whatever they found. The window waits on it for the
+    /// check after its action (`WindowActionRunner`), which a steady stream of checks can't hold up.
+    @Published public private(set) var checksDone = 0
 
     private let load: @Sendable () throws -> [Workhorse]
     private let gather: @Sendable ([Workhorse]) async -> [Gathered]
@@ -100,6 +103,7 @@ public final class MenuRefresher: ObservableObject {
     }
 
     private func refreshOnce() async {
+        defer { checksDone += 1 }
         let load = self.load
         let list: [Workhorse]
         do {

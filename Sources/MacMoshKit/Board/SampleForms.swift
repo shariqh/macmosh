@@ -15,8 +15,10 @@ public enum SampleForms {
     static let answeredAt = "192.168.1.20"
     /// The folders in the projects folder, as the script lists them.
     static let folders = ["api", "blog", "garden-planner", "recipes", "website"]
-    /// How long a sample check and a sample New desk take, so a picture can catch "Updating…" and "Making…".
-    static let checkTakes: Duration = .milliseconds(1500)
+    /// How long a sample check and a sample New desk take, so a picture can catch "Updating…" and "Making…". A
+    /// check is shorter than the second between two of them (`SampleMenu.lookEvery`): longer, and the next one
+    /// would be asked for while it runs, every time, so the refresh that runs them would never end.
+    static let checkTakes: Duration = .milliseconds(800)
     static let makingTakes: Duration = .seconds(2)
 
     /// The sample's own folder, under the temporary folder: its saved list, and a stand-in key file (made-up

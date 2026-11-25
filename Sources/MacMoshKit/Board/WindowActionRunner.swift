@@ -26,12 +26,17 @@ public enum WindowActionResult: Sendable, Equatable {
 public struct WindowActivity: Sendable, Equatable {
     public var busy: [String: WindowActionKind]
     public var making: Bool
+    /// Desks renamed or removed, until the check after it lands.
     public var updating: Set<String>
+    /// Desks just made, until the check after it lands; each has a row before the check brings it.
+    public var arriving: Set<String>
 
-    public init(busy: [String: WindowActionKind] = [:], making: Bool = false, updating: Set<String> = []) {
+    public init(busy: [String: WindowActionKind] = [:], making: Bool = false, updating: Set<String> = [],
+                arriving: Set<String> = []) {
         self.busy = busy
         self.making = making
         self.updating = updating
+        self.arriving = arriving
     }
 
     /// "Updating…", on a row until the check after its action lands.
@@ -54,8 +59,9 @@ public final class WindowActionRunner: ObservableObject {
     @Published public private(set) var busy: [String: [String: WindowActionKind]] = [:]
     /// The workhorses with a New desk being made.
     @Published public private(set) var making: Set<String> = []
-    /// By workhorse id: the desks marked "Updating…".
+    /// By workhorse id: the desks marked "Updating…": renamed or removed, and just made.
     @Published public private(set) var updating: [String: Set<String>] = [:]
+    @Published public private(set) var arriving: [String: Set<String>] = [:]
 
     private let refresher: MenuRefresher
     private let flow: DeskFlow
@@ -80,7 +86,8 @@ public final class WindowActionRunner: ObservableObject {
 
     /// What runs on that workhorse's page now.
     public func activity(_ id: String) -> WindowActivity {
-        WindowActivity(busy: busy[id] ?? [:], making: making.contains(id), updating: updating[id] ?? [])
+        WindowActivity(busy: busy[id] ?? [:], making: making.contains(id), updating: updating[id] ?? [],
+                       arriving: arriving[id] ?? [])
     }
 
     /// Waits until everything that follows the actions so far has finished. For tests.
@@ -150,7 +157,7 @@ public final class WindowActionRunner: ObservableObject {
         await Task.detached { try? store.update(id: id) { $0.lastDeskCommand = command } }.value
         let line = DeskFormat.windowDone(.newDesk, desk: name, to: nil, on: check.workhorse)
         let open = form.openInTab ? ButtonRules.connect(workhorse: id, desk: name.value) : nil
-        follow(id, marking: name.value, line: line, open: open, title: "Open \(name.value)")
+        follow(id, marking: name.value, isNew: true, line: line, open: open, title: "Open \(name.value)")
         return .done(line)
     }
 
@@ -222,8 +229,11 @@ public final class WindowActionRunner: ObservableObject {
     /// What follows an action, in a task of the runner's own: the row marked "Updating…"; the new desk's tab
     /// when asked for, run through the refresher as the menu's line runs; the result line and the notice (with
     /// what the tab said, when it said anything); then a check, and the mark taken off once it has landed.
-    private func follow(_ id: String, marking desk: String?, line: String?, open: MenuAction? = nil, title: String = "") {
-        if let desk { updating[id, default: []].insert(desk) }
+    private func follow(_ id: String, marking desk: String?, isNew: Bool = false, line: String?, open: MenuAction? = nil,
+                        title: String = "") {
+        if let desk {
+            if isNew { arriving[id, default: []].insert(desk) } else { updating[id, default: []].insert(desk) }
+        }
         let key = UUID()
         followUps[key] = Task { [weak self] in
             guard let self else { return }
@@ -237,21 +247,29 @@ public final class WindowActionRunner: ObservableObject {
             }
             await checkAndWait()
             if let desk {
-                updating[id]?.remove(desk)
-                if updating[id]?.isEmpty == true { updating[id] = nil }
+                if isNew {
+                    arriving[id]?.remove(desk)
+                    if arriving[id]?.isEmpty == true { arriving[id] = nil }
+                } else {
+                    updating[id]?.remove(desk)
+                    if updating[id]?.isEmpty == true { updating[id] = nil }
+                }
             }
             followUps[key] = nil
         }
     }
 
-    /// Asks for a check and waits until one that started after this call has landed. A check asked for while
-    /// one runs is run once more after it (`MenuRefresher.refresh`), and `isRefreshing` stays true until then.
+    /// Asks for a check and waits until one that started after this call has ended. A check running now began
+    /// before the action ended, so it is the one after it that counts; `MenuRefresher.refresh` runs one more
+    /// after a running one when asked. It waits on the count of checks, not on the refresher going quiet,
+    /// which a steady stream of checks could hold off.
     /// Apple, Publisher.values (macOS 12.0, https://developer.apple.com/documentation/combine/publisher/values-1dm9r):
     /// "The elements produced by the publisher, as an asynchronous sequence."
     private func checkAndWait() async {
+        let target = refresher.checksDone + (refresher.isRefreshing ? 2 : 1)
         await refresher.refresh()
-        guard refresher.isRefreshing else { return }
-        for await running in refresher.$isRefreshing.values where !running { break }
+        if refresher.checksDone >= target { return }
+        for await done in refresher.$checksDone.values where done >= target { break }
     }
 
     /// The workhorse's saved record, read off the main thread.

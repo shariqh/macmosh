@@ -289,9 +289,9 @@ private func ok(_ stdout: String = "") -> FakeRunner { FakeRunner { _ in FakeRun
         let result = await rig.runner.newDesk(try await rig.form(command: "cyolo --continue"))
         #expect(result == .done("Created the desk garden-planner on Attic."))
         // The row says Updating… until the check that follows has landed.
-        #expect(rig.runner.activity("attic").updating == ["garden-planner"])
+        #expect(rig.runner.activity("attic").arriving == ["garden-planner"])
         await rig.runner.idle()
-        #expect(rig.runner.activity("attic").updating.isEmpty)
+        #expect(rig.runner.activity("attic").arriving.isEmpty)
         #expect(rig.checks.done > before)
         #expect(rig.refresher.results["attic"] == "Created the desk garden-planner on Attic.")
         #expect(rig.refresher.notice == "Created the desk garden-planner on Attic.")

@@ -137,7 +137,7 @@ public struct WorkhorsePage: Sendable, Equatable {
         var rows = w.desks.map { DeskRow($0, activity: activity, canRename: canRename) }
         // A desk just made has a row of its own, "Updating…", until the check that brings it lands.
         let shown = Set(rows.map(\.name))
-        rows += activity.updating.subtracting(shown).map(DeskRow.updating)
+        rows += activity.arriving.subtracting(shown).map(DeskRow.arriving)
         desks = rows.sorted { BoardModel.inNameOrder($0.name, $1.name) }
         noDesks = isReady && w.desks.isEmpty ? WindowWords.noDesks : nil
         stale = StaleDesks(w, now: now, timeZone: timeZone)
@@ -208,6 +208,8 @@ public struct DeskRow: Sendable, Equatable, Identifiable {
     /// "Renaming…" or "Removing…" while one of the window's actions runs on it, "Updating…" until the check
     /// after it lands; nil otherwise. Shown in place of the tab count.
     public var status: String?
+    /// A click on the row opens a detail strip with something in it; a new desk's row before its check has none.
+    public var hasStrip: Bool { !(detail.isEmpty && facts.isEmpty && windowLines.isEmpty && detailButtons.isEmpty) }
 
     /// `activity` turns the desk's buttons off while an action runs on it, and names that action; without
     /// `canRename` (a script older than 0.6.0) it has no Rename….
@@ -252,7 +254,8 @@ public struct DeskRow: Sendable, Equatable, Identifiable {
             return true
         }
         let running = activity.busy[desk.name]
-        status = running?.progress ?? (activity.updating.contains(desk.name) ? WindowActivity.updatingWords : nil)
+        let marked = activity.updating.contains(desk.name) || activity.arriving.contains(desk.name)
+        status = running?.progress ?? (marked ? WindowActivity.updatingWords : nil)
         if let running {
             func off(_ b: BoardButton) -> BoardButton {
                 var b = b
@@ -270,13 +273,13 @@ public struct DeskRow: Sendable, Equatable, Identifiable {
     }
 
     /// A desk the window has just made, before the check that brings it lands: its name and "Updating…".
-    static func updating(_ name: String) -> DeskRow {
+    static func arriving(_ name: String) -> DeskRow {
         DeskRow(name: name)
     }
 
     private init(name: String) {
         self.name = name
-        windows = WindowActivity.updatingWords
+        windows = ""
         tabs = nil
         open = nil
         openWords = nil

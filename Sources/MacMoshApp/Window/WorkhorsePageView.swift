@@ -155,7 +155,7 @@ struct DeskRowView: View {
                         .accessibilityIdentifier(WindowMarks.open(row.name))
                 }
             }
-            if isOpen {
+            if isOpen && row.hasStrip {
                 DeskDetail(row: row, run: run)
             }
             Divider()
