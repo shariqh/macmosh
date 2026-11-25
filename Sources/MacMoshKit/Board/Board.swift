@@ -156,8 +156,8 @@ public struct BoardDesk: Sendable, Equatable {
     }
 }
 
-/// A desk whose last shell exited and that the workhorse removed (section 7.1 C). The tracker of a
-/// later step makes these; the board only shows them. It keeps every flag, so Start again can pass them back.
+/// A desk whose last shell exited and that the workhorse removed (section 7.1 C). `EndedDeskTracker` makes
+/// these; the board only shows them. It keeps every flag, so Start again can pass them back.
 public struct EndedDesk: Sendable, Equatable {
     public var name: String
     /// In full, as the definition saved it.
@@ -167,10 +167,15 @@ public struct EndedDesk: Sendable, Equatable {
     public var keep: Bool
     /// When a check first found it gone.
     public var endedAt: Date
+    /// Why the last Start again on it didn't work, in one line; nil when none failed.
+    public var problem: String?
     /// Set by `BoardModel.build`: the folder shown the short way.
     public var shownFolder: String
     /// Set by `BoardModel.build`: Start again, Start again and keep it, Forget.
     public var buttons: [BoardButton]
+    /// Set by `BoardModel.build`: why Start again is off, when the name is taken again by the script's rule
+    /// ("Attic already has a desk called recipes."); nil otherwise.
+    public var taken: String?
 
     public init(name: String, folder: String, command: String?, reopen: Bool, keep: Bool, endedAt: Date) {
         self.name = name
@@ -179,8 +184,10 @@ public struct EndedDesk: Sendable, Equatable {
         self.reopen = reopen
         self.keep = keep
         self.endedAt = endedAt
+        self.problem = nil
         self.shownFolder = folder
         self.buttons = []
+        self.taken = nil
     }
 }
 
