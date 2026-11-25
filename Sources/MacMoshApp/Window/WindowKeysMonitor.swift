@@ -73,12 +73,14 @@ import MacMoshKit
         return NSApp.sendAction(NSSelectorFromString(item.selector), to: nil, from: nil)
     }
 
-    /// The MacMosh window, when it or a sheet on it has the keyboard, and whether a sheet is open on it.
+    /// The MacMosh window, when it or a sheet on it (or a sheet on that sheet) has the keyboard, and whether a sheet
+    /// is open on it. The window's title is always `WindowWords.title`, the one CI's tools find it by.
     private func keyWindow() -> (window: NSWindow, sheetOpen: Bool)? {
         guard let key = NSApp.keyWindow else { return nil }
-        if key.title == WindowWords.title { return (key, key.attachedSheet != nil) }
-        if let parent = key.sheetParent, parent.title == WindowWords.title { return (parent, true) }
-        return nil
+        var window = key
+        while let parent = window.sheetParent { window = parent }
+        guard window.title == WindowWords.title else { return nil }
+        return (window, window !== key || window.attachedSheet != nil)
     }
 
     // MARK: the log
