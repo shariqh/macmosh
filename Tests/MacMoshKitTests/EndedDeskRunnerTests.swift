@@ -137,6 +137,16 @@ private func ok() -> FakeRunner { FakeRunner { _ in FakeRunner.ok() } }
         ])
     }
 
+    /// Start again names nothing (issue 163), even with a script that can name a new desk's first window.
+    @Test func startAgainNamesNoWindowWithANewerScript() async throws {
+        let ssh = ok()
+        let rig = try await Rig(ssh: ssh, version: "0.12.0")
+        _ = await rig.runner.startAgain("attic", desk: "garden", keepIt: true)
+        #expect(ssh.calls.map { $0.argv.last } == [
+            "~/.macmosh/macmosh-host desk-new garden /Users/alex/Development/garden --reopen --permanent --command claude",
+        ])
+    }
+
     @Test func aDeskWithNoCommandSendsNone() async throws {
         let ssh = ok()
         let rig = try await Rig(ssh: ssh)
