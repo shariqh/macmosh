@@ -10,6 +10,11 @@
 //   windowtool <pid> value <identifier> that element's text: "value <text>", or "notfound"
 //   windowtool <pid> text <prefix>      the first static text that starts with <prefix>: "text <text>"
 //   windowtool <pid> close              the centre of the window's close button: "close x y"
+//   windowtool <pid> button <title>     the centre of the first button with that title: "found x y role"
+//   windowtool <pid> enabled <identifier>   whether that element can be used: "enabled true" or "enabled false"
+//
+// find, value, text, button and enabled look in the MacMosh window first (its sheets are inside it), then in
+// the app's other windows, where a dialog may be.
 //   windowtool <pid> dump               every element: depth, role, identifier, text and centre
 //
 // The first run read the window with System Events from AppleScript, one Apple event per property, and
@@ -20,7 +25,7 @@ import ApplicationServices
 
 let args = CommandLine.arguments
 guard args.count >= 3, let pid = pid_t(args[1]) else {
-    print("usage: windowtool <pid> windows|frame|find|value|text|close|dump [argument]")
+    print("usage: windowtool <pid> windows|front|frame|find|value|text|close|button|enabled|dump [argument]")
     exit(2)
 }
 let command = args[2]
@@ -98,7 +103,27 @@ guard let window = windows.first else {
     exit(0)
 }
 
+/// The MacMosh window's elements, then those of the app's other windows.
+func everything() -> [(element: AXUIElement, depth: Int)] {
+    let all = (attribute(app, kAXWindowsAttribute) as? [AXUIElement]) ?? []
+    let others = all.filter { text($0, kAXTitleAttribute) != "MacMosh" }
+    return ([window] + others).flatMap { walk($0) }
+}
+
 switch command {
+case "button":
+    let hit = everything().first {
+        text($0.element, kAXRoleAttribute) == kAXButtonRole
+            && (text($0.element, kAXTitleAttribute) == argument || text($0.element, kAXDescriptionAttribute) == argument)
+    }
+    print(hit.map { "found \(centre($0.element)) \(text($0.element, kAXRoleAttribute) ?? "?")" } ?? "notfound")
+case "enabled":
+    let hit = everything().first { text($0.element, "AXIdentifier") == argument }
+    if let hit {
+        print("enabled \((attribute(hit.element, kAXEnabledAttribute) as? Bool) ?? true)")
+    } else {
+        print("notfound")
+    }
 case "frame":
     guard let f = frame(window) else { print("noframe"); break }
     print("frame \(Int(f.minX)) \(Int(f.minY)) \(Int(f.width)) \(Int(f.height))")
@@ -110,7 +135,7 @@ case "close":
         print("notfound")
     }
 case "find", "value":
-    let hit = walk(window).first { text($0.element, "AXIdentifier") == argument }
+    let hit = everything().first { text($0.element, "AXIdentifier") == argument }
     if let hit {
         let role = text(hit.element, kAXRoleAttribute) ?? "?"
         print(command == "find" ? "found \(centre(hit.element)) \(role)" : "value \(label(hit.element))")
@@ -118,7 +143,7 @@ case "find", "value":
         print("notfound")
     }
 case "text":
-    let hit = walk(window).first {
+    let hit = everything().first {
         text($0.element, kAXRoleAttribute) == kAXStaticTextRole && label($0.element).hasPrefix(argument)
     }
     print(hit.map { "text \(label($0.element))" } ?? "notfound")

@@ -10,6 +10,9 @@
 //                                  that lands before a row's submenu can open (it opens about 0.25 s
 //                                  after the pointer reaches the row, on the trial's runners)
 //   menutool keys <code> <count> <gap ms>   posts that key <count> times (CGEvent key down and up)
+//   menutool type <text>           types the text, one key per character, each found in this Mac's keyboard
+//                                  layout (UCKeyTranslate), with Shift where the layout needs it
+//   menutool chord <character> cmd   that character's key with Command held (Command-V, Command-A)
 //   menutool count                 how many MacMosh menu windows are on screen (the menu and its submenus)
 //   menutool windows <label>       those windows' bounds
 //   menutool watch <seconds> <label>   samples the menu windows (a 50 ms rest plus one window list
@@ -19,6 +22,7 @@
 // Built by the workflow with swiftc, as a single file. Each line it prints starts with a Unix time.
 import AppKit
 import ApplicationServices
+import Carbon
 import CoreGraphics
 
 func stamp() -> String { String(format: "%.3f", Date().timeIntervalSince1970) }
@@ -29,7 +33,7 @@ func out(_ text: String) {
 
 let args = CommandLine.arguments
 guard args.count >= 2 else {
-    out("usage: menutool preflight|move|click|rushclick|keys|count|windows|watch")
+    out("usage: menutool preflight|move|click|rushclick|keys|type|chord|count|windows|watch")
     exit(2)
 }
 
@@ -71,6 +75,50 @@ func menuWindows() -> [String] {
               let b = info[kCGWindowBounds as String] as? [String: Any] else { return nil }
         return "\(b["X"] ?? "?"),\(b["Y"] ?? "?"),\(b["Width"] ?? "?"),\(b["Height"] ?? "?")"
     }.sorted()
+}
+
+/// Each character this Mac's keyboard layout types with one key, and whether it needs Shift. Apple,
+/// UCKeyTranslate (macOS 10.0, https://developer.apple.com/documentation/coreservices/1390584-uckeytranslate):
+/// "Converts a combination of a virtual key code, a modifier key state, and a dead-key state into a string of
+/// one or more Unicode characters."
+func keyMap() -> [Character: (code: CGKeyCode, shift: Bool)] {
+    guard let source = TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue(),
+          let raw = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData) else { return [:] }
+    let data = Unmanaged<CFData>.fromOpaque(raw).takeUnretainedValue() as Data
+    var map: [Character: (code: CGKeyCode, shift: Bool)] = [:]
+    data.withUnsafeBytes { buffer in
+        guard let base = buffer.baseAddress else { return }
+        let layout = base.assumingMemoryBound(to: UCKeyboardLayout.self)
+        for shift in [false, true] {
+            for code in 0..<128 {
+                var dead: UInt32 = 0
+                var length = 0
+                var chars = [UniChar](repeating: 0, count: 4)
+                let modifiers: UInt32 = shift ? UInt32((shiftKey >> 8) & 0xFF) : 0
+                let status = UCKeyTranslate(layout, UInt16(code), UInt16(kUCKeyActionDown), modifiers,
+                                            UInt32(LMGetKbdType()), OptionBits(kUCKeyTranslateNoDeadKeysBit),
+                                            &dead, chars.count, &length, &chars)
+                guard status == noErr, length == 1 else { continue }
+                let text = String(utf16CodeUnits: chars, count: length)
+                if let c = text.first, map[c] == nil { map[c] = (CGKeyCode(code), shift) }
+            }
+        }
+    }
+    return map
+}
+
+/// One key down and up, with these flags, carrying `text` as its characters too.
+func press(_ code: CGKeyCode, flags: CGEventFlags, text: String?) {
+    for down in [true, false] {
+        guard let event = CGEvent(keyboardEventSource: source, virtualKey: code, keyDown: down) else { continue }
+        event.flags = flags
+        if let text {
+            let units = Array(text.utf16)
+            event.keyboardSetUnicodeString(stringLength: units.count, unicodeString: units)
+        }
+        event.post(tap: .cghidEventTap)
+        usleep(down ? 30_000 : 40_000)
+    }
 }
 
 func point(_ index: Int) -> CGPoint {
@@ -122,6 +170,35 @@ case "keys":
         usleep(gap * 1000)
     }
     out("keys: posted key \(code) \(count) times")
+case "type":
+    guard args.count >= 3 else {
+        out("usage: menutool type <text>")
+        exit(2)
+    }
+    let map = keyMap()
+    var missing = 0
+    for c in args[2] {
+        if let key = map[c] {
+            press(key.code, flags: key.shift ? .maskShift : [], text: String(c))
+        } else {
+            missing += 1
+            press(0, flags: [], text: String(c))
+        }
+    }
+    out("type: \(args[2].count) characters, \(missing) not in the keyboard layout (sent as text only), layout keys=\(map.count)")
+case "chord":
+    guard args.count >= 4, let c = args[2].first, args[3] == "cmd" else {
+        out("usage: menutool chord <character> cmd")
+        exit(2)
+    }
+    guard let key = keyMap()[c] else {
+        out("chord: no key for \(c) in the keyboard layout")
+        exit(1)
+    }
+    // Apple, CGEventFlags.maskCommand: "Indicates that the Command key is down for a keyboard, mouse, or
+    // flag-changed event." (https://developer.apple.com/documentation/coregraphics/cgeventflags/maskcommand)
+    press(key.code, flags: .maskCommand, text: String(c))
+    out("chord: Command-\(c) (key \(key.code))")
 case "count":
     print(menuWindows().count)
 case "windows":
