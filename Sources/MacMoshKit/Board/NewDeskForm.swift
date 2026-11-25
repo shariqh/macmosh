@@ -10,13 +10,27 @@ public enum DeskNameRule {
         return Set(open + permanent)
     }
 
-    /// Why `name` can't be a new desk's name on that workhorse, or nil when it can: empty, not a desk name,
-    /// or taken ("Attic already has a desk called api.").
+    /// Why `name` can't be a new desk's name on that workhorse, or nil when it can: empty, refused by
+    /// `newNameProblem`, or taken ("Attic already has a desk called api.").
     public static func problem(_ name: String, taken: Set<String>, workhorse: String) -> String? {
         if name.isEmpty { return "Give the desk a name." }
-        guard DeskName(name) != nil else { return DeskFormat.nameRule }
+        if let problem = newNameProblem(name) { return problem }
         if taken.contains(name) { return "\(workhorse) already has a desk called \(name)." }
         return nil
+    }
+
+    /// Why `raw` can't be the name a desk is given now, or nil when it can: the rule for New desk and Rename, in the
+    /// window's forms and in the terminal's alike (issue #147). A `DeskName` that starts with `-` is refused, because
+    /// the workhorse script reads it as an option. `DeskName` itself still takes one, so a desk that already has
+    /// such a name parses, shows, and can be renamed away from it.
+    public static func newNameProblem(_ raw: String) -> String? {
+        guard DeskName(raw) != nil else { return DeskFormat.nameRule }
+        return raw.hasPrefix("-") ? DeskFormat.noLeadingDash : nil
+    }
+
+    /// `raw` as a new desk's name, or nil when `newNameProblem` has a reason.
+    public static func newName(_ raw: String) -> DeskName? {
+        newNameProblem(raw) == nil ? DeskName(raw) : nil
     }
 
     /// A tab or a new line, which the script refuses in a folder or a command (`mm_has_tab_or_newline`).
@@ -235,7 +249,8 @@ public struct NewDeskForm: Sendable, Equatable {
     // MARK: Pieces
 
     /// The folder's last part, made to fit a desk name: every character other than a letter, digit, `-` or
-    /// `_` becomes `-`, and it is cut at 64. Empty for `~` or `/`.
+    /// `_` becomes `-`, the dashes it then starts with are dropped (`DeskNameRule.newNameProblem`), and it is cut
+    /// at 64. Empty for `~` or `/`, or a folder that leaves nothing, and the form then asks for a name.
     public static func name(fromFolder folder: String) -> String {
         var path = Substring(folder)
         while path.hasSuffix("/") { path = path.dropLast() }
@@ -246,7 +261,7 @@ public struct NewDeskForm: Sendable, Equatable {
             let ok = (a >= 97 && a <= 122) || (a >= 65 && a <= 90) || (a >= 48 && a <= 57) || c == "-" || c == "_"
             return ok ? c : "-"
         }
-        return String(fitted.prefix(DeskName.maxLength))
+        return String(fitted.drop { $0 == "-" }.prefix(DeskName.maxLength))
     }
 
     /// A folder with `~` as the saved user's home folder, which is what the script saves.

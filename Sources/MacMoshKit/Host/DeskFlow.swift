@@ -88,7 +88,7 @@ public struct DeskFlow: Sendable {
 
     public func newDesk(_ check: CheckResult, request: NewDeskRequest, ui: Interaction) async -> DeskResult {
         let address: String
-        switch Self.gate(check) {
+        switch Self.gate(check, wording: wording) {
         case .failure(let result): return result
         case .success(let found): address = found
         }
@@ -96,13 +96,12 @@ public struct DeskFlow: Sendable {
 
         let name: DeskName
         if let given = request.name {
-            guard let valid = DeskName(given) else { return .failure(DeskFormat.nameRule) }
+            guard let valid = DeskNameRule.newName(given) else {
+                return .failure(DeskNameRule.newNameProblem(given) ?? DeskFormat.nameRule)
+            }
             name = valid
         } else {
-            guard let asked = askName(ui) else {
-                return .failure("That wasn't a desk name three times, so MacMosh stopped. \(DeskFormat.nameRule)")
-            }
-            name = asked
+            do { name = try askName(ui) } catch { return error as? DeskResult ?? .failure("\(error)") }
         }
 
         let folder: String
@@ -165,7 +164,9 @@ public struct DeskFlow: Sendable {
         await onDesk(check, name: old) { w, address, desk in
             let target: DeskName
             if let new {
-                guard let valid = DeskName(new) else { throw DeskResult.failure(DeskFormat.nameRule) }
+                guard let valid = DeskNameRule.newName(new) else {
+                    throw DeskResult.failure(DeskNameRule.newNameProblem(new) ?? DeskFormat.nameRule)
+                }
                 target = valid
             } else {
                 target = try askNewName(for: desk, ui)
@@ -267,7 +268,7 @@ public struct DeskFlow: Sendable {
     /// The names of the folders inside the projects folder, in `output`.
     public func folders(_ check: CheckResult) async -> DeskResult {
         let address: String
-        switch Self.gate(check) {
+        switch Self.gate(check, wording: wording) {
         case .failure(let result): return result
         case .success(let found): address = found
         }
@@ -282,16 +283,16 @@ public struct DeskFlow: Sendable {
     // MARK: - Pieces
 
     /// A desk command needs a Ready workhorse. Either kind of Ready will do. Anything else stops here,
-    /// before any ssh, with the state's headline and hint.
-    static func gate(_ check: CheckResult) -> Result<String, DeskResult> {
-        guard case .ready = check.state else { return .failure(.failure(DeskFormat.notReady(check))) }
+    /// before any ssh, with the state's headline and hint, in the flow's words (`DeskFormat.notReady`).
+    static func gate(_ check: CheckResult, wording: DeskFormat.Wording) -> Result<String, DeskResult> {
+        guard case .ready = check.state else { return .failure(.failure(DeskFormat.notReady(check, for: wording))) }
         return .success(check.answeredAt ?? check.workhorse.mainAddress)
     }
 
     private func onDesk(_ check: CheckResult, name: String,
                         _ body: (Workhorse, String, DeskName) async throws -> Void) async -> DeskResult {
         let address: String
-        switch Self.gate(check) {
+        switch Self.gate(check, wording: wording) {
         case .failure(let result): return result
         case .success(let found): address = found
         }
@@ -308,23 +309,32 @@ public struct DeskFlow: Sendable {
 
     /// Asks for a desk's new name, up to three tries. An empty answer stops with nothing changed.
     private func askNewName(for desk: DeskName, _ ui: Interaction) throws -> DeskName {
+        var problem = DeskFormat.nameRule
         for _ in 0..<Self.tries {
             let answer = ui.ask("New name for \(desk.value): ").trimmingCharacters(in: .whitespacesAndNewlines)
             if answer.isEmpty { throw DeskResult.failure("Nothing was changed.") }
-            if let name = DeskName(answer) { return name }
-            ui.say(DeskFormat.nameRule)
+            if let name = DeskNameRule.newName(answer) { return name }
+            problem = DeskNameRule.newNameProblem(answer) ?? DeskFormat.nameRule
+            ui.say(problem)
         }
-        throw DeskResult.failure("That wasn't a desk name three times, so MacMosh stopped. \(DeskFormat.nameRule)")
+        throw Self.gaveUp(problem)
     }
 
-    /// Asks until it gets a valid name, up to three tries. nil after the third.
-    private func askName(_ ui: Interaction) -> DeskName? {
+    /// Asks until it gets a valid name, up to three tries. After the third it stops.
+    private func askName(_ ui: Interaction) throws -> DeskName {
+        var problem = DeskFormat.nameRule
         for _ in 0..<Self.tries {
             let answer = ui.ask("Desk name: ").trimmingCharacters(in: .whitespacesAndNewlines)
-            if let name = DeskName(answer) { return name }
-            ui.say(DeskFormat.nameRule)
+            if let name = DeskNameRule.newName(answer) { return name }
+            problem = DeskNameRule.newNameProblem(answer) ?? DeskFormat.nameRule
+            ui.say(problem)
         }
-        return nil
+        throw Self.gaveUp(problem)
+    }
+
+    /// Three answers that weren't a desk name: the stop names the rule the last one broke.
+    private static func gaveUp(_ problem: String) -> DeskResult {
+        .failure("That wasn't a desk name three times, so MacMosh stopped. \(problem)")
     }
 
     static let commandQuestion = "Command to start in it (Enter for none): "
