@@ -49,6 +49,7 @@ failures=0
 sample=""
 shotn=0
 app_pid=""
+settings_since=""
 run_since=$(date '+%Y-%m-%d %H:%M:%S')
 
 now() { perl -MTime::HiRes=time -e 'printf "%.3f", time'; }
@@ -1456,14 +1457,15 @@ print("|".join(out))
 PY
 }
 
-# setting_lines <since>: the Settings page's log lines since then, joined with |.
-setting_lines() { applog "$1" | grep -F "window action: setting" | sed 's/.*window action: /window action: /' | tr '\n' '|' | sed 's/|$//'; }
+# setting_lines <since>: the Settings page's log lines since then, one per line.
+setting_lines() { applog "$1" | grep -F "window action: setting" | sed 's/.*window action: /window action: /'; }
 
 # settings_step <check> <file> <want changes> <want log: ok, failed or none> <command...>: keeps a copy of the
 # sample's file, runs the command (a click or keys), waits for the page's log line, and checks that the file
-# changed in exactly those fields (none for "") and that the log has exactly that one line since.
+# changed in exactly those fields (none for "") and that exactly that one line was logged. The lines are counted
+# from the start of the page ($settings_since), so a line of the step before is never taken for this one's.
 settings_step() {
-    local check=$1 name=$2 want=$3 line=$4 file before since got lines deadline
+    local check=$1 name=$2 want=$3 line=$4 file before got lines n0 deadline want_lines=""
     shift 4
     if ! file=$(settings_file "$name"); then
         result NOT-SHOWN "$check" "the sample's $name was not found"
@@ -1471,19 +1473,19 @@ settings_step() {
     fi
     before=$(mktemp)
     cp "$file" "$before" 2>/dev/null || : > "$before"
-    since=$(moment)
-    sleep 1
+    n0=$(setting_lines "$settings_since" | wc -l | tr -d ' ')
     "$@"
     if [ "$line" = none ]; then
         sleep 2.5
     else
         deadline=$((SECONDS + 10))
-        while [ -z "$(setting_lines "$since")" ] && [ "$SECONDS" -lt "$deadline" ]; do sleep 0.5; done
+        while [ "$(setting_lines "$settings_since" | wc -l | tr -d ' ')" -le "$n0" ] && [ "$SECONDS" -lt "$deadline" ]; do
+            sleep 0.5
+        done
     fi
     sleep 0.5
     got=$(json_changes "$before" "$file")
-    lines=$(setting_lines "$since")
-    local want_lines=""
+    lines=$(setting_lines "$settings_since" | tail -n +"$((n0 + 1))" | tr '\n' '|' | sed 's/|$//')
     [ "$line" != none ] && want_lines="window action: setting $line"
     if [ "$got" = "$want" ] && [ "$lines" = "$want_lines" ]; then
         result PASS "$check" "changed: ${got:-nothing}; log: ${lines:-nothing}"
@@ -1537,6 +1539,7 @@ settings_sample() {
         return
     fi
     page_since=$(moment)
+    settings_since=$page_since
     if ! click_id "sidebar.settings" || ! wait_id "settings.heading" 6; then
         result FAIL "Settings in the sidebar opens the page" "no settings.heading"
         snap no-settings
@@ -1683,7 +1686,7 @@ settings_sample() {
     file=$(settings_file workhorses.json)
     want=$(python3 -I -c 'import json,sys; print(next(w["name"] for w in json.load(open(sys.argv[1]))["workhorses"] if w["id"] == "spare"))' "$file" 2>/dev/null)
     result "$([ "$v" = "$want" ] && echo PASS || echo FAIL)" "text not left before another sidebar line shows as saved or not at all" \
-        "the field reads: ${v:-nothing}; saved: ${want:-?}; log: $(setting_lines "$typed_since")"
+        "the field reads: ${v:-nothing}; saved: ${want:-?}; log: $(setting_lines "$typed_since" | tr '\n' '|' | sed 's/|$//')"
 
     # Text typed and not left, then the window closed and opened again: the saved values, and the typed text only
     # if it was saved.
@@ -1714,7 +1717,7 @@ settings_sample() {
     want=$(python3 -I -c 'import json,sys; print(next(w.get("projectsFolder", "") for w in json.load(open(sys.argv[1]))["workhorses"] if w["id"] == "spare"))' "$file" 2>/dev/null)
     v=$(val settings.spare.projectsFolder)
     result "$([ "$v" = "$want" ] && echo PASS || echo FAIL)" "text not left before the window closed shows as saved or not at all" \
-        "the field reads: ${v:-nothing}; saved: ${want:-nothing}; log: $(setting_lines "$typed_since")"
+        "the field reads: ${v:-nothing}; saved: ${want:-nothing}; log: $(setting_lines "$typed_since" | tr '\n' '|' | sed 's/|$//')"
     v="$(val settings.attic.name)|$(chosen settings.attic.connection)|$(chosen settings.attic.prediction)|$(val settings.attic.projectsFolder)|$(chosen settings.thisMac.terminal)"
     result "$([ "$v" = "Attic|Mosh|Adaptive||Pick for me" ] && echo PASS || echo FAIL)" "the window opened again shows the saved values" "$v"
     snap reopened
