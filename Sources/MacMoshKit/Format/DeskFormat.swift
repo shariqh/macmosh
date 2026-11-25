@@ -132,6 +132,43 @@ public enum DeskFormat {
         return "MacMosh didn't hear back from \(w.name) about \(desk) within \(seconds) seconds. The next check shows whether it was \(done)."
     }
 
+    // MARK: Naming a window (issue 144)
+
+    /// A script older than 0.11.0 has no `window-name`. The terminal's words say how to update it; the window's
+    /// don't name a command.
+    public static func nameWindowNeedsNewerScript(_ w: Workhorse, version: String, for wording: Wording) -> String {
+        let has = version.isEmpty ? "an older one" : version
+        let first = "Naming a window needs the workhorse script \(DeskFlow.nameWindowNeeds) or newer, and \(w.name) has \(has)."
+        return wording == .window ? first : first + " Update it with: macmosh prepare \(w.id) --fix"
+    }
+
+    public static let windowByID = "A window is given by its id, such as @3."
+    /// The script's exit code 4 for a window that isn't one of the desk's now, in its own words.
+    public static let windowClosed = WindowNameError.closedLine
+    public static let nothingChanged = "Nothing changed."
+
+    static func noWindowIDs(_ desk: DeskName) -> String {
+        "The workhorse's report doesn't say which windows \(desk.value) has, so MacMosh can't ask which one."
+    }
+
+    /// "  0  claude": the number tmux gives the window, then its name, or `(no name)`.
+    public static func numberedWindows(_ windows: [HostStatus.Window]) -> [String] {
+        windows.map { "  \($0.index)  \($0.name.isEmpty ? "(no name)" : $0.name)" }
+    }
+
+    /// What naming a window says when it worked, in the terminal and as the window's result line:
+    /// `Named window 2 of website "front end" on Attic.`, `Window 2 of website follows its program's name again on
+    /// Attic.` `window` is "window 2", or "window @7" for one the report didn't list.
+    public static func windowNamed(_ desk: DeskName, window: String, _ naming: WindowNaming, on w: Workhorse) -> String {
+        switch naming {
+        case .named(let name):
+            return "Named \(window) of \(desk.value) \"\(name.value)\" on \(w.name)."
+        case .afterItsProgram:
+            return window.prefix(1).uppercased() + window.dropFirst()
+                + " of \(desk.value) follows its program's name again on \(w.name)."
+        }
+    }
+
     /// What `desk new` says when it worked.
     public static func created(_ name: DeskName, on w: Workhorse) -> [String] {
         ["Created the desk \(name.value) on \(w.name).",
