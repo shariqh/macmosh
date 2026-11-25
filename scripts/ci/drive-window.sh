@@ -966,8 +966,6 @@ forms_sample() {
     sleep 2
     snap after-new-desk
 
-    first_window_forms
-
     # Rename… on api: the field holds the old name; a new one is sent as typed.
     click_id "desk.api" > /dev/null
     sleep 1
@@ -1036,6 +1034,9 @@ forms_sample() {
         result FAIL "Remove… opens its confirmation" "no Remove button for website"
     fi
 
+    # After Rename and Remove, so the two desks it makes don't push website's strip under the Dock (issue 163).
+    first_window_forms
+
     # The sheets and the dialog are no menu: the menu-open signal never came (design, section 7.2). A finding.
     v=$(applog "$start" | grep -cF "menu opened")
     if [ "$v" -eq 1 ]; then
@@ -1047,7 +1048,7 @@ forms_sample() {
 }
 
 # The first window's line of the New desk form (issue 163), in the "window-forms" sample after garden-planner was
-# made with the box ticked: the form again on recipes, cleared and empty, with a bad name and with a name of its own,
+# made with the box ticked, and after Rename and Remove: the form again on recipes, cleared and empty, with a bad name and with a name of its own,
 # each pictured; Make desk with that name; then a desk with the box clear and the field empty. The stand-in names the
 # window as the script would, and the row shows its name after the check.
 first_window_forms() {
