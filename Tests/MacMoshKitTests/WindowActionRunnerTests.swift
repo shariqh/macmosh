@@ -153,6 +153,29 @@ private func ok(_ stdout: String = "") -> FakeRunner { FakeRunner { _ in FakeRun
         #expect(ssh.calls.first?.argv.last == "~/.macmosh/macmosh-host desk-new garden-planner '~/Development/garden-planner' --no-reopen --permanent")
     }
 
+    /// With script 0.12.0 the form names the first window (issue 163): after the desk at first, or a name of its own,
+    /// or nothing when the box is clear and the field empty. The result line is unchanged.
+    @Test func theFirstWindowsNameGoesIntoTheArguments() async throws {
+        let ssh = ok()
+        let rig = try await Rig(ssh: ssh)
+        rig.checks.set { $0.scriptVersion = "0.12.0" }
+        await rig.refresher.refresh()
+        let ticked = try await rig.form()
+        #expect(await rig.runner.newDesk(ticked) == .done("Created the desk garden-planner on Attic."))
+        var named = try await rig.form()
+        named.windowSameAsDesk = false
+        named.windowName = "build logs"
+        _ = await rig.runner.newDesk(named)
+        var empty = try await rig.form()
+        empty.windowSameAsDesk = false
+        _ = await rig.runner.newDesk(empty)
+        #expect(ssh.calls.map { $0.argv.last } == [
+            "~/.macmosh/macmosh-host desk-new garden-planner '~/Development/garden-planner' --reopen --window-name garden-planner",
+            "~/.macmosh/macmosh-host desk-new garden-planner '~/Development/garden-planner' --reopen --window-name 'build logs'",
+            "~/.macmosh/macmosh-host desk-new garden-planner '~/Development/garden-planner' --reopen",
+        ])
+    }
+
     @Test func renameAndRemoveSendTheirArguments() async throws {
         let ssh = ok()
         let rig = try await Rig(ssh: ssh)

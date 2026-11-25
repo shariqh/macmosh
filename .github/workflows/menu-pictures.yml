@@ -20,7 +20,10 @@ name: Menu pictures
 # work or does not send its exact arguments. In the "window-settings" sample (issue 157) it fails when the
 # Settings page does not save exactly the clicked or edited field into the sample's own saved list, a bad
 # value is saved or not refused with its sentence, a new name does not show at once, a button does not
-# send its exact tab command, or a click or key press on the page sets off the menu-open signal.
+# send its exact tab command, or a click or key press on the page sets off the menu-open signal. For a new desk's
+# first window (issue 163) it fails when the New desk form's "Same name as the desk" line does not work or Make desk
+# does not send exactly the window's name, and, in the "window-forms-0.11" sample, when an older script is shown the
+# line or sent the name.
 # scripts/ci/drive-menu.sh says what it checks.
 on:
   pull_request:
@@ -43,7 +46,7 @@ jobs:
   pictures:
     name: pictures (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: 36
     strategy:
       fail-fast: false
       matrix:
@@ -79,7 +82,7 @@ jobs:
       # It runs when the menu's step failed too, so one failure does not hide the other's pictures.
       - name: Drive the window
         if: ${{ !cancelled() && (steps.menu.outcome == 'success' || steps.menu.outcome == 'failure') }}
-        timeout-minutes: 18
+        timeout-minutes: 24
         env:
           MENU_OUT: ${{ runner.temp }}/menu-pictures/window
         run: scripts/ci/drive-window.sh

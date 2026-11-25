@@ -42,3 +42,30 @@ public struct WindowName: Sendable, Equatable {
         return nil
     }
 }
+
+/// What a new desk's first window is called (issue 163, script 0.12.0 `desk-new --window-name`). The window's New
+/// desk form and the terminal's New desk questions both make one; Start again never does.
+public enum FirstWindow: Sendable, Equatable {
+    /// Nothing is sent, and tmux names the window after the program running in it, as before.
+    case afterItsProgram
+    /// The desk's own name.
+    case deskName
+    /// A name of its own, as typed.
+    case named(String)
+
+    /// Why `text` can't name the first window of the desk called `desk`, or nil when it can. The desk's own name always
+    /// can, however long: a desk name can be 64 characters and a window name 32, so the script takes a desk's own name
+    /// whole, and a desk name holds only characters a window name allows. Anything else keeps `WindowName`'s rule.
+    public static func problem(_ text: String, desk: String) -> String? {
+        text == desk ? nil : WindowName.problem(text)
+    }
+
+    /// What `desk-new --window-name` gets for this desk, or nil when nothing is sent.
+    public func name(for desk: DeskName) -> String? {
+        switch self {
+        case .afterItsProgram: return nil
+        case .deskName: return desk.value
+        case .named(let text): return text
+        }
+    }
+}

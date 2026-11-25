@@ -175,6 +175,14 @@ public enum DeskFormat {
         return wording == .window ? first : first + " Update it with: macmosh prepare \(w.id) --fix"
     }
 
+    /// A script older than 0.12.0 has no `desk-new --window-name` (issue 163). The terminal's words say how to update
+    /// it; the window's name no `macmosh` command.
+    public static func firstWindowNeedsNewerScript(_ w: Workhorse, version: String, for wording: Wording) -> String {
+        let has = version.isEmpty ? "an older one" : version
+        let first = "Naming a new desk's first window needs the workhorse script \(DeskFlow.firstWindowNameNeeds) or newer, and \(w.name) has \(has)."
+        return wording == .window ? first : first + " Update it with: macmosh prepare \(w.id) --fix"
+    }
+
     public static let windowByID = "A window is given by its id, such as @3."
     /// The script's exit code 4 for a window that isn't one of the desk's now, in its own words.
     public static let windowClosed = WindowNameError.closedLine

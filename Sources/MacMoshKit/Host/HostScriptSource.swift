@@ -10,7 +10,7 @@ enum HostScriptSource {
 # Plain bash 3.2 (what macOS ships at /bin/bash): no associative arrays, no mapfile, no ${var,,}.
 set -u
 
-MACMOSH_HOST_VERSION=0.11.0
+MACMOSH_HOST_VERSION=0.12.0
 MACMOSH_PROTOCOL=1
 AGENT_LABEL=io.github.shariqh.macmosh.host
 
@@ -314,10 +314,19 @@ mm_shell_quote() {
 # list's lock, as mm_open_view does, so no other MacMosh session is made in between. tmux before 3.3
 # has no next_session_id; then the name is made of this process, the time and a count, because one
 # start reopens several desks within a second.
+#
+# A name for the first window (desk-new --window-name, issue 163, 0.12.0) is given after the session is
+# made: man tmux (3.8), new-session, "-n and shell-command are invalid if -t is used." It is given with
+# rename-window, addressed by the session's id and the window's id, with -- before it, and read back as
+# window-name does; all before the startup command is typed. rename-window also turns the window's
+# automatic-rename off ("automatically disabled for an individual window when a name is specified ...
+# later with rename-window"), so the name stays while the program in the window changes. When the name
+# doesn't take, the call fails, and desk-new ends the session made here.
 MM_GROUP_COUNT=0
 mm_create_session() {
-    # $1 name, $2 folder, $3 startup command (may be empty), $4 keep: 1 or 0 (optional)
-    local folder="$2" typed="$3" sid next group
+    # $1 name, $2 folder, $3 startup command (may be empty), $4 keep: 1 or 0 (optional),
+    # $5 the first window's name (optional; checked by the caller)
+    local folder="$2" typed="$3" window_name="${5:-}" sid next group wid now
     MM_NEW_SID=""
     MM_GROUP_COUNT=$((MM_GROUP_COUNT + 1))
     next=$(mm_tmux display-message -p '#{next_session_id}' 2>/dev/null)
@@ -334,6 +343,14 @@ mm_create_session() {
     sid=$(mm_tmux new-session -d -P -F '#{session_id}' -s "$1" -t "$group" -c "$folder" 2>/dev/null) || return 1
     MM_NEW_SID="$sid"
     [ -n "$sid" ] || return 1
+    if [ -n "$window_name" ]; then
+        wid=$(mm_tmux list-windows -t "$sid:" -F '#{window_id}' 2>/dev/null | head -n 1)
+        [ -n "$wid" ] || return 1
+        mm_tmux rename-window -t "$sid:$wid" -- "$window_name" >/dev/null 2>&1
+        now=$(mm_tmux list-windows -t "$sid:" -F "#{window_id}$TAB#{window_name}" 2>/dev/null |
+            awk -F '\t' -v w="$wid" '($1 "") == (w "") { sub(/^[^\t]*\t/, ""); print; exit }')
+        [ "$now" = "$window_name" ] || return 1
+    fi
     if [ -n "$typed" ]; then
         mm_tmux send-keys -t "$sid:" -l -- "$typed" || return 1
         mm_tmux send-keys -t "$sid:" Enter || return 1
@@ -461,8 +478,14 @@ mm_usage_error() {
     exit 2
 }
 
+# desk-new <name> <folder> [options]. --window-name names the desk's first window (issue 163, 0.12.0). The
+# name keeps the window-name rule (mm_valid_window_name), or is exactly the desk's own name: a desk name can be
+# 64 characters and a window name 32, so naming the window after its desk works for every desk. The app's desk
+# names are ASCII letters, digits, - and _, which the window-name rule also allows; mm_valid_desk_name's ranges
+# can let other letters through in some locales, and such a desk's own name is taken here as it stands. The name is not stored in the desk list, so a desk
+# that comes back after a restart is one fresh window that tmux names, as with window-name.
 cmd_desk_new() {
-    local name="" folder="" reopen=1 keep=0 permanent=0 command="" npos=0 file tmp old
+    local name="" folder="" reopen=1 keep=0 permanent=0 command="" window_name="" named=0 npos=0 file tmp old
     while [ $# -gt 0 ]; do
         case "$1" in
             # A new desk comes back after a restart unless told not to. --reopen is still accepted.
@@ -473,6 +496,12 @@ cmd_desk_new() {
             --command)
                 [ $# -ge 2 ] || mm_usage_error desk-new "--command needs a value"
                 command="$2"
+                shift
+                ;;
+            --window-name)
+                [ $# -ge 2 ] || mm_usage_error desk-new "--window-name needs a value"
+                window_name="$2"
+                named=1
                 shift
                 ;;
             --*) mm_usage_error desk-new "unknown option $1" ;;
@@ -487,11 +516,16 @@ cmd_desk_new() {
         esac
         shift
     done
-    [ "$npos" -eq 2 ] || mm_usage_error desk-new "usage: desk-new <name> <folder> [--no-reopen] [--permanent] [--keep] [--command <text>]"
+    [ "$npos" -eq 2 ] || mm_usage_error desk-new "usage: desk-new <name> <folder> [--no-reopen] [--permanent] [--keep] [--command <text>] [--window-name <name>]"
 
     if ! mm_valid_desk_name "$name"; then
         echo "macmosh-host: a desk name uses letters, digits, - and _ only, up to 64 characters" >&2
         mm_log desk-new "refused: bad name"
+        return 6
+    fi
+    if [ "$named" = 1 ] && [ "$window_name" != "$name" ] && ! mm_valid_window_name "$window_name"; then
+        echo "macmosh-host: $MM_WINDOW_NAME_RULE" >&2
+        mm_log desk-new "refused: bad window name"
         return 6
     fi
     # Check before expanding: $(...) drops a new line at the end of the text.
@@ -552,7 +586,7 @@ cmd_desk_new() {
         mm_log desk-new "failed: $name could not be saved"
         return 1
     fi
-    if ! mm_create_session "$name" "$folder" "$command" "$keep"; then
+    if ! mm_create_session "$name" "$folder" "$command" "$keep" "$window_name"; then
         if [ -n "$MM_NEW_SID" ]; then mm_tmux kill-session -t "$MM_NEW_SID" >/dev/null 2>&1; fi
         mm_drop_def_line "$name"
         mm_release_lock
@@ -2032,8 +2066,10 @@ usage: macmosh-host <subcommand>
             status report (4 to 32 of 0-9 and a-f); with neither window option, the tab
             opens on the window the desk shows now
   desk-new <name> <folder> [--no-reopen] [--permanent] [--keep] [--command <text>]
+            [--window-name <name>]
             a new desk comes back after a restart unless --no-reopen, and is removed
-            when its last shell exits unless --permanent
+            when its last shell exits unless --permanent; --window-name names its first
+            window, by the window-name rule or the desk's own name, until a restart
   desk-remove <name> [--kill]
   desk-rename <name> <new name>
             the desk keeps its windows, what runs in them and its settings

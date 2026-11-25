@@ -50,6 +50,10 @@ public struct NewDeskForm: Sendable, Equatable {
         public static let orAPath = "Or a path, full or starting with ~:"
         public static let name = "Name"
         public static let nameHelp = "Letters, digits, - and _ only."
+        /// The first window's line (issue 163). A first proposal; the owner chooses the words.
+        public static let firstWindow = "First window"
+        public static let sameAsDesk = "Same name as the desk"
+        public static let firstWindowHelp = "Left empty, the window is named after the program running in it."
         public static let command = "Command to start"
         public static let commandHelp = "Leave it empty for a plain shell."
         public static let afterARestart = "After a restart"
@@ -99,6 +103,9 @@ public struct NewDeskForm: Sendable, Equatable {
     let takenNames: Set<String>
     /// "Keep it, closed" needs script 0.5.0 (section 7.2); with an older one it is hidden and never sent.
     public let canKeepClosed: Bool
+    /// The first window's line needs script 0.12.0 (issue 163); with an older one it is hidden and nothing about the
+    /// window is sent, so tmux names it as before.
+    public let canNameFirstWindow: Bool
 
     public var folders: Folders
     public var filter = ""
@@ -112,6 +119,10 @@ public struct NewDeskForm: Sendable, Equatable {
     public var comesBack = true
     public var keepClosed = false
     public var openInTab = true
+    /// "Same name as the desk", ticked at first.
+    public var windowSameAsDesk = true
+    /// The first window's own name, used while the box is clear; left empty, tmux names the window.
+    public var windowName = ""
     /// The projects folder line's field, when none is saved.
     public var projectsFolderDraft = Words.projectsFolderDefault
 
@@ -126,6 +137,7 @@ public struct NewDeskForm: Sendable, Equatable {
         deskFolders = Set(ButtonRules.desks(check).compactMap { $0.definition.map { Self.normal($0.folder) } })
         takenNames = DeskNameRule.taken(check)
         canKeepClosed = check.status.map { HostInstaller.isAtLeast($0.scriptVersion, "0.5.0") } ?? false
+        canNameFirstWindow = check.status.map { HostInstaller.isAtLeast($0.scriptVersion, DeskFlow.firstWindowNameNeeds) } ?? false
         folders = projects == nil ? .noProjectsFolder : .reading
         command = saved.lastDeskCommand ?? ""
     }
@@ -227,8 +239,32 @@ public struct NewDeskForm: Sendable, Equatable {
         DeskNameRule.hasTabOrNewline(command) ? "A command to start can't contain a tab or a new line." : nil
     }
 
+    /// Why the first window's own name can't be used: only while the line is shown, the box is clear and the field
+    /// holds something. `FirstWindow.problem`: the desk's own name, or `WindowName`'s rule and its sentence.
+    public var firstWindowProblem: String? {
+        guard canNameFirstWindow, !windowSameAsDesk, !windowName.isEmpty else { return nil }
+        return FirstWindow.problem(windowName, desk: name)
+    }
+
+    /// The line under the first window's field, shown while the box is clear: what an empty field does, or why the
+    /// name can't be used. Nil while the box is ticked or the line is hidden.
+    public var firstWindowLine: String? {
+        guard canNameFirstWindow, !windowSameAsDesk else { return nil }
+        return firstWindowProblem ?? Words.firstWindowHelp
+    }
+
+    public var firstWindowLineIsProblem: Bool { firstWindowProblem != nil }
+
+    /// What the first window is called: the desk's name while ticked, the typed name, or tmux's when the field is
+    /// empty. Nil with a script older than 0.12.0, and then nothing is sent.
+    public var firstWindow: FirstWindow? {
+        guard canNameFirstWindow else { return nil }
+        if windowSameAsDesk { return .deskName }
+        return windowName.isEmpty ? .afterItsProgram : .named(windowName)
+    }
+
     /// Why Make desk is off, in the order of the fields; empty when it is on.
-    public var problems: [String] { [folderProblem, nameProblem, commandProblem].compactMap { $0 } }
+    public var problems: [String] { [folderProblem, nameProblem, firstWindowProblem, commandProblem].compactMap { $0 } }
 
     public var canMake: Bool { problems.isEmpty }
 
@@ -243,7 +279,7 @@ public struct NewDeskForm: Sendable, Equatable {
     public var request: NewDeskRequest? {
         guard canMake, let folder = folderPath else { return nil }
         return NewDeskRequest(name: name, folder: folder, reopen: comesBack, keep: false,
-                              permanent: canKeepClosed && keepClosed, command: commandToSave)
+                              permanent: canKeepClosed && keepClosed, command: commandToSave, firstWindow: firstWindow)
     }
 
     // MARK: Pieces
