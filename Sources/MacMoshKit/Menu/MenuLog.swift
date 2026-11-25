@@ -26,6 +26,11 @@ public enum MenuLog {
     public static func windowAction(_ kind: WindowActionKind, ok: Bool) -> String {
         "window action: \(kind.rawValue) \(ok ? "ok" : "failed")"
     }
+    /// `window action: setting ok` or `failed`: a change on the Settings page was saved, or refused (issue 157).
+    /// Never the setting, its value or the workhorse. A field left as it was writes nothing.
+    public static func windowSetting(ok: Bool) -> String {
+        "window action: setting \(ok ? "ok" : "failed")"
+    }
     /// The person removed the menu-bar icon, so the app quits (main window design, section 7.2).
     public static let iconRemoved = "menu-bar icon removed: quitting"
     /// The app is about to quit, by whatever path.

@@ -47,6 +47,12 @@ private final class Lines: @unchecked Sendable {
         #expect(MenuLog.windowAction(.forget, ok: true) == "window action: forget ok")
     }
 
+    /// Issue 157: one line per change saved or refused on the Settings page, never the setting or its value.
+    @Test func theSettingLinesAreFixedWords() {
+        #expect(MenuLog.windowSetting(ok: true) == "window action: setting ok")
+        #expect(MenuLog.windowSetting(ok: false) == "window action: setting failed")
+    }
+
     /// How the app comes to quit: the icon removed, and the quit itself.
     @Test func theQuitLinesAreFixedWords() {
         #expect(MenuLog.iconRemoved == "menu-bar icon removed: quitting")
