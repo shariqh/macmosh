@@ -32,6 +32,14 @@ final class ScriptedInteraction: Interaction, @unchecked Sendable {
         }
     }
 
+    /// Like `ask`, but nil once the list has run out, as a terminal's end of input.
+    func askOrEnd(_ prompt: String) -> String? {
+        lock.withLock {
+            askedPrompts.append(prompt)
+            return answers.isEmpty ? nil : answers.removeFirst()
+        }
+    }
+
     func waitForKey(_ prompt: String) {
         lock.withLock { waitCount += 1 }
     }

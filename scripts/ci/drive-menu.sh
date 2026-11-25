@@ -329,7 +329,7 @@ window_click() {
 # open in another tab and one with no tab, a click on a window line with no tab and on one in a tab, the
 # workhorse's submenu with the summary one fact per line, and the submenus of shop and garden.
 windows_sample() {
-    local n base
+    local n base since
     start_app windows || return
     if ! opened_or_fail "first click"; then stop_app; return; fi
     snap menu
@@ -348,6 +348,30 @@ windows_sample() {
             "desk:workhorse:website:win:@1" "menu action done: focus connect: tab selected" website-submenu-again \
             "menu action: focus connect (line)"
         snap after-tab-click
+    fi
+    # Name a window… (issue 144): the sample's script is 0.11.0, so website's submenu has it right after New
+    # window; a click opens a tab with the form that asks, logged as a line, as Rename… is.
+    if opened_or_fail "for Name a window…"; then
+        rest_on "   website" name-window-submenu
+        ax names "   website" > "$OUT/ax/$base-website-submenu-names.txt"
+        if [ "$(grep -A1 -x "New window" "$OUT/ax/$base-website-submenu-names.txt" | sed -n 2p)" = "Name a window…" ]; then
+            result PASS "Name a window… comes right after New window" "see ax/$base-website-submenu-names.txt"
+        else
+            result FAIL "Name a window… comes right after New window" "see ax/$base-website-submenu-names.txt"
+        fi
+        since=$(moment)
+        if click_in_submenu "   website" "Name a window"; then
+            expect_row "a click on Name a window… runs that line" "$since" "desk:workhorse:website:nameWindow"
+            expect_asked "a click on Name a window… is logged as a line" "$since" "menu action: tab desk (line)"
+            if wait_log "$since" "menu action done: tab desk: tab opened" 6 > /dev/null; then
+                result PASS "a click on Name a window… opens a tab" "log: menu action done: tab desk: tab opened"
+            else
+                result FAIL "a click on Name a window… opens a tab" "no 'menu action done: tab desk: tab opened' line after the click"
+            fi
+        else
+            result FAIL "a click on Name a window… runs that line" "the line was not found in website's submenu"
+        fi
+        snap after-name-window-click
     fi
     if opened_or_fail "for the workhorse's submenu"; then
         rest_on "Workhorse" workhorse-submenu

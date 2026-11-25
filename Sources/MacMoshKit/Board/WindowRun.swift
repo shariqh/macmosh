@@ -5,6 +5,8 @@ public enum WindowForm: Sendable, Equatable {
     case newDesk(workhorse: String)
     case rename(workhorse: String, desk: String)
     case remove(workhorse: String, desk: String)
+    /// The sheet that names one window of a desk, by the window's id (issue 144).
+    case nameWindow(workhorse: String, desk: String, window: String)
 }
 
 /// What a window button runs (main window design, section 8, steps 3 and 4).
@@ -22,7 +24,8 @@ public enum WindowRun {
             return action
         case .window(.openAllWithoutTab(_, let tabs)):
             return .tabs(tabs)
-        case .window(.newDesk), .window(.rename), .window(.remove), .window(.startAgain), .window(.forget):
+        case .window(.newDesk), .window(.rename), .window(.remove), .window(.startAgain), .window(.forget),
+             .window(.nameWindow):
             return nil
         }
     }
@@ -33,6 +36,7 @@ public enum WindowRun {
         case .window(.newDesk(let id)): return .newDesk(workhorse: id)
         case .window(.rename(let id, let desk)): return .rename(workhorse: id, desk: desk)
         case .window(.remove(let id, let desk)): return .remove(workhorse: id, desk: desk)
+        case .window(.nameWindow(let id, let desk, let window)): return .nameWindow(workhorse: id, desk: desk, window: window)
         default: return nil
         }
     }

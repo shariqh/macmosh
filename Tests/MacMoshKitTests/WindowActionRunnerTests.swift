@@ -429,3 +429,116 @@ private func ok(_ stdout: String = "") -> FakeRunner { FakeRunner { _ in FakeRun
         #expect(await rig.runner.saveProjectsFolder("attic", "a\tb") == "The projects folder can't contain a tab or a new line.")
     }
 }
+
+/// Naming a window from the window's sheet (issue 144): one key-only ssh call like Rename's, a fixed-words log line,
+/// a result line, one action per desk, and a check after it with the desk's row marked until it lands.
+@MainActor @Suite struct NameWindowRunnerTests {
+    /// The rig with Attic's script at 0.11.0, which names windows; desks-board.txt gives website's windows ids.
+    private func rig(_ ssh: CommandRunner) async throws -> Rig {
+        let rig = try await Rig(ssh: ssh)
+        rig.checks.set { $0.scriptVersion = "0.11.0" }
+        await rig.refresher.refresh()
+        return rig
+    }
+
+    private func form(_ rig: Rig, _ name: String, window: String = "@3") throws -> WindowNameForm {
+        var f = try #require(rig.runner.nameWindowForm("attic", desk: "website", window: window))
+        f.name = name
+        return f
+    }
+
+    @Test func theNameIsOneArgumentOfOneKeyOnlyCall() async throws {
+        let ssh = ok()
+        let r = try await rig(ssh)
+        let f = try form(r, "front end")
+        #expect(await r.runner.nameWindow(f, to: try #require(f.naming)) == .done("Named window 2 of website \"front end\" on Attic."))
+        #expect(await r.runner.nameWindow(f, to: .afterItsProgram) == .done("Window 2 of website follows its program's name again on Attic."))
+        #expect(ssh.calls.map { $0.argv.last } == [
+            "~/.macmosh/macmosh-host window-name website @3 'front end'",
+            "~/.macmosh/macmosh-host window-name website @3 --auto",
+        ])
+        #expect(ssh.calls.allSatisfy { $0.stdin == nil && $0.timeout == .seconds(15) && $0.argv.contains("BatchMode=yes") })
+        let call = try #require(ssh.calls.first)
+        let dash = try #require(call.argv.firstIndex(of: "--"))
+        #expect(call.argv[dash + 1] == "alex@192.168.1.20")
+        #expect(call.argv.count == dash + 3)
+        await r.runner.idle()
+    }
+
+    @Test func afterwardsTheLogTheResultLineAndACheckWithTheRowMarked() async throws {
+        let r = try await rig(ok())
+        let before = r.checks.done
+        let f = try form(r, "front end")
+        #expect(await r.runner.nameWindow(f, to: try #require(f.naming)) == .done("Named window 2 of website \"front end\" on Attic."))
+        #expect(r.runner.activity("attic").updating == ["website"])
+        await r.runner.idle()
+        #expect(r.runner.activity("attic").updating.isEmpty)
+        #expect(r.checks.done > before)
+        #expect(r.refresher.results["attic"] == "Named window 2 of website \"front end\" on Attic.")
+        #expect(r.refresher.notice == r.refresher.results["attic"])
+        #expect(r.lines.all.contains("window action: nameWindow ok"))
+        #expect(!r.lines.all.contains { $0.contains("front") || $0.contains("website") || $0.contains("@3") })
+    }
+
+    @Test func aClosedWindowIsAPlainSentence() async throws {
+        let ssh = FakeRunner { _ in FakeRunner.failed(4, stderr: "That window has closed.\n") }
+        let r = try await rig(ssh)
+        let f = try form(r, "api")
+        #expect(await r.runner.nameWindow(f, to: try #require(f.naming)) == .failed("That window has closed."))
+        await r.runner.idle()
+        #expect(r.refresher.results["attic"] == "The window of website wasn't named. That window has closed.")
+        #expect(r.lines.all.contains("window action: nameWindow failed"))
+    }
+
+    @Test func aTimeoutSaysSoAndTheRowWaitsForTheCheck() async throws {
+        let ssh = FakeRunner { _ in CommandResult(exitCode: -1, stdout: "", stderr: "", timedOut: true) }
+        let r = try await rig(ssh)
+        let unsure = "MacMosh didn't hear back from Attic about website within 15 seconds. The next check shows whether it was named."
+        #expect(await r.runner.nameWindow(try form(r, "api"), to: .afterItsProgram) == .failed(unsure))
+        #expect(r.runner.activity("attic").busy.isEmpty)
+        #expect(r.runner.activity("attic").updating == ["website"])
+        await r.runner.idle()
+        #expect(r.refresher.results["attic"] == unsure)
+        #expect(r.lines.all.contains("window action: nameWindow failed"))
+    }
+
+    @Test func oneActionPerDesk() async throws {
+        let ssh = HeldRunner()
+        let r = try await rig(ssh)
+        let f = try form(r, "api")
+        let first = Task { await r.runner.nameWindow(f, to: .afterItsProgram) }
+        #expect(await ssh.waitFor(1))
+        #expect(r.runner.activity("attic").busy == ["website": .nameWindow])
+        #expect(await r.runner.nameWindow(try form(r, "logs", window: "@1"), to: .afterItsProgram)
+                == .failed("Wait for the action on website to finish."))
+        var rename = try #require(r.runner.renameForm("attic", desk: "website"))
+        rename.name = "site"
+        #expect(await r.runner.rename(rename) == .failed("Wait for the action on website to finish."))
+        ssh.release()
+        _ = await first.value
+        await r.runner.idle()
+        #expect(ssh.calls.count == 1)
+        #expect(r.runner.activity("attic") == WindowActivity())
+    }
+
+    /// A name reaches the call only as a `WindowName`, so one that breaks the rule can't be sent: the form gives
+    /// nothing to send for it, and Name stays off.
+    @Test func aNameReachesTheCallOnlyAsAWindowName() async throws {
+        let ssh = ok()
+        let r = try await rig(ssh)
+        let f = try form(r, "-x")
+        #expect(f.naming == nil && !f.canName)
+        #expect(ssh.calls.isEmpty)
+        #expect(await r.runner.nameWindow(f, to: .named(WindowName("api")!)) == .done("Named window 2 of website \"api\" on Attic."))
+        #expect(ssh.calls.count == 1)
+        await r.runner.idle()
+    }
+
+    @Test func thereIsNoFormBefore0_11_0() async throws {
+        let r = try await Rig(ssh: ok())
+        #expect(r.runner.nameWindowForm("attic", desk: "website", window: "@3") == nil)
+        let newer = try await rig(ok())
+        #expect(newer.runner.nameWindowForm("attic", desk: "website", window: "@3")?.label == "Name for window 2 (vim)")
+        #expect(newer.runner.nameWindowForm("attic", desk: "garden", window: "@3") == nil)
+    }
+}

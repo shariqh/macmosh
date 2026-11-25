@@ -88,11 +88,17 @@ public enum ButtonRules {
     }
 
     /// The buttons of one desk: Open (what a click on the desk's row does too), New window for an open
-    /// desk (a closed one has none to add to), Rename… and Remove…, which open a tab that asks first.
-    public static func forDesk(workhorse id: String, desk name: String, isOpen: Bool) -> [ActionButton] {
+    /// desk (a closed one has none to add to), Name a window… when its windows can be named
+    /// (`WindowNameGate`, issue 144), Rename… and Remove…; the last three open a tab that asks first.
+    public static func forDesk(workhorse id: String, desk name: String, isOpen: Bool,
+                               canNameWindows: Bool = false) -> [ActionButton] {
         var buttons = [ActionButton(key: "open", title: "Open \(name)", action: connect(workhorse: id, desk: name))]
         if isOpen {
             buttons.append(ActionButton(key: "window", title: "New window", action: .run(["desk", "window", id, name])))
+            if canNameWindows {
+                buttons.append(ActionButton(key: nameWindowKey, title: "Name a window…",
+                                            action: .tab(["desk", "name-window", id, name])))
+            }
         }
         buttons.append(ActionButton(key: "rename", title: "Rename \(name)…", action: .tab(["desk", "rename", id, name])))
         buttons.append(ActionButton(key: "remove", title: "Remove \(name)…", action: .tab(["desk", "remove", id, name, "--ask"])))
@@ -119,7 +125,8 @@ public enum ButtonRules {
             let name = session.name.value
             return DeskLine(name: name, session: session, definition: definition(name), isKept: kept.contains(name),
                             isPermanent: permanent.contains(name),
-                            buttons: forDesk(workhorse: id, desk: name, isOpen: true))
+                            buttons: forDesk(workhorse: id, desk: name, isOpen: true,
+                                             canNameWindows: WindowNameGate.passes(r, desk: session)))
         }
         let open = Set(sessions.map(\.name.value))
         for closed in definitions where closed.permanent && !open.contains(closed.name.value) {
@@ -136,6 +143,9 @@ public enum ButtonRules {
             return line
         }
     }
+
+    /// The key of a desk's Name a window… button.
+    public static let nameWindowKey = "nameWindow"
 
     /// Every workhorse's last button, in every state.
     public static func checklist(_ id: String) -> ActionButton {

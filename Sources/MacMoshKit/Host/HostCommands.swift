@@ -19,6 +19,21 @@ public enum HostCommandError: Error, Equatable {
     case failed(exitCode: Int32, message: String)
 }
 
+/// What a window is to be named: a name, or after the program running in it, as tmux names it (`--auto`).
+public enum WindowNaming: Sendable, Equatable {
+    case named(WindowName)
+    case afterItsProgram
+}
+
+/// Why naming a window didn't work, besides `HostCommandError`.
+public enum WindowNameError: Error, Equatable {
+    /// Exit code 4 with the script's own line for it: the window is not one of the desk's windows now.
+    case windowClosed
+
+    /// The script's line for it (0.11.0), on its own line of standard error, and the app's words too.
+    static let closedLine = "That window has closed."
+}
+
 /// The desk commands, run on a workhorse through the workhorse script. Every call is one batch ssh
 /// to `address`, which is where a status check just got its answer. Nothing here is checked for
 /// readiness: `DeskFlow` does that first.
@@ -70,6 +85,29 @@ public struct HostCommands: Sendable {
         _ = try await run(w, address, ["window-new", desk.value])
     }
 
+    /// The script's arguments for naming one window (script 0.11.0, issue 144): the desk, the window by its id,
+    /// then the name as one argument, or `--auto` to give the name back to tmux. `SSHInvocation.hostCommand` quotes
+    /// each once, so a name with spaces arrives as typed.
+    public static func nameWindowArguments(desk: DeskName, window id: String, to naming: WindowNaming) -> [String] {
+        switch naming {
+        case .named(let name): return ["window-name", desk.value, id, name.value]
+        case .afterItsProgram: return ["window-name", desk.value, id, "--auto"]
+        }
+    }
+
+    /// Names a window of a desk, or lets it follow its program's name again. The script's exit code 4 with its
+    /// own sentence for it is `WindowNameError.windowClosed`; any other exit code 4 is `noSuchDesk`.
+    public func nameWindow(on w: Workhorse, address: String, desk: DeskName, window id: String,
+                           to naming: WindowNaming) async throws {
+        let outcome = try await call(w, address, Self.nameWindowArguments(desk: desk, window: id, to: naming))
+        if case .remoteFailed(4, let stderr) = outcome,
+           stderr.split(whereSeparator: \.isNewline).contains(where: { $0 == WindowNameError.closedLine }) {
+            throw WindowNameError.windowClosed
+        }
+        if case .ok = outcome { return }
+        throw Self.error(for: outcome)
+    }
+
     /// The names of the folders inside the workhorse's projects folder, sorted by the workhorse.
     /// The folder is sent as saved, so a leading `~` is expanded on the workhorse.
     public func folders(on w: Workhorse, address: String) async throws -> [String] {
@@ -83,6 +121,13 @@ public struct HostCommands: Sendable {
     /// Key first: with the key unusable no ssh runs at all (ssh would only warn, then quietly try the
     /// user's own keys). Returns the script's standard output.
     private func run(_ w: Workhorse, _ address: String, _ arguments: [String]) async throws -> String {
+        let outcome = try await call(w, address, arguments)
+        if case .ok(let stdout) = outcome { return stdout }
+        throw Self.error(for: outcome)
+    }
+
+    /// The one ssh call, and how it ended.
+    private func call(_ w: Workhorse, _ address: String, _ arguments: [String]) async throws -> ProbeOutcome {
         guard KeyManager(paths: paths, runner: runner).identityState(for: w) == .usable else {
             throw HostCommandError.failed(exitCode: 255, message: "Your ssh key is locked: MacMosh can't use its key file. Run: macmosh status \(w.id)")
         }
@@ -90,9 +135,7 @@ public struct HostCommands: Sendable {
                                       remote: SSHInvocation.hostCommand(arguments))
         let result = await runner.run(argv[0], Array(argv.dropFirst()), environment: [:], stdin: nil,
                                       timeout: Self.timeLimit)
-        let outcome = SSHProbe.classify(result)
-        if case .ok(let stdout) = outcome { return stdout }
-        throw Self.error(for: outcome)
+        return SSHProbe.classify(result)
     }
 
     /// Why a call failed when it passed `timeLimit`: ssh here was stopped, which may be after the script there

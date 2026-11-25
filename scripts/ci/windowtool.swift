@@ -12,8 +12,9 @@
 //   windowtool <pid> close              the centre of the window's close button: "close x y"
 //   windowtool <pid> button <title>     the centre of the first button with that title: "found x y role"
 //   windowtool <pid> enabled <identifier>   whether that element can be used: "enabled true" or "enabled false"
+//   windowtool <pid> selected <identifier>  the text selected in that field: "selected <text>" (issue 144)
 //
-// find, value, text, button and enabled look in the MacMosh window first (its sheets are inside it), then in
+// find, value, text, button, enabled and selected look in the MacMosh window first (its sheets are inside it), then in
 // the app's other windows, where a dialog may be.
 //   windowtool <pid> dump               every element: depth, role, identifier, text and centre
 //
@@ -25,7 +26,7 @@ import ApplicationServices
 
 let args = CommandLine.arguments
 guard args.count >= 3, let pid = pid_t(args[1]) else {
-    print("usage: windowtool <pid> windows|front|frame|find|value|text|close|button|enabled|dump [argument]")
+    print("usage: windowtool <pid> windows|front|frame|find|value|text|close|button|enabled|selected|dump [argument]")
     exit(2)
 }
 let command = args[2]
@@ -121,6 +122,13 @@ case "enabled":
     let hit = everything().first { text($0.element, "AXIdentifier") == argument }
     if let hit {
         print("enabled \((attribute(hit.element, kAXEnabledAttribute) as? Bool) ?? true)")
+    } else {
+        print("notfound")
+    }
+case "selected":
+    let hit = everything().first { text($0.element, "AXIdentifier") == argument }
+    if let hit {
+        print("selected \(text(hit.element, kAXSelectedTextAttribute) ?? "")")
     } else {
         print("notfound")
     }

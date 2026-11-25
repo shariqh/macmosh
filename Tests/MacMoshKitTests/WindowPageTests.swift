@@ -264,7 +264,7 @@ private func titles(_ buttons: [BoardButton]) -> [String] { buttons.map(\.title)
 
         let api = try #require(r["api"])
         #expect(api.open?.title == "Open" && api.openWords == "Open api in 2 tabs" && api.tabs == "No tab")
-        #expect(api.windowLines.map(\.words) == ["server", "tests"] && api.windowLines.map(\.button.title) == ["Open", "Open"])
+        #expect(api.windowLines.map(\.words) == ["server", "tests"] && api.windowLines.map { $0.button?.title } == ["Open", "Open"])
         #expect(r["blog"]?.windowLines == [])   // one window: the row's button is that window's
         let garden = try #require(r["garden"])
         #expect(garden.open == BoardButton(title: "Open", action: .menu(.tab(["connect", "attic", "garden", "--view"]))))

@@ -29,12 +29,13 @@ extension DeskResult {
 struct DeskCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "desk",
-        abstract: "Make, rename, remove or add a window to a desk on a workhorse.",
+        abstract: "Make, rename, remove, add a window to or name a window of a desk on a workhorse.",
         subcommands: [
             New.self,
             Rename.self,
             Remove.self,
             Window.self,
+            NameWindow.self,
         ]
     )
 
@@ -162,6 +163,50 @@ struct DeskCommand: AsyncParsableCommand {
             case .success(let check): outcome = await deskFlow().renameDesk(check, from: desk, to: newName, ui: ui)
             }
             guard newName == nil else { return try outcome.finishPlainly() }
+            // The form that asks runs in a tab from the menu: it stays open until a key is pressed.
+            outcome.code = ui.finishTab(outcome.code, reason: outcome.reason)
+            if outcome.code != 0 { throw ExitCode(outcome.code) }
+        }
+    }
+
+    struct NameWindow: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "name-window",
+            abstract: "Name one window of a desk, or let it follow its program's name again. What isn't given is asked.",
+            discussion: """
+                The window is given by its id, such as @3, never by its number or its name. With no window it lists the \
+                desk's windows and asks which; with no name it asks for one, and Enter alone lets the window \
+                follow its program's name again, as --auto does. \(WindowName.rule) Names are not kept across a \
+                restart of the workhorse. Needs the workhorse script 0.11.0 or newer.
+                """
+        )
+
+        @Argument(help: "The workhorse's id or name.")
+        var workhorse: String
+
+        @Argument(help: "The desk's name.")
+        var desk: String
+
+        @Argument(help: "The window's new name, as one argument (quote it when it has a space). Leave it out to be asked.")
+        var name: String?
+
+        @Option(help: "The window, by its id, such as @3. Leave it out to pick it from a list.")
+        var window: String?
+
+        @Flag(help: "Let the window follow its program's name again, in place of a name.")
+        var auto = false
+
+        func run() async throws {
+            if auto && name != nil { throw ValidationError("Give a name or --auto, not both.") }
+            let wanted: WantedWindowName? = auto ? .afterItsProgram : name.map(WantedWindowName.name)
+            let ui = TerminalInteraction()
+            var outcome: DeskResult
+            switch await checkedForDesk(workhorse) {
+            case .failure(let failed): outcome = failed
+            case .success(let check):
+                outcome = await deskFlow().nameWindow(check, desk: desk, window: window, to: wanted, ui: ui)
+            }
+            guard window == nil || wanted == nil else { return try outcome.finishPlainly() }
             // The form that asks runs in a tab from the menu: it stays open until a key is pressed.
             outcome.code = ui.finishTab(outcome.code, reason: outcome.reason)
             if outcome.code != 0 { throw ExitCode(outcome.code) }

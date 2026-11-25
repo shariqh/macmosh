@@ -13,6 +13,8 @@ name: Menu pictures
 # "changing" sample, when the hold could not be tested), and in the "windows" sample when a window
 # line is missing, its click does not reach its action in the app's log, or the workhorse's summary
 # is not one fact per line; never on how a picture looks.
+# For naming a window (issue 144), the window's run also fails when a Name button or the sheet does not
+# work or does not send its exact arguments.
 # scripts/ci/drive-menu.sh says what it checks.
 on:
   pull_request:

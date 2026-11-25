@@ -271,6 +271,92 @@ struct RenameSheet: View {
     }
 }
 
+/// The sheet that names one window of a desk (issue 144), drawn from `WindowNameForm`, which holds every rule and
+/// word: the title, the label, one field filled with the window's name and selecting it, the rule or why the name
+/// can't be used under it, and "Use its program's name", Cancel and Name (the default button). Controls: Button,
+/// Text and TextField only. `WindowActionRunner.nameWindow` sends it.
+struct WindowNameSheet: View {
+    @ObservedObject var forms: WindowActionRunner
+    @State var form: WindowNameForm
+    let close: () -> Void
+    @State private var failure: String?
+    /// Apple, TextField.init(_:text:selection:prompt:axis:) with a title that is a `StringProtocol` (macOS 15.0,
+    /// https://developer.apple.com/documentation/swiftui/textfield/init(_:text:selection:prompt:axis:)-80y12):
+    /// "Creates a text field with a binding to the current selection and a text label generated from a title
+    /// string." (The form with a label closure is not in Xcode 16.4's SDK: the macos-15 runner refused it.)
+    /// TextSelection.init(range:) (macOS 15.0,
+    /// https://developer.apple.com/documentation/swiftui/textselection/init(range:)): "Create a single selection
+    /// with a given range."
+    @State private var selection: TextSelection?
+    /// Apple, FocusState (macOS 12.0, https://developer.apple.com/documentation/swiftui/focusstate): "A property
+    /// wrapper type that can read and write a value that SwiftUI updates as the placement of focus within the scene
+    /// changes."
+    @FocusState private var fieldHasFocus: Bool
+
+    private var naming: Bool { forms.busy[form.workhorseID]?[form.desk] == .nameWindow }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(verbatim: form.title).font(.headline)
+            Text(verbatim: form.label)
+            TextField(form.label, text: $form.name, selection: $selection, prompt: Text(verbatim: ""))
+                .labelsHidden()
+                .frame(width: 320)
+                .focused($fieldHasFocus)
+                .disabled(naming)
+                .accessibilityIdentifier(FormMarks.windowName)
+            Text(verbatim: form.help).font(.caption)
+                .foregroundStyle(form.helpIsProblem ? Color.red : Color.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(width: 320, alignment: .leading)
+                .accessibilityIdentifier(FormMarks.windowName + ".help")
+            HStack {
+                Button { send(.afterItsProgram) } label: { Text(verbatim: WindowNameForm.Words.useProgramsName) }
+                    .disabled(naming)
+                    .accessibilityIdentifier(FormMarks.useProgramsName)
+                Spacer()
+                Button { close() } label: { Text(verbatim: WindowNameForm.Words.cancel) }
+                    .keyboardShortcut(.cancelAction)
+                    .disabled(naming)
+                    .accessibilityIdentifier(FormMarks.cancel)
+                Button { if let chosen = form.naming { send(chosen) } } label: {
+                    Text(verbatim: naming ? WindowNameForm.Words.naming : WindowNameForm.Words.name)
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(!form.canName || naming)
+                .accessibilityIdentifier(FormMarks.nameButton)
+            }
+            if let failure {
+                Text(verbatim: failure).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
+                    .frame(width: 320, alignment: .leading)
+                    .accessibilityIdentifier(FormMarks.failure)
+            }
+        }
+        .padding(20)
+        .interactiveDismissDisabled(naming)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(FormMarks.nameWindow)
+        // The field takes the focus with its whole name selected, so typing replaces it.
+        .task {
+            fieldHasFocus = true
+            await Task.yield()
+            selection = TextSelection(range: form.name.startIndex..<form.name.endIndex)
+        }
+    }
+
+    private func send(_ chosen: WindowNaming) {
+        guard !naming else { return }
+        failure = nil
+        let sent = form
+        Task {
+            switch await forms.nameWindow(sent, to: chosen) {
+            case .done: close()
+            case .failed(let why): failure = why
+            }
+        }
+    }
+}
+
 /// A text field with its label beside it already, so it shows no placeholder of its own (the design draws
 /// empty fields); the label stays for accessibility. Apple, TextField.init(text:prompt:label:) (macOS 12.0,
 /// https://developer.apple.com/documentation/swiftui/textfield/init(text:prompt:label:)): "prompt: A Text
@@ -299,5 +385,9 @@ enum FormMarks {
     static let saveProjectsFolder = "form.saveProjectsFolder"
     static let newName = "form.newName"
     static let renameButton = "form.renameButton"
+    static let nameWindow = "form.nameWindow"
+    static let windowName = "form.windowName"
+    static let useProgramsName = "form.useProgramsName"
+    static let nameButton = "form.nameButton"
     static func folder(_ name: String) -> String { "form.folder.\(name)" }
 }

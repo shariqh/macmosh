@@ -26,8 +26,8 @@ public enum SampleMenu: String, CaseIterable, Sendable {
     /// The six-desk menu, changing every `changeEvery`: `api`'s title each time, and the desk
     /// `scratch` there on odd changes and gone on even ones. It exercises `HoldStill`.
     case changing
-    /// A script-0.8.0 report with window details, views and labels, and stand-in tab records for it (issue
-    /// #124): each desk past the gate has a line per window. `website` has a window in a tab this Mac can find,
+    /// A script-0.11.0 report with window details, views and labels, and stand-in tab records for it (issue
+    /// #124): each desk past the gate has a line per window, and Name a window… (issue 144). `website` has a window in a tab this Mac can find,
     /// one open in a tab it can't, and one with no tab.
     case windows
 
@@ -181,12 +181,13 @@ public enum SampleMenu: String, CaseIterable, Sendable {
         }
     }
 
-    /// A workhorse script 0.8.0 report with window details: `website` (claude in a tab, zsh in a tab with no
+    /// A workhorse script 0.11.0 report with window details (0.8.0's, and 0.11.0 names windows, issue 144):
+    /// `website` (claude in a tab, zsh in a tab with no
     /// label, vim in none; kept running and permanent), `api` (two windows, no tab), `notes` (one window in a
     /// tab), `blog` (one window, no tab), `shop` (web in two tabs, a second web in none) and `garden`,
     /// permanent and closed.
     static let windowsReport = [
-        "macmosh-host\t1\t0.8.0", "os\t26.1\tarm64", "console\tsample", "server\tup", "signins\tok",
+        "macmosh-host\t1\t0.11.0", "os\t26.1\tarm64", "console\tsample", "server\tup", "signins\tok",
         "agent\tinstalled", "power\tsleep=0\twomp=1", "battery\tpresent\tac\t82",
         "desk\twebsite\t3\t0", "window\twebsite\t0\tclaude", "window\twebsite\t1\tzsh", "window\twebsite\t2\tvim",
         "windowinfo\twebsite\t0\t@1\t1\t1", "windowinfo\twebsite\t1\t@2\t0\t1", "windowinfo\twebsite\t2\t@3\t0\t0",
