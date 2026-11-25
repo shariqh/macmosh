@@ -24,11 +24,15 @@ public enum SampleWindow: String, CaseIterable, Sendable {
     /// Step 5: Attic, Ready, whose desks end at the first click on Check now, so the window lists them under
     /// Ended (`SampleEnded`).
     case ended = "window-ended"
+    /// Issue 157: Attic and Spare, Ready, whose settings the Settings page saves into a stand-in store of its own
+    /// (`SampleSettings`).
+    case settings = "window-settings"
 
     var workhorses: [Workhorse] {
         switch self {
         case .unreadableList: return []
         case .forms, .ended: return [SampleForms.attic]
+        case .settings: return [SampleSettings.attic, SampleSettings.spare]
         default: return [SampleMenu.main]
         }
     }
@@ -38,6 +42,7 @@ public enum SampleWindow: String, CaseIterable, Sendable {
     func load() throws -> [Workhorse] {
         if self == .unreadableList { throw StoreError.unreadable("workhorses.json: not JSON") }
         if self == .forms { return try WorkhorseStore(paths: SampleForms.paths).load() }
+        if self == .settings { return try WorkhorseStore(paths: SampleSettings.paths).load() }
         return workhorses
     }
 
@@ -59,6 +64,8 @@ public enum SampleWindow: String, CaseIterable, Sendable {
             return [.checked(SampleForms.result(SampleForms.attic))]
         case .ended:
             return [.checked(SampleEnded.result(SampleForms.attic))]
+        case .settings:
+            return workhorses.map { .checked(SampleForms.result($0)) }
         }
     }
 
@@ -77,6 +84,7 @@ public enum SampleWindow: String, CaseIterable, Sendable {
     @MainActor public func refresher() -> MenuRefresher {
         if self == .forms { return SampleForms.refresher() }
         if self == .ended { return SampleEnded.refresher() }
+        if self == .settings { return SampleSettings.refresher() }
         let sample = self
         let checks = OSAllocatedUnfairLock(initialState: 0)
         return MenuRefresher(
@@ -106,6 +114,9 @@ public enum SampleWindow: String, CaseIterable, Sendable {
     /// which answers as the script would; for any other sample, a runner that runs nothing.
     public let ssh: CommandRunner
     public let paths: Paths
+    /// The saved list and settings the Settings page reads and saves (issue 157): the settings sample's own
+    /// stand-in, or, for any other sample, the forms sample's. Never the person's.
+    public let settingsPaths: Paths
 
     /// The sample with that name, or nil when there is none.
     public static func named(_ name: String) -> SampleRun? {
@@ -113,12 +124,13 @@ public enum SampleWindow: String, CaseIterable, Sendable {
             let list = menu.workhorses
             return SampleRun(startedLine: menu.startedLine, workhorses: list, load: { list },
                              refresher: menu.refresher(), actions: SampleMenu.actions, ssh: SampleNoCommands(),
-                             paths: SampleForms.paths)
+                             paths: SampleForms.paths, settingsPaths: SampleForms.paths)
         }
         if let window = SampleWindow(rawValue: name) {
+            let paths = window == .settings ? SampleSettings.paths : SampleForms.paths
             return SampleRun(startedLine: "sample menu: \(window.rawValue)", workhorses: window.workhorses,
                              load: { try window.load() }, refresher: window.refresher(), actions: SampleMenu.actions,
-                             ssh: Self.ssh(window), paths: SampleForms.paths)
+                             ssh: Self.ssh(window), paths: paths, settingsPaths: paths)
         }
         return nil
     }

@@ -69,7 +69,35 @@ import Testing
         #expect((try? SampleRun.named("six-desks")?.load())?.map(\.id) == ["workhorse"])
         #expect(throws: StoreError.unreadable("workhorses.json: not JSON")) { try SampleRun.named("unreadable-list")?.load() }
         #expect(SampleRun.named("window-forms")?.workhorses.map(\.id) == ["attic"])
+        #expect(SampleRun.named("window-settings")?.workhorses.map(\.id) == ["attic", "spare"])
         #expect(SampleRun.named("nope") == nil)
+    }
+
+    // MARK: the settings sample (issue 157)
+
+    /// The Settings page's sample writes a saved list of its own, in a temporary folder named after the app's
+    /// process, never the person's: the Settings page and the board both read it, and CI reads the file.
+    @Test func theSettingsSampleHasAStoreOfItsOwnInATemporaryFolder() throws {
+        let paths = SampleSettings.paths
+        let temporary = FileManager.default.temporaryDirectory.standardizedFileURL.path
+        #expect(paths.supportDir.standardizedFileURL.path.hasPrefix(temporary))
+        #expect(paths.supportDir.path.contains("macmosh-sample-settings-\(ProcessInfo.processInfo.processIdentifier)"))
+        #expect(paths.supportDir.path != Paths.forHome(FileManager.default.homeDirectoryForCurrentUser, environment: [:]).supportDir.path)
+        let run = try #require(SampleRun.named("window-settings"))
+        #expect(run.settingsPaths.supportDir == paths.supportDir)
+        #expect(try run.load().map(\.id) == ["attic", "spare"])
+        let saved = try WorkhorseStore(paths: paths).load()
+        #expect(saved.map(\.name) == ["Attic", "Spare"])
+        #expect(saved.last?.mode == .tabs)
+    }
+
+    /// Any other sample's Settings page reads that sample's stand-in, never the real folder.
+    @Test func everyOtherSampleHasAStandInForTheSettingsPage() throws {
+        let real = Paths.forHome(FileManager.default.homeDirectoryForCurrentUser, environment: [:]).supportDir.path
+        for name in SampleMenu.allCases.map(\.rawValue) + SampleWindow.allCases.map(\.rawValue) {
+            let run = try #require(SampleRun.named(name))
+            #expect(run.settingsPaths.supportDir.path != real)
+        }
     }
 
     // MARK: the forms sample (step 4)
