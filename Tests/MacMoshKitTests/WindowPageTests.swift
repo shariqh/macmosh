@@ -448,5 +448,8 @@ private func titles(_ buttons: [BoardButton]) -> [String] { buttons.map(\.title)
                                      results: ["attic": "Created the desk garden-planner on Attic."], now: formatNow, timeZone: formatZone)
         let p = WorkhorsePage(try #require(board.workhorses.first), now: formatNow, timeZone: formatZone)
         #expect(p.result == "Created the desk garden-planner on Attic.")
+        // The menu's notice is the same sentence: the page shows it once.
+        #expect(p.notice("Created the desk garden-planner on Attic.") == nil)
+        #expect(p.notice("The tab didn't open.") == "The tab didn't open.")
     }
 }

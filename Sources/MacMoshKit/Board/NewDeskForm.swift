@@ -334,3 +334,12 @@ public struct RemoveConfirmation: Sendable, Equatable, Identifiable {
         "\(desk) changed after you asked to remove it, so nothing was removed. Look at it again first."
     }
 }
+
+extension NewDeskForm: Identifiable {
+    /// One New desk form per workhorse at a time.
+    public var id: String { workhorseID }
+}
+
+extension RenameForm: Identifiable {
+    public var id: String { workhorseID + "/" + desk }
+}

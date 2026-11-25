@@ -145,6 +145,12 @@ public struct WorkhorsePage: Sendable, Equatable {
         result = w.result
     }
 
+    /// The menu's notice as the page shows it under the header: left out when it is this workhorse's result
+    /// line, which the header shows already (a window action sets both).
+    public func notice(_ notice: String?) -> String? {
+        notice == result ? nil : notice
+    }
+
     /// Rename needs script 0.6.0 (`desk-rename`, section 5.2); "Keep it, closed" needs 0.5.0 (`--permanent`).
     static let renameNeeds = "0.6.0"
     static let keepClosedNeeds = "0.5.0"

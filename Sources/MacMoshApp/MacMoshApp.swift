@@ -14,6 +14,9 @@ struct MacMoshApp: App {
     /// app, so a new board never makes the app's scenes, and with them the menu, draw again.
     private let board: BoardOnScreen
     private let actions: MenuActionRunner
+    /// The window's New desk, Rename and Remove (step 4). The app's, so an action started just before the
+    /// window closes still finishes.
+    private let forms: WindowActionRunner
     /// How the checks wait between two rounds: `PollSchedule`'s delay, or a second for a sample menu.
     private let pause: @Sendable (Duration) async -> Void
 
@@ -31,6 +34,8 @@ struct MacMoshApp: App {
             _screen = StateObject(wrappedValue: MenuOnScreen(refresher: refresher))
             board = BoardOnScreen(refresher: refresher, load: sample.load)
             actions = sample.actions
+            forms = WindowActionRunner(refresher: refresher, commands: sample.ssh, paths: sample.paths,
+                                       menuActions: sample.actions)
             pause = { _ in try? await Task.sleep(for: SampleMenu.lookEvery) }
             return
         }
@@ -45,6 +50,8 @@ struct MacMoshApp: App {
             tabs: AppTabs(),
             runner: ProcessRunner(),
             records: TabRecordStore(paths: Paths.standard()))
+        forms = WindowActionRunner(refresher: refresher, commands: ProcessRunner(), paths: Paths.standard(),
+                                   menuActions: actions)
         pause = { try? await Task.sleep(for: $0) }
     }
 
@@ -105,7 +112,7 @@ struct MacMoshApp: App {
         // window is already open when you call this action, the action brings the open window to the
         // front." (macOS 13.0, https://developer.apple.com/documentation/swiftui/window)
         Window(WindowWords.title, id: WindowWords.windowID) {
-            MainWindow(screen: board, actions: actions)
+            MainWindow(screen: board, actions: actions, forms: forms)
         }
         // "The scene will not present itself in the absence of any previously restored scenes."
         // (SceneLaunchBehavior.suppressed, macOS 15.0,

@@ -18,12 +18,23 @@ public enum SampleWindow: String, CaseIterable, Sendable {
     /// A saved list that can't be read: the menu shows the store's sentence, and so does the window, in
     /// place of the Add a Mac page.
     case unreadableList = "unreadable-list"
+    /// Step 4: Attic, Ready, with no projects folder saved, whose desks the window's New desk, Rename and
+    /// Remove change through a stand-in ssh (`SampleForms`).
+    case forms = "window-forms"
 
-    var workhorses: [Workhorse] { self == .unreadableList ? [] : [SampleMenu.main] }
+    var workhorses: [Workhorse] {
+        switch self {
+        case .unreadableList: return []
+        case .forms: return [SampleForms.attic]
+        default: return [SampleMenu.main]
+        }
+    }
 
-    /// Reads the sample's saved list. The unreadable one throws what a damaged file throws.
+    /// Reads the sample's saved list. The unreadable one throws what a damaged file throws; the forms one reads
+    /// its own saved list, so a projects folder saved from the form shows.
     func load() throws -> [Workhorse] {
         if self == .unreadableList { throw StoreError.unreadable("workhorses.json: not JSON") }
+        if self == .forms { return try WorkhorseStore(paths: SampleForms.paths).load() }
         return workhorses
     }
 
@@ -41,6 +52,8 @@ public enum SampleWindow: String, CaseIterable, Sendable {
                                                home: true))]
         case .unreadableList:
             return []
+        case .forms:
+            return [.checked(SampleForms.result(SampleForms.attic))]
         }
     }
 
@@ -57,6 +70,7 @@ public enum SampleWindow: String, CaseIterable, Sendable {
 
     /// The real refresher, with the saved list and the checks replaced.
     @MainActor public func refresher() -> MenuRefresher {
+        if self == .forms { return SampleForms.refresher() }
         let sample = self
         let checks = OSAllocatedUnfairLock(initialState: 0)
         return MenuRefresher(
@@ -82,17 +96,23 @@ public enum SampleWindow: String, CaseIterable, Sendable {
     public let load: @Sendable () throws -> [Workhorse]
     public let refresher: MenuRefresher
     public let actions: MenuActionRunner
+    /// What the window's desk actions run ssh with, and the folders they use: the forms sample's stand-in,
+    /// which answers as the script would; for any other sample, a runner that runs nothing.
+    public let ssh: CommandRunner
+    public let paths: Paths
 
     /// The sample with that name, or nil when there is none.
     public static func named(_ name: String) -> SampleRun? {
         if let menu = SampleMenu(rawValue: name) {
             let list = menu.workhorses
             return SampleRun(startedLine: menu.startedLine, workhorses: list, load: { list },
-                             refresher: menu.refresher(), actions: SampleMenu.actions)
+                             refresher: menu.refresher(), actions: SampleMenu.actions, ssh: SampleNoCommands(),
+                             paths: SampleForms.paths)
         }
         if let window = SampleWindow(rawValue: name) {
             return SampleRun(startedLine: "sample menu: \(window.rawValue)", workhorses: window.workhorses,
-                             load: { try window.load() }, refresher: window.refresher(), actions: SampleMenu.actions)
+                             load: { try window.load() }, refresher: window.refresher(), actions: SampleMenu.actions,
+                             ssh: window == .forms ? SampleSSH() : SampleNoCommands(), paths: SampleForms.paths)
         }
         return nil
     }

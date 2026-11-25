@@ -54,7 +54,8 @@ struct WorkhorsePageView: View {
                 Text(verbatim: summary).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             if let result = page.result {
-                Text(verbatim: result).foregroundStyle(.secondary)
+                Text(verbatim: result).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier(WindowMarks.result)
             }
             NoticeLine(notice: notice)
         }
@@ -138,8 +139,10 @@ struct DeskRowView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier(WindowMarks.desk(row.name))
-                if let tabs = row.tabs {
-                    Text(verbatim: tabs).foregroundStyle(.secondary)
+                // "Renaming…", "Removing…" or "Updating…" while the window's action on it runs, else its tabs.
+                if let shown = row.status ?? row.tabs {
+                    Text(verbatim: shown).foregroundStyle(.secondary)
+                        .accessibilityIdentifier(WindowMarks.status(row.name))
                 }
                 if let open = row.open {
                     // "Go to" or "Open"; the menu's own words for the click ("Go to website", "Open the 1 window
@@ -147,6 +150,7 @@ struct DeskRowView: View {
                     // https://developer.apple.com/documentation/swiftui/view/help(_:)-9lm7l): "Adding help to a
                     // view configures the view's accessibility hint and its help tag (also called a tooltip) in macOS".
                     Button { run(open) } label: { Text(verbatim: open.title) }
+                        .disabled(!open.isEnabled)
                         .help(Text(verbatim: row.openWords ?? ""))
                         .accessibilityIdentifier(WindowMarks.open(row.name))
                 }
@@ -180,6 +184,7 @@ struct DeskDetail: View {
                             // its window (help(_:), quoted above).
                             Button { run(line.button) } label: { Text(verbatim: line.button.title) }
                                 .controlSize(.small)
+                                .disabled(!line.button.isEnabled)
                                 .help(Text(verbatim: line.words))
                                 .accessibilityIdentifier(WindowMarks.window(row.name, line.id))
                         }

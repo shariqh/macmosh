@@ -12,9 +12,17 @@ import SwiftUI
 struct MainWindow: View {
     @ObservedObject var screen: BoardOnScreen
     let actions: MenuActionRunner
+    /// New desk, Rename and Remove, run in this process (step 4). The app's, not the window's, so an action
+    /// started just before the window closes still finishes.
+    @ObservedObject var forms: WindowActionRunner
     /// What the person chose in the sidebar. A choice that is no longer on the board falls back as
     /// `WindowSelection.resolve` says. Lost when the window closes, which is harmless.
     @State private var chosen: WindowSelection?
+    /// The open New desk or Rename form, and the Remove confirmation; an open one is lost with the window.
+    @State private var newDesk: NewDeskForm?
+    @State private var renaming: RenameForm?
+    @State private var removing: RemoveConfirmation?
+    @State private var confirmingRemove = false
 
     var body: some View {
         let selection = WindowSelection.resolve(chosen, board: screen.board, listUnreadable: screen.listProblem != nil)
@@ -25,8 +33,8 @@ struct MainWindow: View {
             Group {
                 switch selection {
                 case .workhorse(let id):
-                    if let page = screen.page(id) {
-                        WorkhorsePageView(page: page, notice: screen.notice, run: run)
+                    if let page = screen.page(id, activity: forms.activity(id)) {
+                        WorkhorsePageView(page: page, notice: page.notice(screen.notice), run: run)
                             .id(id)   // a new page for another workhorse: no detail strip carried over
                     }
                 case .addMac:
@@ -42,6 +50,27 @@ struct MainWindow: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .frame(minWidth: 700, minHeight: 440)
+        // Apple, sheet(item:onDismiss:content:) (macOS 10.15,
+        // https://developer.apple.com/documentation/swiftui/view/sheet(item:ondismiss:content:)): "Presents a
+        // sheet using the given item as a data source for the sheet's content."
+        .sheet(item: $newDesk) { form in
+            NewDeskSheet(forms: forms, form: form) { newDesk = nil }
+        }
+        .sheet(item: $renaming) { form in
+            RenameSheet(forms: forms, form: form) { renaming = nil }
+        }
+        // Apple, confirmationDialog(_:isPresented:titleVisibility:presenting:actions:message:) (macOS 13.0,
+        // https://developer.apple.com/documentation/swiftui/view/confirmationdialog(_:ispresented:titlevisibility:presenting:actions:message:)):
+        // "All actions in a confirmation dialog will dismiss the dialog after the action runs." Apple,
+        // ButtonRole.destructive (macOS 12.0, https://developer.apple.com/documentation/swiftui/buttonrole/destructive):
+        // "Use this role for a button that deletes user data, or performs an irreversible operation."
+        .confirmationDialog(removing?.title ?? "", isPresented: $confirmingRemove, titleVisibility: .visible,
+                            presenting: removing) { confirmation in
+            Button(role: .destructive) { remove(confirmation) } label: { Text(verbatim: confirmation.button) }
+            Button(role: .cancel) { removing = nil } label: { Text(verbatim: RemoveConfirmation.cancel) }
+        } message: { confirmation in
+            Text(verbatim: confirmation.message)
+        }
         // The one check the window adds, when it opens (design 7.2). Started as a task of its own rather
         // than with `.task`, which Apple says is cancelled "If the task doesn't finish before SwiftUI
         // removes the view" (https://developer.apple.com/documentation/swiftui/view/task(name:priority:file:line:_:)):
@@ -52,15 +81,40 @@ struct MainWindow: View {
         }
     }
 
-    /// Runs a button the way the menu runs its line: the refresher's `perform` with the app's
-    /// `MenuActionRunner`, then a check. `WindowRun` says which action a button runs today.
+    /// Opens the form a button names (`WindowRun.form`), or runs its action the way the menu runs its line:
+    /// the refresher's `perform` with the app's `MenuActionRunner`, then a check.
     private func run(_ button: BoardButton) {
+        guard button.isEnabled else { return }
+        if let form = WindowRun.form(for: button.action) {
+            open(form)
+            return
+        }
         guard let action = WindowRun.menuAction(for: button.action) else { return }
         #if DEBUG
         SampleRun.windowRan(action)   // a sample's log line for CI; nothing otherwise
         #endif
         let refresher = screen.refresher, actions = actions, title = button.title
         Task { await refresher.perform(action, title: title, from: .window, using: actions) }
+    }
+
+    private func open(_ form: WindowForm) {
+        switch form {
+        case .newDesk(let id):
+            let forms = forms
+            Task { newDesk = await forms.newDeskForm(id) }
+        case .rename(let id, let desk):
+            renaming = forms.renameForm(id, desk: desk)
+        case .remove(let id, let desk):
+            removing = forms.removeConfirmation(id, desk: desk)
+            confirmingRemove = removing != nil
+        }
+    }
+
+    /// The explicit yes the typed `yes` was: removes the desk the confirmation named, in a task of its own.
+    private func remove(_ confirmation: RemoveConfirmation) {
+        removing = nil
+        let forms = forms
+        Task { _ = await forms.remove(confirmation) }
     }
 }
 
@@ -92,6 +146,9 @@ enum WindowMarks {
         case .menu(let action): return (["button.menu"] + action.words).joined(separator: ".")
         }
     }
+    /// The text after a desk's name: its tabs, or "Updating…" and the like.
+    static func status(_ name: String) -> String { "desk.\(name).status" }
+    static let result = "page.result"
     static let headline = "page.headline"
     static let addMac = "page.addMac"
     static let listProblem = "page.listProblem"
@@ -137,6 +194,7 @@ struct ButtonRow: View {
         HStack(spacing: 8) {
             ForEach(Array(buttons.enumerated()), id: \.offset) { _, button in
                 Button { run(button) } label: { Text(verbatim: button.title) }
+                    .disabled(!button.isEnabled)
                     .accessibilityIdentifier(WindowMarks.button(button))
             }
         }
