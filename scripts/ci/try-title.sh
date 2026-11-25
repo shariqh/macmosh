@@ -24,14 +24,17 @@
 # seconds before it attaches; a NOTE), open (the desk's name), the window named "api" with window-name, the window given
 # back to its program (--auto), the desk renamed to "garden", a second window named "blog" and the tab moved
 # to it. After each, the title is read until it shows the wanted name or 20 seconds pass, and the seconds it
-# took are recorded. What a title is read from: iTerm2, the tab's title (its "title" property); Terminal, the
-# window's name, with the tab's custom title beside it. Everything else read is logged with it.
+# took are recorded. A step passes only when a field the app's escape 1 never sets equals the wanted name
+# exactly: iTerm2, the session's terminalWindowName ("... as set by the control sequence OSC 0 or OSC 2");
+# Terminal, the tab's custom title (it reads "Terminal" with the app's title alone). The tab's title
+# (iTerm2) and the window's name (Terminal) are logged with it, with everything else read.
 #
 # What it leaves in OUT: <app>-title-driver.log, <app>-title-results.tsv (one line per check: PASS, FAIL, NOTE
 # or SKIPPED) and pictures/<os>-<app>-title-<connection>-<step>.png. For iTerm2 a step that does not show the
-# wanted name is a FAIL. For Terminal, when the tab shows no live title at open, that is recorded as a NOTE
-# with everything Terminal says, and its later steps are NOTEs as well: nothing is built around Terminal's
-# settings.
+# wanted name is a FAIL. For Terminal, when the tab's custom title is not the desk's name at open, that is
+# recorded as a NOTE with everything Terminal says, and its later steps are NOTEs as well: nothing is built
+# around Terminal's settings. Tabs (c) only records what it sees and gates nothing, so a Tabs tab the runner
+# could not open is a NOTE with the reason, not a SKIPPED (which would fail the job).
 set -uo pipefail
 
 app=${1:?say iterm2 or terminal}
@@ -281,7 +284,13 @@ open_tab() {
 read_tab() {
     osa 15 "$read_tab" "$TTY"
     READ=$ANSWER
-    SHOWN=${READ%% | *}
+    # PROOF is a field the app's escape 1 never sets, so only a title from tmux (escape 0) can match it.
+    if [ "$app" = iterm2 ]; then
+        PROOF=${READ##* | windowName=}
+    else
+        PROOF=${READ#* | custom title=}
+        PROOF=${PROOF%% | *}
+    fi
 }
 
 # What the tab shows with the app's once-only title (escape 1) alone, before it attaches.
@@ -292,7 +301,9 @@ read_before() {
     result NOTE "$1: the app's once-only title alone, before the attach" "$READ"
 }
 
-# wait_title <check> <wanted> <picture>: reads the title until it shows the wanted text or 20 s pass.
+# wait_title <check> <wanted> <picture>: reads the title until its PROOF field is exactly the wanted text or
+# 20 s pass. The seconds run from the end of the step to the end of the read that matched, so they include
+# one AppleScript read.
 strict=1
 wait_title() {
     local check=$1 want=$2 pic=$3 start end took verdict
@@ -300,18 +311,18 @@ wait_title() {
     end=$(perl -e "printf '%.3f', $start + 20")
     while :; do
         read_tab
-        if [[ "$SHOWN" == *"$want"* ]]; then break; fi
+        if [ "$PROOF" = "$want" ]; then break; fi
         if perl -e "exit !($(now) > $end)"; then break; fi
         sleep 0.25
     done
     took=$(perl -e "printf '%.1f', $(now) - $start")
     snap "$pic"
-    if [[ "$SHOWN" == *"$want"* ]]; then
+    if [ "$PROOF" = "$want" ]; then
         result PASS "$check" "shows [$want] after $took s: $READ"
     else
         verdict=FAIL
         [ "$strict" = 1 ] || verdict=NOTE
-        result "$verdict" "$check" "wanted [$want], still [$SHOWN] after $took s: $READ"
+        result "$verdict" "$check" "wanted [$want], still [$PROOF] after $took s: $READ"
     fi
 }
 
@@ -336,7 +347,7 @@ steps() {
     if [ "$app" = terminal ] && [ "$c" = "(a) direct" ]; then strict=0; fi
     wait_title "$c: open, the desk's name" website "$c-1-open"
     if [ "$app" = terminal ] && [ "$c" = "(a) direct" ]; then
-        if [[ "$SHOWN" == *website* ]]; then
+        if [ "$PROOF" = website ]; then
             strict=1
         else
             result NOTE "Terminal: what a tab shows" "no title with the desk's name at open; window name, custom title and the rest: $READ"
