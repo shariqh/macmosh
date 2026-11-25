@@ -5,12 +5,18 @@ name: Terminal scripts
 # (issue #129). A script that drives a terminal app is not merged until it has run here.
 # The test SelectScriptFiles writes the two scripts from the build, so the job runs the same characters
 # the app sends; scripts/ci/try-select.sh says what it checks.
+# It also opens real tabs that attach to a throwaway desk through the branch's workhorse script, directly
+# and through mosh on 127.0.0.1, and reads back what each tab's title says while the window and the desk
+# are renamed (issue #162); scripts/ci/try-title.sh says what it checks.
 on:
   pull_request:
     paths:
       - 'Sources/MacMoshKit/Terminal/**'
       - 'Tests/MacMoshKitTests/SelectScriptFiles.swift'
       - 'scripts/ci/try-select.sh'
+      - 'scripts/ci/try-title.sh'
+      - 'host/macmosh-host'
+      - 'Sources/MacMoshKit/Connect/**'
       - '.github/workflows/terminal-scripts.yml'
   workflow_dispatch:
 
@@ -59,11 +65,17 @@ jobs:
           brew install --cask iterm2
           xattr -dr com.apple.quarantine /Applications/iTerm.app
 
+      - name: Install tmux and mosh
+        timeout-minutes: 10
+        run: brew install tmux mosh
+
       - name: The terminal versions
         timeout-minutes: 1
         run: |
           echo "iTerm2 $(defaults read /Applications/iTerm.app/Contents/Info.plist CFBundleShortVersionString)"
           echo "Terminal $(defaults read /System/Applications/Utilities/Terminal.app/Contents/Info.plist CFBundleShortVersionString)"
+          tmux -V
+          mosh-server --version | head -n 1
 
       - name: Select tabs in iTerm2
         timeout-minutes: 6
@@ -79,6 +91,23 @@ jobs:
           SCRIPTS: ${{ runner.temp }}/select-scripts
           OUT: ${{ runner.temp }}/select-out
         run: scripts/ci/try-select.sh terminal
+
+      # After both select steps, which wrote the privacy rows that let osascript drive each app.
+      - name: Tab titles in iTerm2
+        if: ${{ !cancelled() }}
+        timeout-minutes: 12
+        env:
+          SCRIPTS: ${{ runner.temp }}/select-scripts
+          OUT: ${{ runner.temp }}/select-out
+        run: scripts/ci/try-title.sh iterm2
+
+      - name: Tab titles in Terminal
+        if: ${{ !cancelled() }}
+        timeout-minutes: 12
+        env:
+          SCRIPTS: ${{ runner.temp }}/select-scripts
+          OUT: ${{ runner.temp }}/select-out
+        run: scripts/ci/try-title.sh terminal
 
       - name: Upload the logs and pictures
         if: always()
