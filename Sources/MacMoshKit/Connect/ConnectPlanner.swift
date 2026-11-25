@@ -72,7 +72,9 @@ public enum ConnectPlanner {
             "\(w.user)@\(address)",
             "--",
         ] + remote
-        var environment: [String: String] = [:]
+        // The workhorse script's title is the window's or the desk's name alone (issue 162); mosh's client
+        // puts "[mosh] " in front of it unless this is set (man mosh 1.4.0, MOSH_TITLE_NOPREFIX).
+        var environment: [String: String] = ["MOSH_TITLE_NOPREFIX": "1"]
         if let withMosh = pathWithFolderOf(moshPath, in: path) { environment["PATH"] = withMosh }
         if let name = localeVariableToSet(localeEnvironment) { environment[name] = "en_US.UTF-8" }
         return ConnectPlan(argv: argv, environment: environment, retryOnDrop: false,
