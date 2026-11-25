@@ -79,11 +79,11 @@ struct MainWindow: View {
             let screen = screen
             Task { await screen.opened() }
             #if DEBUG
-            WindowKeysMenu.logMainMenu()   // what the main menu holds, for CI (issue #147); nothing otherwise
+            WindowKeysMonitor.logMainMenu()   // what the main menu holds, for CI (issue #147); nothing otherwise
             #endif
             // Paste, copy, cut, select all, undo, redo and Command-W in the window (issue #147).
             let forms = forms
-            WindowKeysMenu.shared.install(making: { !forms.making.isEmpty })
+            WindowKeysMonitor.shared.start(making: { !forms.making.isEmpty })
         }
     }
 
