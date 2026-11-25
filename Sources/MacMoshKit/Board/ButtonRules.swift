@@ -152,6 +152,12 @@ public enum ButtonRules {
         ActionButton(key: "checklist", title: "Run the checklist…", action: .tab(["prepare", id, "--pause"]))
     }
 
+    /// The Settings page's Remove MacMosh from this workhorse… (issue 157): the terminal tab of `macmosh remove <id>`,
+    /// which lists what goes and asks first. The window removes nothing itself. Not a line of the menu.
+    public static func removeMacMosh(_ id: String) -> ActionButton {
+        ActionButton(key: "removeMacMosh", title: SettingsWords.removeMacMosh, action: .tab(["remove", id]))
+    }
+
     public static let addAMac = ActionButton(key: "add", title: "Add a Mac…", action: .tab(["pair"]))
     public static let checkNow = ActionButton(key: "check", title: "Check now", action: .refresh)
 }

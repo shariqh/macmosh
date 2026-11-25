@@ -372,19 +372,24 @@ public struct StaleDesks: Sendable, Equatable {
     }
 }
 
-/// What the sidebar has selected: a workhorse by id, or the Add a Mac page; or, with no workhorse on
-/// the board because the saved list can't be read, the store's sentence.
+/// What the sidebar has selected: a workhorse by id, the Add a Mac page or the Settings page; or, with no workhorse
+/// on the board because the saved list can't be read, the store's sentence.
 public enum WindowSelection: Sendable, Hashable {
     case workhorse(String)
     case addMac
     /// The saved list can't be read and no workhorse is on the board: the window shows the sentence the
     /// menu shows (`BoardOnScreen.listProblem`), not an invitation to add a Mac.
     case unreadableList
+    /// The Settings page (issue 157): This Mac's terminal and each saved workhorse's settings.
+    case settings
 
     /// The chosen page while it is still there; otherwise the first workhorse, or Add a Mac when there
     /// is none (main window design, section 7.1 A). When the list can't be read and none was read
-    /// before, the store's sentence in place of either.
+    /// before, the store's sentence in place of either. Settings, once chosen, stays chosen in every case: with no
+    /// workhorse it shows This Mac's terminal and "No workhorses yet…", and with a list that can't be read, the
+    /// terminal and the store's sentence (`SettingsPage.none`).
     public static func resolve(_ chosen: WindowSelection?, board: Board, listUnreadable: Bool = false) -> WindowSelection {
+        if chosen == .settings { return .settings }
         if listUnreadable && board.workhorses.isEmpty { return .unreadableList }
         switch chosen {
         case .addMac?: return .addMac
@@ -394,7 +399,7 @@ public enum WindowSelection: Sendable, Hashable {
     }
 }
 
-/// One line of the sidebar: each workhorse with its state's symbol (the menu icon's), then Add a Mac….
+/// One line of the sidebar: each workhorse with its state's symbol (the menu icon's), then Add a Mac…, then Settings.
 public struct SidebarItem: Sendable, Equatable, Identifiable {
     public var id: WindowSelection { selection }
     public var selection: WindowSelection
@@ -409,7 +414,8 @@ public struct SidebarItem: Sendable, Equatable, Identifiable {
 
     public static func list(_ board: Board) -> [SidebarItem] {
         board.workhorses.map { SidebarItem(selection: .workhorse($0.id), title: $0.name, symbol: $0.symbol) }
-            + [SidebarItem(selection: .addMac, title: ButtonRules.addAMac.title, symbol: "plus")]
+            + [SidebarItem(selection: .addMac, title: ButtonRules.addAMac.title, symbol: "plus"),
+               SidebarItem(selection: .settings, title: SettingsWords.heading, symbol: "gearshape")]
     }
 }
 

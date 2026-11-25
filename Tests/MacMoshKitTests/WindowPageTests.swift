@@ -342,6 +342,7 @@ private func titles(_ buttons: [BoardButton]) -> [String] { buttons.map(\.title)
             SidebarItem(selection: .workhorse("attic"), title: "Attic", symbol: "checkmark.circle"),
             SidebarItem(selection: .workhorse("den"), title: "Den", symbol: "lock.circle"),
             SidebarItem(selection: .addMac, title: "Add a Mac…", symbol: "plus"),
+            SidebarItem(selection: .settings, title: "Settings", symbol: "gearshape"),
         ])
     }
 
@@ -360,7 +361,24 @@ private func titles(_ buttons: [BoardButton]) -> [String] { buttons.map(\.title)
                                      now: formatNow, timeZone: formatZone)
         #expect(WindowSelection.resolve(nil, board: empty) == .addMac)
         #expect(WindowSelection.resolve(.workhorse("attic"), board: empty) == .addMac)
-        #expect(SidebarItem.list(empty) == [SidebarItem(selection: .addMac, title: "Add a Mac…", symbol: "plus")])
+        #expect(SidebarItem.list(empty) == [SidebarItem(selection: .addMac, title: "Add a Mac…", symbol: "plus"),
+                                            SidebarItem(selection: .settings, title: "Settings", symbol: "gearshape")])
+    }
+
+    /// Settings stays chosen whatever the board holds (issue 157): with workhorses, with none, and with a saved list
+    /// that can't be read, where its page shows This Mac's terminal and the store's sentence in place of the
+    /// workhorses' sections.
+    @Test func settingsStaysChosenWithOrWithoutWorkhorsesAndWithAnUnreadableList() {
+        let empty = BoardModel.build(latest: [:], lastReady: [:], checking: [], order: [], waitingForDeskServer: [],
+                                     now: formatNow, timeZone: formatZone)
+        let kept = BoardModel.build(latest: [:], lastReady: [:], checking: [], order: [attic], waitingForDeskServer: [],
+                                    now: formatNow, timeZone: formatZone)
+        #expect(WindowSelection.resolve(.settings, board: kept) == .settings)
+        #expect(WindowSelection.resolve(.settings, board: empty) == .settings)
+        #expect(WindowSelection.resolve(.settings, board: empty, listUnreadable: true) == .settings)
+        #expect(WindowSelection.resolve(.settings, board: kept, listUnreadable: true) == .settings)
+        // Nothing chosen still opens on the first workhorse, Add a Mac, or the store's sentence.
+        #expect(WindowSelection.resolve(nil, board: empty, listUnreadable: true) == .unreadableList)
     }
 
     /// A saved list that can't be read is not an empty one: the window says what the menu says, and
