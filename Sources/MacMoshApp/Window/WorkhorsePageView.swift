@@ -21,6 +21,9 @@ struct WorkhorsePageView: View {
                 if let heading = page.desksHeading {
                     desks(heading)
                 }
+                if let heading = page.endedHeading {
+                    EndedList(heading: heading, rows: page.ended, run: run)
+                }
                 if let stale = page.stale {
                     StaleList(stale: stale)
                 }
@@ -227,6 +230,55 @@ struct DeskDetail: View {
         .padding(.leading, 122)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(WindowMarks.strip(row.name))
+    }
+}
+
+/// The Ended group (step 5): one block per ended desk, with its name and when it ended, its folder and command on
+/// one line, its buttons, and the note under them when there is one. Button and Text only.
+struct EndedList: View {
+    let heading: String
+    let rows: [EndedRow]
+    let run: (BoardButton) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(verbatim: heading).font(.headline)
+                .accessibilityIdentifier(WindowMarks.endedHeading)
+            Divider()
+            ForEach(rows) { row in
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(alignment: .firstTextBaseline, spacing: 12) {
+                        Text(verbatim: row.name).fontWeight(.semibold)
+                            .frame(width: 110, alignment: .leading)
+                        Text(verbatim: row.when).foregroundStyle(.secondary).lineLimit(1)
+                            .accessibilityIdentifier(WindowMarks.ended(row.name, "when"))
+                    }
+                    .padding(.leading, 14)
+                    // One line: a long command is cut on screen, never in what Start again sends. Apple,
+                    // lineLimit(_:) (macOS 10.15, https://developer.apple.com/documentation/swiftui/view/linelimit(_:)-513mb):
+                    // "Sets the maximum number of lines that text can occupy in this view." Apple, truncationMode(_:)
+                    // (macOS 10.15, https://developer.apple.com/documentation/swiftui/view/truncationmode(_:)): "Sets the
+                    // truncation mode for lines of text that are too long to fit in the available space."; Text.TruncationMode
+                    // .tail: "Truncate at the end of the line."
+                    Text(verbatim: row.second).font(.callout).foregroundStyle(.secondary)
+                        .lineLimit(1).truncationMode(.tail)
+                        .help(Text(verbatim: row.second))
+                        .padding(.leading, 136)
+                        .accessibilityIdentifier(WindowMarks.ended(row.name, "second"))
+                    ButtonRow(buttons: row.buttons, run: run)
+                        .padding(.leading, 136)
+                    if let note = row.note {
+                        Text(verbatim: note).font(.callout).fixedSize(horizontal: false, vertical: true)
+                            .padding(.leading, 136)
+                            .accessibilityIdentifier(WindowMarks.ended(row.name, "note"))
+                    }
+                    Divider()
+                }
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier(WindowMarks.ended(row.name))
+            }
+        }
+        .padding(.top, 8)
     }
 }
 

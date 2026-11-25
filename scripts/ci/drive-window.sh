@@ -1033,6 +1033,169 @@ window_names_sample() {
     stop_app
 }
 
+############################################################ ended desks (step 5, issue 152)
+# The "window-ended" sample: Attic, Ready, every desk open at launch. The first click on Check now ends the last
+# shell of recipes, garden, blog and shop and closes website (permanent), and a permanent desk called shop, closed,
+# takes shop's name. The stand-in ssh writes each call's exact remote command to the log and answers desk-new as the
+# script would. It fails when the Ended group does not show the four with their three buttons, when Start again or
+# Start again and keep it does not send its exact arguments with batch=yes stdin=closed limit=15s, write its log
+# line, say what it did and bring the desk back among the desks and out of Ended, when Forget does not remove the
+# line or sends anything, when the taken name's buttons are not off with the reason, or when the window closed and
+# opened again no longer lists an ended desk. How a picture looks never fails it.
+ended_sample() {
+    local since v want deadline missing b n cx cy start_moment
+    start_moment=$(moment)
+    start_app window-ended || return
+    if ! open_window; then stop_app; return; fi
+    sleep 2
+
+    # MacMosh started with nothing listed: every desk is open, and there is no Ended group.
+    if wax find "ended.heading" | grep -q '^found'; then
+        result FAIL "nothing is listed as ended at first" "the Ended group is there before any desk ended"
+    else
+        result PASS "nothing is listed as ended at first" "no ended.heading"
+    fi
+    snap at-start
+
+    # Check now: the stand-in's shells end, and the check after it lists four ended desks.
+    since=$(moment)
+    click_id "button.checkNow" > /dev/null
+    if wait_id "ended.recipes" 10; then
+        result PASS "a desk whose last shell exited shows under Ended" "ended.recipes found"
+    else
+        result FAIL "a desk whose last shell exited shows under Ended" "no ended.recipes within 10 s of Check now"
+        snap no-ended
+        stop_app
+        return
+    fi
+    sleep 1
+    missing=""
+    for v in blog garden recipes shop; do
+        wax find "ended.$v" | grep -q '^found' || missing="$missing $v"
+    done
+    v=$(val "ended.heading")
+    if [ -z "$missing" ] && [ "$v" = "Ended" ]; then
+        result PASS "the Ended group lists the four desks that ended" "heading reads: $v; blog, garden, recipes and shop are there"
+    else
+        result FAIL "the Ended group lists the four desks that ended" "heading reads: ${v:-nothing}; missing:${missing:- none}"
+    fi
+    # website is permanent: it stays among the desks as closed, and is not under Ended.
+    v=$(val "desk.website")
+    if [[ "$v" == *"(closed)"* ]] && ! wax find "ended.website" | grep -q '^found'; then
+        result PASS "a permanent desk that closed stays among the desks" "desk.website reads: $v; no ended.website"
+    else
+        result FAIL "a permanent desk that closed stays among the desks" "desk.website reads: ${v:-nothing}"
+    fi
+    missing=""
+    for b in "startAgain:Start again" "keep:Start again and keep it" "forget:Forget"; do
+        v=$(val "ended.recipes.${b%%:*}")
+        [ "$v" = "${b#*:}" ] || missing="$missing [${b%%:*}: ${v:-none}]"
+    done
+    if [ -z "$missing" ]; then
+        result PASS "an ended desk has its three buttons" "Start again, Start again and keep it, Forget"
+    else
+        result FAIL "an ended desk has its three buttons" "missing or wrong:$missing"
+    fi
+    v=$(val "ended.recipes.second")
+    # shellcheck disable=SC2016,SC2088 # the row's text, a tilde and $HOME as shown
+    want='~/Development/my recipes · started with claude --continue "fix it" $HOME'
+    result "$([ "$v" = "$want" ] && echo PASS || echo FAIL)" "the row has the folder and its startup command" "it reads: ${v:-nothing}"
+    v=$(val "ended.recipes.when")
+    result "$([[ "$v" == "ended about "[0-2][0-9]:[0-5][0-9] ]] && echo PASS || echo FAIL)" "the row says when it ended" "it reads: ${v:-nothing}"
+    snap ended-group
+
+    # shop's name is held by a permanent desk again: both Start again buttons are off, with the reason; Forget is not.
+    v="$(wax enabled "ended.shop.startAgain" | grep '^enabled' | tail -n 1) $(wax enabled "ended.shop.keep" | grep '^enabled' | tail -n 1) $(wax enabled "ended.shop.forget" | grep '^enabled' | tail -n 1)"
+    if [ "$v" = "enabled false enabled false enabled true" ]; then
+        result PASS "a taken name has both Start again buttons off" "Start again, keep it, Forget: $v"
+    else
+        result FAIL "a taken name has both Start again buttons off" "Start again, keep it, Forget: $v"
+    fi
+    expect_value "a taken name says why under its buttons" "ended.shop.note" "Attic already has a desk called shop." 3
+
+    # Start again on recipes: one call, the same desk, its folder with a space and its command as one argument.
+    since=$(moment)
+    click_id "ended.recipes.startAgain" > /dev/null
+    sleep 0.6
+    v=$(val "ended.recipes.startAgain")
+    result "$([ "$v" = "Starting…" ] && echo PASS || echo DIFFERS)" "Start again says Starting… while it runs" "it reads: ${v:-nothing}"
+    snap starting
+    # shellcheck disable=SC2016 # the remote command as sent, $HOME and all
+    want='sample ssh: to=alex@192.168.1.20 batch=yes stdin=closed limit=15s run=~/.macmosh/macmosh-host desk-new recipes '"'"'/Users/alex/Development/my recipes'"'"' --reopen --command '"'"'claude --continue "fix it" $HOME'"'"
+    expect_log "Start again sends the exact arguments" "$since" "$want"
+    expect_log "Start again writes its log line" "$since" "window action: startAgain ok"
+    expect_value "the page says what Start again did" "page.result" "Started recipes again on Attic." 10
+    expect_log "Start again opens a tab on the desk" "$since" "menu action: tab connect (window)"
+    if gone_id "ended.recipes" 8 && wait_id "desk.recipes" 8; then
+        result PASS "after Start again the desk is among the desks and gone from Ended" "desk.recipes there, ended.recipes gone"
+    else
+        result FAIL "after Start again the desk is among the desks and gone from Ended" "ended.recipes still there, or no desk.recipes"
+    fi
+    deadline=$((SECONDS + 8))
+    v=$(val "desk.recipes.status")
+    while [ "$v" != "No tab" ] && [ "$SECONDS" -lt "$deadline" ]; do sleep 0.5; v=$(val "desk.recipes.status"); done
+    result "$([ "$v" = "No tab" ] && echo PASS || echo FAIL)" "once the check lands the desk's row is the check's" "desk.recipes.status reads: ${v:-nothing}"
+    sleep 1
+    snap after-start-again
+
+    # Start again and keep it on garden: its own flags (no reopen, keep running) and --permanent.
+    since=$(moment)
+    click_id "ended.garden.keep" > /dev/null
+    expect_log "Start again and keep it sends --permanent with the desk's flags" "$since" \
+        "sample ssh: to=alex@192.168.1.20 batch=yes stdin=closed limit=15s run=~/.macmosh/macmosh-host desk-new garden /Users/alex/Development/garden --no-reopen --keep --permanent --command claude"
+    expect_value "the page says it is kept" "page.result" "Started garden again on Attic. It is kept when it exits." 10
+    if gone_id "ended.garden" 8 && wait_id "desk.garden" 8; then
+        result PASS "after Start again and keep it the desk is back" "desk.garden there, ended.garden gone"
+    else
+        result FAIL "after Start again and keep it the desk is back" "ended.garden still there, or no desk.garden"
+    fi
+    sleep 2
+    snap after-keep
+
+    # Forget on blog: the line goes and nothing is sent.
+    since=$(moment)
+    click_id "ended.blog.forget" > /dev/null
+    if gone_id "ended.blog" 5; then
+        result PASS "Forget removes the line" "ended.blog gone"
+    else
+        result FAIL "Forget removes the line" "ended.blog still there"
+    fi
+    expect_log "Forget writes its log line" "$since" "window action: forget ok"
+    sleep 2
+    n=$(applog "$since" | grep -cF "sample ssh:")
+    result "$([ "$n" -eq 0 ] && echo PASS || echo FAIL)" "Forget sends nothing" "sample ssh lines since the click: $n"
+    snap after-forget
+
+    # The log lines the actions added name no desk, folder or command.
+    v=$(applog "$start_moment" | grep -F "window action: " | grep -E "recipes|garden|blog|shop|claude" | head -n 1)
+    result "$([ -z "$v" ] && echo PASS || echo FAIL)" "the action log lines have fixed words only" "${v:-no desk, folder or command in them}"
+
+    # Closed and opened again, the window still lists shop: the list is the app's, not the window's.
+    read -r _ cx cy <<< "$(wax close | grep '^close' | tail -n 1)"
+    if [ -z "${cy:-}" ]; then
+        result NOT-SHOWN "the window opened again still lists the ended desk" "no close button found"
+        stop_app
+        return
+    fi
+    say "click on the close button at $cx,$cy"
+    tool click "$cx" "$cy" > /dev/null
+    if [ "$(wait_windows 0 5)" -ne 0 ]; then
+        result NOT-SHOWN "the window opened again still lists the ended desk" "the window did not close"
+        stop_app
+        return
+    fi
+    sleep 3
+    if open_window && wait_id "ended.shop" 6; then
+        v=$(val "ended.shop.note")
+        result PASS "the window opened again still lists the ended desk" "ended.shop there; its note reads: ${v:-nothing}"
+    else
+        result FAIL "the window opened again still lists the ended desk" "no ended.shop after opening the window again"
+    fi
+    sleep 1
+    snap reopened
+    stop_app
+}
+
 ############################################################ the run
 say "driving the window of $APP on $os ($(sw_vers -productVersion))"
 tool preflight > /dev/null
@@ -1047,6 +1210,7 @@ two_workhorses
 long_folder
 unreadable_list
 no_workhorses
+ended_sample
 
 applog "$run_since" > "$OUT/app-log.txt"
 # Any crash report of the app from this job, the menu's step included.

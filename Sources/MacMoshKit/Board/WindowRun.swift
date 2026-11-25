@@ -14,8 +14,8 @@ public enum WindowForm: Sendable, Equatable {
 /// A button that carries one of the menu's actions runs it as it is, through `MenuRefresher.perform` like the
 /// menu's line. New desk, Rename and Remove open the window's own forms (`form(for:)`), which
 /// `WindowActionRunner` runs; the menu keeps its terminal tabs for them. "Open the N not in a tab" opens the
-/// tabs the board listed, one after another (`MenuAction.tabs`). Start again and Forget run nothing: there
-/// are no ended desks until step 5.
+/// tabs the board listed, one after another (`MenuAction.tabs`). Start again and Forget on an ended desk (step 5)
+/// are neither: the window hands them to `WindowActionRunner.startAgain` and `forget`.
 public enum WindowRun {
     /// The menu action a button runs; nil for a form, and for Start again and Forget.
     public static func menuAction(for action: BoardAction) -> MenuAction? {

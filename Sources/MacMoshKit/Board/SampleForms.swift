@@ -79,15 +79,25 @@ final class SampleDesks: @unchecked Sendable {
         var command: String
         var permanent: Bool
         var isOpen: Bool
+        var reopen = true
+        var keep = false
     }
 
-    private static func windows(_ first: Int, _ programs: [String]) -> [Window] {
+    static func windows(_ first: Int, _ programs: [String]) -> [Window] {
         programs.enumerated().map { Window(id: "@\(first + $0.offset)", name: $0.element, program: $0.element) }
     }
 
     private let lock = NSLock()
-    private var nextWindow = 7
-    private var all: [Desk] = [
+    private var nextWindow: Int
+    private var all: [Desk]
+
+    /// The `window-forms` desks, or `desks` with new windows numbered from `nextWindow`.
+    init(_ desks: [Desk]? = nil, nextWindow: Int = 7) {
+        all = desks ?? Self.forms
+        self.nextWindow = nextWindow
+    }
+
+    private static let forms: [Desk] = [
         Desk(name: "api", windows: windows(1, ["server", "tests"]), folder: "/Users/alex/Development/api", command: "",
              permanent: false, isOpen: true),
         Desk(name: "blog", windows: windows(3, ["zsh"]), folder: "/Users/alex/Development/blog", command: "", permanent: false,
@@ -111,8 +121,32 @@ final class SampleDesks: @unchecked Sendable {
                     "windowinfo\t\(d.name)\t\($0.offset)\t\($0.element.id)\t\($0.offset == 0 ? 1 : 0)\t0"
                 }
             }
-            lines += all.map { "def\t\($0.name)\t1\t0\t\($0.permanent ? 1 : 0)\t\($0.folder)\t\($0.command)" }
+            lines += all.map {
+                "def\t\($0.name)\t\($0.reopen ? 1 : 0)\t\($0.keep ? 1 : 0)\t\($0.permanent ? 1 : 0)\t\($0.folder)\t\($0.command)"
+            }
             return (lines + ["end"]).joined(separator: "\n") + "\n"
+        }
+    }
+
+    /// The last shell of each of these desks exits: each closes. Its definition stays, as the script's does for the
+    /// minute before it removes one that is not permanent.
+    func endShells(_ names: Set<String>) {
+        lock.withLock {
+            for i in all.indices where names.contains(all[i].name) {
+                all[i].isOpen = false
+                all[i].windows = []
+            }
+        }
+    }
+
+    /// A permanent desk with that name, closed, made elsewhere: it takes the name by the script's rule.
+    func holdAsPermanent(_ name: String) {
+        lock.withLock {
+            for i in all.indices where all[i].name == name {
+                all[i].permanent = true
+                all[i].isOpen = false
+                all[i].windows = []
+            }
         }
     }
 
@@ -135,7 +169,8 @@ final class SampleDesks: @unchecked Sendable {
                 let home = "/Users/alex"
                 let folder = args[2].hasPrefix("~/") ? home + args[2].dropFirst(1) : args[2]
                 all.append(Desk(name: name, windows: [Window(id: "@\(nextWindow)", name: first, program: first)], folder: folder,
-                                command: started, permanent: args.contains("--permanent"), isOpen: true))
+                                command: started, permanent: args.contains("--permanent"), isOpen: true,
+                                reopen: !args.contains("--no-reopen"), keep: args.contains("--keep")))
                 nextWindow += 1
                 return (0, "")
             case "desk-rename" where args.count == 3:
@@ -169,6 +204,9 @@ final class SampleDesks: @unchecked Sendable {
 /// matter (`sample ssh: to=alex@192.168.1.20 batch=yes stdin=closed limit=15s run=<the remote command>`), then
 /// answers as the workhorse script would. Runs nothing.
 struct SampleSSH: CommandRunner {
+    /// The desks it changes: the `window-forms` sample's, or another sample's (`SampleEnded`).
+    var desks: SampleDesks = SampleForms.desks
+
     func run(_ executable: String, _ arguments: [String], environment: [String: String],
              stdin: Data?, timeout: Duration) async -> CommandResult {
         let argv = [executable] + arguments
@@ -181,7 +219,7 @@ struct SampleSSH: CommandRunner {
             return CommandResult(exitCode: 0, stdout: SampleForms.folders.joined(separator: "\n") + "\n", stderr: "", timedOut: false)
         }
         if args.first == "desk-new" { try? await Task.sleep(for: SampleForms.makingTakes) }
-        let (code, stderr) = SampleForms.desks.run(Array(args))
+        let (code, stderr) = desks.run(Array(args))
         return CommandResult(exitCode: code, stdout: "", stderr: stderr, timedOut: false)
     }
 
