@@ -55,9 +55,9 @@ import Testing
         }
     }
 
-    /// The sample CI takes pictures of for issue #124: a script-0.8.0 report with window details and labels,
-    /// and stand-in records for its tabs, so website has a window in a tab, one open in another tab and one
-    /// with no tab.
+    /// The sample CI takes pictures of for issue #124: a script report with window details and labels, and
+    /// stand-in records for its tabs, so website has a window in a tab, one open in another tab and one with no
+    /// tab. Its script is 0.11.0 (issue 144), so each open desk also has Name a window….
     @Test func theWindowsSampleHasEveryKindOfWindowLine() {
         let menu = MenuModel.build(SampleMenu.windows.gathered(change: 0),
                                    tabs: TabsOnThisMac(records: SampleMenu.windowRecords(openedAt: Date()), terminal: .iterm2))
@@ -69,8 +69,9 @@ import Testing
         let website = entry(menu.entries, "desk:workhorse:website")?.submenu ?? []
         #expect(website.map(\.title) == [
             "Open the 1 window not in a tab", "", "claude (in a tab)", "zsh (open in another tab)", "vim", "",
-            "New window", "", "Rename website…", "Remove website…", "kept running, permanent",
+            "New window", "Name a window…", "", "Rename website…", "Remove website…", "kept running, permanent",
         ])
+        #expect(entry(menu.entries, "desk:workhorse:website:nameWindow")?.action == .tab(["desk", "name-window", "workhorse", "website"]))
         // The rows the CI job clicks: a window with no tab, and one in a tab.
         #expect(entry(menu.entries, "desk:workhorse:website:win:@3")?.action
                 == .tab(["connect", "workhorse", "website", "--window", "@3"]))
