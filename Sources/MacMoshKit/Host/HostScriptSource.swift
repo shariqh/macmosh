@@ -10,7 +10,7 @@ enum HostScriptSource {
 # Plain bash 3.2 (what macOS ships at /bin/bash): no associative arrays, no mapfile, no ${var,,}.
 set -u
 
-MACMOSH_HOST_VERSION=0.10.0
+MACMOSH_HOST_VERSION=0.11.0
 MACMOSH_PROTOCOL=1
 AGENT_LABEL=io.github.shariqh.macmosh.host
 
@@ -811,13 +811,106 @@ cmd_window_new() {
     return 0
 }
 
+# --- Naming one window of a desk (issue 144, 0.11.0).
+#
+# window-name <desk> <window id> <name> renames that window; --auto in place of the name gives the name
+# back to tmux, which then names the window after the program running in it. The window is the same
+# window in the desk's session and in every view of it, so the name shows in all of them, in the report's
+# window lines and in the bar tmux draws at the bottom of a tab. Seen with tmux 3.8 on a throwaway socket
+# (WindowNameTests): rename-window turns the window's own automatic-rename off, as the manual says, so the
+# name stays while other programs run; turning it on again names the window after its program at once;
+# and rename-window expands a format in the name it is given, so # is never let through. Names are not
+# kept across a restart: a desk comes back as one fresh window.
+
+# True when $1 can be a window's name: 1 to 32 characters, each a letter, a digit, a space, -, _ or a
+# full stop, not starting or ending with a space. The characters are listed one by one, because a range
+# such as a-z can take in other letters in some locales.
+mm_valid_window_name() {
+    case "$1" in
+        '' | ' '* | *' ' | *[!ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789\ ._-]*) return 1 ;;
+    esac
+    [ "${#1}" -le 32 ]
+}
+
+MM_WINDOW_NAME_RULE="a window name is 1 to 32 characters, each a letter, a digit, a space, -, _ or a full stop, and it can't start or end with a space"
+
+cmd_window_name() {
+    local name wid wanted sid now auto=0
+    [ $# -eq 3 ] || mm_usage_error window-name "usage: window-name <desk> <window id> <name> | --auto"
+    name="$1"
+    wid="$2"
+    wanted="$3"
+    # tmux writes a window id with no leading zero, so @03 is never one.
+    case "$wid" in
+        @[0-9]*)
+            case "${wid#@}" in
+                *[!0-9]* | 0?*) mm_usage_error window-name "the window must be given by its id, such as @3" ;;
+            esac
+            ;;
+        *) mm_usage_error window-name "the window must be given by its id, such as @3" ;;
+    esac
+    if [ "$wanted" = --auto ]; then
+        auto=1
+    elif ! mm_valid_window_name "$wanted"; then
+        mm_usage_error window-name "$MM_WINDOW_NAME_RULE"
+    fi
+    # No mm_require_server here: with no desk server there is no window to name, and starting one
+    # would only make each desk again as one fresh window.
+    # The argument goes into the log only once it is a desk name, as in window-new.
+    if ! mm_valid_desk_name "$name"; then
+        echo "macmosh-host: no such desk: $name" >&2
+        mm_log window-name "no such desk"
+        return 4
+    fi
+    sid=$(mm_session_id "$name")
+    if [ -z "$sid" ]; then
+        echo "macmosh-host: no such desk: $name" >&2
+        mm_log window-name "no such desk: $name"
+        return 4
+    fi
+    if ! mm_session_has_window "$sid" "$wid"; then
+        echo "That window has closed." >&2
+        mm_log window-name "$name: window $wid has closed"
+        return 4
+    fi
+    # The target is the window by its id inside the desk's session by its id, so a window of another
+    # session is never touched. -- keeps a name that starts with - from being read as an option.
+    if [ "$auto" = 1 ]; then
+        mm_tmux set-option -w -t "$sid:$wid" automatic-rename on >/dev/null 2>&1
+        now=$(mm_tmux list-windows -t "$sid:" -F "#{window_id}$TAB#{automatic-rename}" 2>/dev/null |
+            awk -F '\t' -v w="$wid" '($1 "") == (w "") { print $2; exit }')
+        wanted=1
+    else
+        mm_tmux rename-window -t "$sid:$wid" -- "$wanted" >/dev/null 2>&1
+        now=$(mm_tmux list-windows -t "$sid:" -F "#{window_id}$TAB#{window_name}" 2>/dev/null |
+            awk -F '\t' -v w="$wid" '($1 "") == (w "") { sub(/^[^\t]*\t/, ""); print; exit }')
+    fi
+    # Read back: the window may have closed in the meantime.
+    if [ "$now" != "$wanted" ]; then
+        if ! mm_session_has_window "$sid" "$wid"; then
+            echo "That window has closed." >&2
+            mm_log window-name "$name: window $wid has closed"
+            return 4
+        fi
+        echo "macmosh-host: could not name the window" >&2
+        mm_log window-name "failed: $name: window $wid"
+        return 1
+    fi
+    if [ "$auto" = 1 ]; then
+        mm_log window-name "$name: window $wid named after its program again"
+    else
+        mm_log window-name "$name: named window $wid"
+    fi
+    return 0
+}
+
 # --- Views: one terminal tab on one window of a desk.
 #
 # A view is a small tmux session in the same session group as the desk's own session. "Sessions in the
 # same group share the same set of windows", and "the current and previous window ... remain independent"
 # (man tmux, new-session -t), so each tab keeps its own current window over the desk's windows. A view is
 # named "<desk>+<pid of the attach>": the + is not allowed in a desk name, so the status report, desk-closed,
-# reopen at start, desk-new, desk-rename, desk-remove, window-new and attach never take a view for a
+# reopen at start, desk-new, desk-rename, desk-remove, window-new, window-name and attach never take a view for a
 # desk. It is tagged with the option @macmosh-view, set to its desk's session id, which a rename keeps,
 # and its id is recorded on the server (@macmosh-view-<n>). The name can be changed by hand (tmux's own
 # rename, prefix and $, renames the view a tab shows), so the tag keeps a view out of every desk lookup
@@ -1947,6 +2040,10 @@ usage: macmosh-host <subcommand>
   desk-closed <desk> <pid>   run by the desk server when a desk's session closes
   keep <desk>   run the desk's startup command again each time it ends
   window-new <desk>
+  window-name <desk> <window id> <name> | --auto
+            names one window of the desk, given by its id (such as @3): 1 to 32 letters,
+            digits, spaces, -, _ and full stops; with --auto it is named after its
+            program again
   folders <folder>
   install-agent
   restart-server --yes
@@ -1990,6 +2087,10 @@ main() {
         window-new)
             shift
             cmd_window_new "$@"
+            ;;
+        window-name)
+            shift
+            cmd_window_name "$@"
             ;;
         keep)
             shift

@@ -227,6 +227,19 @@ private func versionLine(in text: String) -> String {
         #expect(indexes == [0, 1])
     }
 
+    /// A window named with `window-name` (script 0.11.0) can have spaces and full stops in its name;
+    /// the name is the whole fourth field.
+    @Test func aWindowNameWithSpacesAndFullStopsIsOneName() throws {
+        let s = try HostStatus.parse(report([
+            ["desk", "web", "3", "0"],
+            ["window", "web", "0", "build logs"],
+            ["window", "web", "1", "v1.2 api - draft_1"],
+            ["window", "web", "2", "  two  spaces ."],
+        ]))
+        let names: [String] = s.desks[0].windows.map(\.name)
+        #expect(names == ["build logs", "v1.2 api - draft_1", "  two  spaces ."])
+    }
+
     // MARK: windowinfo and view (script 0.7.0 and later)
 
     private static let twoWindows: [[String]] = [
