@@ -111,6 +111,23 @@ import Testing
         #expect(plan(mode: .tabs, locale: [:]).environment["LANG"] == nil)
     }
 
+    /// mosh puts "[mosh] " in front of the title a program on the workhorse sets, unless MOSH_TITLE_NOPREFIX
+    /// is set where mosh runs (man mosh 1.4.0: "When set, inhibits prepending \"[mosh]\" to window title.";
+    /// the client adds it, src/frontend/stmclient.cc). The workhorse script's title (issue 162) is the
+    /// window's or the desk's name alone, so the Mosh connection sets it, in its environment and nowhere
+    /// in its command line. Tabs and plain ssh don't run mosh.
+    @Test func theMoshConnectionTurnsOffMoshsTitlePrefix() {
+        for p in [plan(mode: .mosh), plan(mode: .mosh, locale: [:], path: "/usr/bin")] {
+            #expect(p.environment["MOSH_TITLE_NOPREFIX"] == "1")
+            #expect(!p.argv.joined(separator: " ").contains("MOSH_TITLE_NOPREFIX"))
+        }
+        #expect(plan(mode: .mosh).environment == ["MOSH_TITLE_NOPREFIX": "1"])
+        for mode in [ConnectionMode.tabs, .ssh] {
+            #expect(plan(mode: mode).environment.isEmpty, "\(mode)")
+            #expect(plan(mode: mode, locale: [:]).environment.isEmpty, "\(mode)")
+        }
+    }
+
     /// `LC_ALL` beats `LC_CTYPE`, which beats `LANG`; one that is empty counts as not set.
     @Test(arguments: [
         // The variable that decides isn't UTF-8, so that one is set, and only that one.
