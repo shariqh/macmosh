@@ -29,6 +29,9 @@ public final class MenuRefresher: ObservableObject {
     /// given (issue #134). The window's board is built from these, so it reads no record itself and makes the
     /// menu's choices. nil until the first build.
     @Published public private(set) var tabsSeen: TabsSeen?
+    /// By workhorse id, what the window's last desk action on it said (main window design, section 7.2): its
+    /// result line. Set only by `finishWindowAction`.
+    @Published public private(set) var results: [String: String] = [:]
 
     private let load: @Sendable () throws -> [Workhorse]
     private let gather: @Sendable ([Workhorse]) async -> [Gathered]
@@ -225,6 +228,14 @@ public final class MenuRefresher: ObservableObject {
         log(MenuLog.finished(action, summary: outcome.summary))
         notice = outcome.notice
         await refresh()
+    }
+
+    /// A window action on that workhorse ended (main window design, section 7.2): `result` becomes its result
+    /// line in the window and the menu's notice, so the menu says it too if the window was closed meanwhile.
+    /// This and `perform` are the only places the notice is set.
+    public func finishWindowAction(id: String, result: String) {
+        results[id] = result
+        notice = result
     }
 
     /// The real thing: this Mac's saved list and folders, the real checks with a 20-second budget,

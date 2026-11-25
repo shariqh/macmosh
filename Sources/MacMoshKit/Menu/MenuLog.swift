@@ -21,6 +21,11 @@ public enum MenuLog {
     static let opened = "menu opened"
     /// The MacMosh window came on screen (main window design, section 7.3). CI checks it is not there at launch.
     public static let windowOpened = "window opened"
+    /// `window action: newDesk ok`, `window action: remove failed`: one of the window's desk actions ended
+    /// (main window design, section 7.3). Never the desk, the workhorse or a command.
+    public static func windowAction(_ kind: WindowActionKind, ok: Bool) -> String {
+        "window action: \(kind.rawValue) \(ok ? "ok" : "failed")"
+    }
     /// The person removed the menu-bar icon, so the app quits (main window design, section 7.2).
     public static let iconRemoved = "menu-bar icon removed: quitting"
     /// The app is about to quit, by whatever path.
