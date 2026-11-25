@@ -91,12 +91,19 @@ import Testing
         #expect(saved.last?.mode == .tabs)
     }
 
-    /// Any other sample's Settings page reads that sample's stand-in, never the real folder.
+    /// Any other sample's Settings page reads a stand-in with that sample's workhorses, never the real folder: none
+    /// for no-workhorses, and a list that can't be read for unreadable-list, as the sidebar shows them.
     @Test func everyOtherSampleHasAStandInForTheSettingsPage() throws {
         let real = Paths.forHome(FileManager.default.homeDirectoryForCurrentUser, environment: [:]).supportDir.path
         for name in SampleMenu.allCases.map(\.rawValue) + SampleWindow.allCases.map(\.rawValue) {
             let run = try #require(SampleRun.named(name))
             #expect(run.settingsPaths.supportDir.path != real)
+            let store = WorkhorseStore(paths: run.settingsPaths)
+            if name == "unreadable-list" {
+                #expect(throws: StoreError.self) { try store.load() }
+            } else {
+                #expect(try store.load().map(\.id) == run.workhorses.map(\.id), "\(name)")
+            }
         }
     }
 

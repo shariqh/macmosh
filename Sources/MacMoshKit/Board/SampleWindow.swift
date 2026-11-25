@@ -115,7 +115,8 @@ public enum SampleWindow: String, CaseIterable, Sendable {
     public let ssh: CommandRunner
     public let paths: Paths
     /// The saved list and settings the Settings page reads and saves (issue 157): the settings sample's own
-    /// stand-in, or, for any other sample, the forms sample's. Never the person's.
+    /// stand-in, the forms sample's saved list for that sample, or for any other a folder of its own with the
+    /// sample's workhorses (`SampleSettings.paths(forSample:list:)`). Never the person's.
     public let settingsPaths: Paths
 
     /// The sample with that name, or nil when there is none.
@@ -124,13 +125,20 @@ public enum SampleWindow: String, CaseIterable, Sendable {
             let list = menu.workhorses
             return SampleRun(startedLine: menu.startedLine, workhorses: list, load: { list },
                              refresher: menu.refresher(), actions: SampleMenu.actions, ssh: SampleNoCommands(),
-                             paths: SampleForms.paths, settingsPaths: SampleForms.paths)
+                             paths: SampleForms.paths,
+                             settingsPaths: SampleSettings.paths(forSample: menu.rawValue, list: list))
         }
         if let window = SampleWindow(rawValue: name) {
             let paths = window == .settings ? SampleSettings.paths : SampleForms.paths
+            let settingsPaths: Paths
+            switch window {
+            case .settings, .forms: settingsPaths = paths
+            case .unreadableList: settingsPaths = SampleSettings.paths(forSample: window.rawValue, list: nil)
+            default: settingsPaths = SampleSettings.paths(forSample: window.rawValue, list: window.workhorses)
+            }
             return SampleRun(startedLine: "sample menu: \(window.rawValue)", workhorses: window.workhorses,
                              load: { try window.load() }, refresher: window.refresher(), actions: SampleMenu.actions,
-                             ssh: Self.ssh(window), paths: paths, settingsPaths: paths)
+                             ssh: Self.ssh(window), paths: paths, settingsPaths: settingsPaths)
         }
         return nil
     }
