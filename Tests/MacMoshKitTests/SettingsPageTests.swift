@@ -273,5 +273,21 @@ import Testing
         #expect(board.workhorses.first?.name == "Loft")
         #expect(board.workhorses.first?.headline == "Loft · Ready")
         #expect(SidebarItem.list(board).first?.title == "Loft")
+        // Only the name is the saved list's: the rest is still the check's.
+        var other = renamed
+        other.mode = .ssh
+        other.homeAddress = "192.168.1.99"
+        let same = BoardModel.build(latest: ["attic": checked], lastReady: [:], checking: [], order: [other],
+                                    waitingForDeskServer: [], now: formatNow, timeZone: formatZone)
+        #expect(same == board)
+    }
+
+    @Test func linesForSeveralWorkhorsesNoLongerListedAreInIdOrder() {
+        let p = page([attic], lines: [
+            "den": SettingLine(field: .name, words: SettingsWords.gone("Den"), isProblem: true),
+            "cellar": SettingLine(field: .connection, words: SettingsWords.gone("Cellar"), isProblem: true),
+        ])
+        #expect(p.notices == ["Cellar is no longer on MacMosh's list, so nothing was saved.",
+                              "Den is no longer on MacMosh's list, so nothing was saved."])
     }
 }

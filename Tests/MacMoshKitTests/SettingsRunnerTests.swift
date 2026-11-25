@@ -145,6 +145,20 @@ import Testing
         #expect(r.log.value == Array(repeating: "window action: setting ok", count: 3))
     }
 
+    /// The page opened again forgets the last changes' lines; the next save sets only its own section's.
+    @Test func openingThePageAgainClearsTheLinesAndTheNextSaveSetsOnlyItsOwn() async throws {
+        let r = try await rig()
+        _ = await r.runner.save(.name, of: "attic", typed: "Loft")
+        _ = await r.runner.chooseTerminal("iterm2")
+        #expect(r.runner.lines.count == 2)
+        await r.runner.reload(clearingLines: true)
+        #expect(r.runner.lines.isEmpty)
+        _ = await r.runner.save(.connection, of: "spare", typed: "mosh")
+        #expect(Array(r.runner.lines.keys) == ["spare"])
+        #expect(r.runner.page.workhorses.map { $0.line?.field } == [nil, .connection])
+        #expect(r.runner.page.thisMac.line == nil)
+    }
+
     // MARK: Refusals
 
     @Test func anEmptyNameSavesNothingAndSaysWhy() async throws {
