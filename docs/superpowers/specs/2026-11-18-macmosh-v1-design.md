@@ -306,6 +306,8 @@ Other subcommands are not interactive: `status`, `desks`, `add`, `prepare`, each
 
 - **A window of a desk can be named** (issue #144, 2026-11-24, script 0.11.0), so two windows running the same program can be told apart. `macmosh-host window-name <desk> <window id> <name>` renames that window, given by its id, and `--auto` in place of the name gives it back to tmux, which names it after the running program again. A name is 1 to 32 letters, digits, spaces, `-`, `_` and full stops, and doesn't start or end with a space. A window is the same window in the desk's session and in every view, so the name shows in the report's `window` lines, in every tab and in the bar at the bottom of a tab; it stays while other programs run in the window. Names are not kept across a restart: a desk comes back as one fresh window. The menu's line and the main window's button come in the app's half of the issue.
 
+- **A new desk's first window can be named as the desk is made** (issue #163, 2026-11-25, script 0.12.0). `desk-new` takes `--window-name <name>`: a name that keeps the window-name rule, or exactly the desk's own name, since a desk name can be 64 characters and a window name 32. tmux can't take `-n` with `-t` ("-n and shell-command are invalid if -t is used.", `new-session`), so the script names the window with `rename-window` once the session is made, reads it back, and only then types the startup command; if the name doesn't take, the desk is not made. The name is not stored, so a desk that comes back after a restart is one fresh window. The main window's design, item 11 of its changes, has the app's half.
+
 - Desk names use letters, digits, `-` and `_`.
 
 ### 7.4 Checking status
