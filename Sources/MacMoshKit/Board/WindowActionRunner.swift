@@ -118,10 +118,10 @@ public final class WindowActionRunner: ObservableObject {
     }
 
     /// Saves the projects folder through `WorkhorseStore.update`, under the store's lock, with the checks of
-    /// `macmosh set`. nil when it was saved; otherwise why not.
+    /// `macmosh set`. nil when it was saved; otherwise why not. The form trims it (`projectsFolderToSave`).
     public func saveProjectsFolder(_ id: String, _ folder: String) async -> String? {
         let store = self.store
-        let value = folder.trimmingCharacters(in: .whitespaces)
+        let value = folder
         return await Task.detached { () -> String? in
             do {
                 var problem: String?
@@ -151,7 +151,7 @@ public final class WindowActionRunner: ObservableObject {
         making.remove(id)
         log(MenuLog.windowAction(.newDesk, ok: result.code == 0))
         guard result.code == 0 else {
-            return failed(.newDesk, id: id, desk: name.value, reason: result.reason)
+            return failed(.newDesk, id: id, desk: name.value, reason: result.reason, on: check.workhorse)
         }
         let command = form.commandToSave, store = self.store
         await Task.detached { try? store.update(id: id) { $0.lastDeskCommand = command } }.value
@@ -177,7 +177,7 @@ public final class WindowActionRunner: ObservableObject {
         let result = await flow.renameDesk(check, from: desk, to: new.value, ui: QuietInteraction())
         busy[id]?[desk] = nil
         log(MenuLog.windowAction(.rename, ok: result.code == 0))
-        guard result.code == 0 else { return failed(.rename, id: id, desk: desk, reason: result.reason) }
+        guard result.code == 0 else { return failed(.rename, id: id, desk: desk, reason: result.reason, on: check.workhorse) }
         let line = DeskFormat.windowDone(.rename, desk: old, to: new, on: check.workhorse)
         follow(id, marking: desk, line: line)
         return .done(line)
@@ -191,21 +191,24 @@ public final class WindowActionRunner: ObservableObject {
     }
 
     /// Removes the desk the confirmation named, closing its windows, as the menu's Remove does after a typed
-    /// yes. When the last check shows that desk closed, renamed or replaced since, nothing is sent.
+    /// yes. Like the menu's Remove, it checks the workhorse again first (the button reads "Removing…" while it
+    /// does); when that check shows the desk closed, renamed or replaced since the confirmation, nothing is sent.
+    /// What changes between that check and the call is caught only by the script's own lookup by name.
     public func remove(_ confirmation: RemoveConfirmation) async -> WindowActionResult {
         let id = confirmation.workhorseID, desk = confirmation.desk
         if let refused = startRefused(id, desk) { return refused }
-        guard let check = refresher.latest[id], let name = DeskName(desk) else { return .failed(confirmation.changed) }
-        guard confirmation.stillMatches(check) else {
+        busy[id, default: [:]][desk] = .remove
+        await checkAndWait()
+        guard let check = refresher.latest[id], let name = DeskName(desk), confirmation.stillMatches(check) else {
+            busy[id]?[desk] = nil
             log(MenuLog.windowAction(.remove, ok: false))
             refresher.finishWindowAction(id: id, result: DeskFormat.windowFailed(.remove, desk: desk, reason: confirmation.changed))
             return .failed(confirmation.changed)
         }
-        busy[id, default: [:]][desk] = .remove
         let result = await flow.removeDesk(check, name: desk, kill: true, ui: QuietInteraction())
         busy[id]?[desk] = nil
         log(MenuLog.windowAction(.remove, ok: result.code == 0))
-        guard result.code == 0 else { return failed(.remove, id: id, desk: desk, reason: result.reason) }
+        guard result.code == 0 else { return failed(.remove, id: id, desk: desk, reason: result.reason, on: check.workhorse) }
         let line = DeskFormat.windowDone(.remove, desk: name, to: nil, on: check.workhorse)
         follow(id, marking: desk, line: line)
         return .done(line)
@@ -218,9 +221,16 @@ public final class WindowActionRunner: ObservableObject {
     }
 
     /// A failed action: its result line and the menu's notice say what did not happen and why, and a check
-    /// follows, as after any action.
-    private func failed(_ kind: WindowActionKind, id: String, desk: String, reason: String?) -> WindowActionResult {
+    /// follows, as after any action. A call that passed the time limit may still have done its work on the
+    /// workhorse, so its line claims neither outcome and a renamed or removed desk's row waits for the check.
+    private func failed(_ kind: WindowActionKind, id: String, desk: String, reason: String?, on w: Workhorse) -> WindowActionResult {
         let why = reason ?? "It didn't work."
+        if why == HostCommands.noAnswer {
+            let unsure = DeskFormat.windowUnsure(kind, desk: desk, on: w)
+            refresher.finishWindowAction(id: id, result: unsure)
+            follow(id, marking: kind == .newDesk ? nil : desk, line: nil)
+            return .failed(unsure)
+        }
         refresher.finishWindowAction(id: id, result: DeskFormat.windowFailed(kind, desk: desk, reason: why))
         follow(id, marking: nil, line: nil)
         return .failed(why)

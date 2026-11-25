@@ -225,15 +225,61 @@ private func ok(_ stdout: String = "") -> FakeRunner { FakeRunner { _ in FakeRun
         let rig = try await Rig(ssh: ssh)
         var rename = try #require(rig.runner.renameForm("attic", desk: "api"))
         rename.name = "api-v2"
-        #expect(await rig.runner.rename(rename) == .failed("The workhorse didn't answer within 15 seconds."))
+        #expect(await rig.runner.rename(rename)
+                == .failed("MacMosh didn't hear back from Attic about api within 15 seconds. The next check shows whether it was renamed."))
         #expect(rig.runner.activity("attic").busy.isEmpty)
-        #expect(await rig.runner.newDesk(try await rig.form()) == .failed("The workhorse didn't answer within 15 seconds."))
+        #expect(await rig.runner.newDesk(try await rig.form())
+                == .failed("MacMosh didn't hear back from Attic about garden-planner within 15 seconds. The next check shows whether it was made."))
         #expect(!rig.runner.activity("attic").making)
         await rig.runner.idle()
         #expect(rig.lines.all.contains("window action: rename failed") && rig.lines.all.contains("window action: newDesk failed"))
     }
 
+    /// The script on the workhorse may finish after ssh here was stopped at the limit, so the result line and
+    /// the notice don't say it didn't happen, and the row waits for the check.
+    @Test func aTimedOutCallDoesNotClaimTheActionFailed() async throws {
+        let ssh = FakeRunner { _ in CommandResult(exitCode: -1, stdout: "", stderr: "", timedOut: true) }
+        let rig = try await Rig(ssh: ssh)
+        let remove = try #require(rig.runner.removeConfirmation("attic", desk: "website"))
+        let unsure = "MacMosh didn't hear back from Attic about website within 15 seconds. The next check shows whether it was removed."
+        #expect(await rig.runner.remove(remove) == .failed(unsure))
+        #expect(rig.runner.activity("attic").updating == ["website"])
+        await rig.runner.idle()
+        #expect(rig.runner.activity("attic").updating.isEmpty)
+        #expect(rig.refresher.results["attic"] == unsure)
+        #expect(rig.refresher.notice == unsure)
+        #expect(rig.lines.all.contains("window action: remove failed"))
+        #expect(try rig.store.load().first?.lastDeskCommand == nil)
+    }
+
     // MARK: Remove hits only the desk the confirmation named
+
+    /// The desk changed on the workhorse after the last check and no check has seen it yet: Remove checks
+    /// again before it sends anything, as the menu's Remove does.
+    @Test func removeChecksAgainBeforeSending() async throws {
+        let ssh = ok()
+        let rig = try await Rig(ssh: ssh)
+        let changed = "website changed after you asked to remove it, so nothing was removed. Look at it again first."
+        // Replaced: the same name with a new window.
+        let replaced = try #require(rig.runner.removeConfirmation("attic", desk: "website"))
+        rig.checks.set { s in
+            let i = s.desks.firstIndex { $0.name.value == "website" }!
+            s.desks[i].windows = [.init(index: 0, name: "zsh", id: "@40")]
+            s.desks[i].windowCount = 1
+        }
+        let before = rig.checks.done
+        #expect(await rig.runner.remove(replaced) == .failed(changed))
+        #expect(rig.checks.done > before)
+        #expect(ssh.calls.isEmpty)
+        #expect(rig.runner.activity("attic").busy.isEmpty)
+        #expect(rig.refresher.results["attic"] == "website wasn't removed. " + changed)
+        // Gone: no check has seen it go.
+        let gone = try #require(rig.runner.removeConfirmation("attic", desk: "website"))
+        rig.checks.set { $0.desks.removeAll { $0.name.value == "website" } }
+        #expect(await rig.runner.remove(gone) == .failed(changed))
+        #expect(ssh.calls.isEmpty)
+        #expect(rig.lines.all.filter { $0 == "window action: remove failed" }.count == 2)
+    }
 
     @Test func removeRefusesWhenTheDeskHasGoneSince() async throws {
         let ssh = ok()

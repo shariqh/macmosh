@@ -119,6 +119,19 @@ public enum DeskFormat {
         }
     }
 
+    /// The window's line when the workhorse didn't answer within the limit (`HostCommands.noAnswer`). ssh here
+    /// was stopped, but the script there may still have finished, so the line claims neither outcome.
+    public static func windowUnsure(_ kind: WindowActionKind, desk: String, on w: Workhorse) -> String {
+        let seconds = Int(HostCommands.timeLimit.components.seconds)
+        let done: String
+        switch kind {
+        case .newDesk: done = "made"
+        case .rename: done = "renamed"
+        case .remove: done = "removed"
+        }
+        return "MacMosh didn't hear back from \(w.name) about \(desk) within \(seconds) seconds. The next check shows whether it was \(done)."
+    }
+
     /// What `desk new` says when it worked.
     public static func created(_ name: DeskName, on w: Workhorse) -> [String] {
         ["Created the desk \(name.value) on \(w.name).",

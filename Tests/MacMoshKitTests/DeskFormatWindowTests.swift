@@ -75,5 +75,12 @@ import Testing
         #expect(DeskFormat.windowFailed(.newDesk, desk: "garden", reason: "It broke.") == "The desk garden wasn't made. It broke.")
         #expect(DeskFormat.windowFailed(.rename, desk: "api", reason: "It broke.") == "api wasn't renamed. It broke.")
         #expect(DeskFormat.windowFailed(.remove, desk: "website", reason: "It broke.") == "website wasn't removed. It broke.")
+        // No answer in time: it may have happened, so the line claims neither.
+        #expect(DeskFormat.windowUnsure(.newDesk, desk: "garden", on: attic)
+                == "MacMosh didn't hear back from Attic about garden within 15 seconds. The next check shows whether it was made.")
+        #expect(DeskFormat.windowUnsure(.rename, desk: "api", on: attic)
+                == "MacMosh didn't hear back from Attic about api within 15 seconds. The next check shows whether it was renamed.")
+        #expect(DeskFormat.windowUnsure(.remove, desk: "website", on: attic)
+                == "MacMosh didn't hear back from Attic about website within 15 seconds. The next check shows whether it was removed.")
     }
 }
