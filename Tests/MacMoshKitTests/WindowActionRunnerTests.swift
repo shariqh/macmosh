@@ -219,6 +219,20 @@ private func ok(_ stdout: String = "") -> FakeRunner { FakeRunner { _ in FakeRun
         #expect(rig.lines.all.contains("window action: rename failed"))
     }
 
+    /// A workhorse that doesn't answer: the 15-second limit's sentence, and the desk free again at once.
+    @Test func aCallThatTimesOutSaysSoAndFreesTheDesk() async throws {
+        let ssh = FakeRunner { _ in CommandResult(exitCode: -1, stdout: "", stderr: "", timedOut: true) }
+        let rig = try await Rig(ssh: ssh)
+        var rename = try #require(rig.runner.renameForm("attic", desk: "api"))
+        rename.name = "api-v2"
+        #expect(await rig.runner.rename(rename) == .failed("The workhorse didn't answer within 15 seconds."))
+        #expect(rig.runner.activity("attic").busy.isEmpty)
+        #expect(await rig.runner.newDesk(try await rig.form()) == .failed("The workhorse didn't answer within 15 seconds."))
+        #expect(!rig.runner.activity("attic").making)
+        await rig.runner.idle()
+        #expect(rig.lines.all.contains("window action: rename failed") && rig.lines.all.contains("window action: newDesk failed"))
+    }
+
     // MARK: Remove hits only the desk the confirmation named
 
     @Test func removeRefusesWhenTheDeskHasGoneSince() async throws {
