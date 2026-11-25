@@ -2,8 +2,10 @@ import Foundation
 
 /// The keys the MacMosh window answers itself (issue #147): Command-V, C, X, A, Z and Shift-Command-Z in its text
 /// fields, and Command-W to close it. The app has no Dock icon and no menu bar of its own, and on GitHub's
-/// runners a posted Command-V left a text field empty although typed keys reached it (main window design,
-/// "Changes since approval", item 7). This is the rule; the app only builds its menu items from `items`.
+/// runners a posted Command-V left a text field empty although typed keys reached it, even with an Edit menu in the
+/// app's main menu (main window design, "Changes since approval", item 7). This is the rule; the app's key monitor
+/// (`WindowKeysMonitor`) reads each press, asks `action(for:)` and `closes(sheetOpen:making:)`, and sends the item's
+/// standard action to the first responder.
 ///
 /// Command-Q is not one of them: it keeps doing what it did before.
 public enum WindowKeys {
@@ -17,8 +19,9 @@ public enum WindowKeys {
         public let shift: Bool
     }
 
-    /// One item of the app's menu: what it does, its title, its key, and the action it sends. The editing items
-    /// send the standard action to the first responder (the field that has the keyboard); Close is the app's own.
+    /// One of the window's keys: what it does, the title an Edit menu gives it, its key, and the standard action it
+    /// sends to the first responder (the field that has the keyboard). Close's action is the window's own
+    /// `performClose:`, which the app sends to the MacMosh window itself, and only when `closes` says so.
     public struct Item: Sendable, Equatable {
         public let action: Action
         public let title: String

@@ -66,8 +66,7 @@ private func press(_ c: String, command: Bool = true, shift: Bool = false, optio
         #expect(WindowKeys.action(for: press("q", option: true)) == nil)
     }
 
-    /// The items the app's menu holds, built from the same table: one per action, each with its key, and the
-    /// standard action each editing item sends to the first responder.
+    /// The table's items: one per action, each with its key, and the standard action each one sends.
     @Test func theItemsAreTheTableInTheEditMenusOrder() {
         #expect(WindowKeys.items.map(\.action) == [.undo, .redo, .cut, .copy, .paste, .selectAll, .close])
         #expect(WindowKeys.items.map(\.title) == ["Undo", "Redo", "Cut", "Copy", "Paste", "Select All", "Close"])
@@ -75,7 +74,7 @@ private func press(_ c: String, command: Bool = true, shift: Bool = false, optio
                                                      "performClose:"])
         #expect(WindowKeys.items.map(\.key.character) == ["z", "z", "x", "c", "v", "a", "w"])
         #expect(WindowKeys.items.map(\.key.shift) == [false, true, false, false, false, false, false])
-        // Every item's own key finds that item, so the menu and the table can't disagree.
+        // Every item's own key finds that item.
         for item in WindowKeys.items {
             #expect(WindowKeys.action(for: press(item.key.character, shift: item.key.shift)) == item.action)
         }

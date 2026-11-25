@@ -22,10 +22,11 @@
 # button does not run the menu's action for that window, or a desk whose tab can be found opens a tab
 # instead of going to it. In the "window-forms" sample (step 4) it fails when New desk…, Rename… or Remove… does
 # not open its form, a form does not refuse a taken name, a form's button does not send its exact arguments to
-# the stand-in ssh, or the page does not say what happened. It fails when Command-V, Command-A and Command-C,
-# Command-X, Command-Z or Shift-Command-Z does not do its job in a form's text field, when Command-W closes
-# anything with a form open, does not close the window without one, ends the app or stops the menu from opening,
-# or when one of these keys sets off the menu-open signal (issue #147). How a picture looks never fails it.
+# the stand-in ssh, or the page does not say what happened. It fails when a name that starts with a dash is not
+# refused, when Command-V, Command-A and Command-C, Command-X, Command-Z or Shift-Command-Z does not do its job in a
+# form's text field, when Command-W closes anything with a form or the menu open, does not close the window
+# without them, ends the app or stops the menu from opening, or when one of these keys sets off the menu-open
+# signal (issue #147). How a picture looks never fails it.
 set -uo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -732,6 +733,17 @@ forms_sample() {
     clear_field "form.command"
     tool type "claude --continue" > /dev/null
     expect_value "a typed command reaches the field" "form.command" "claude --continue" 3
+
+    # A new name can't start with a dash (issue #147): the line under the field says so, and Make desk is off.
+    clear_field "form.name"
+    tool type "--old" > /dev/null
+    expect_value "a name that starts with a dash is refused as typed" "form.name.help" "A desk name can't start with -." 3
+    v=$(wax enabled "form.make" | grep '^enabled' | tail -n 1)
+    result "$([ "$v" = "enabled false" ] && echo PASS || echo FAIL)" "Make desk is off while the name starts with a dash" "${v:-no answer}"
+    snap dash-name
+    clear_field "form.name"
+    tool type "garden-planner" > /dev/null
+    expect_value "the typed name is back to garden-planner" "form.name" "garden-planner" 3
 
     # The window's editing keys in an app with no menu bar of its own (issue #147): Command-V, then Command-A and
     # Command-C, Command-X, Command-Z and Shift-Command-Z in the command field, and Command-W with the form open.
