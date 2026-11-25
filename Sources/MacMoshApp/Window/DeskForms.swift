@@ -83,7 +83,7 @@ struct NewDeskSheet: View {
         .task { await readFolders() }
     }
 
-    /// Name, Command to start, After a restart, and When its last shell exits.
+    /// Name, First window, Command to start, After a restart, and When its last shell exits.
     private var fields: some View {
             Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 8) {
                 GridRow {
@@ -91,6 +91,23 @@ struct NewDeskSheet: View {
                     field(NewDeskForm.Words.name, text: Binding(get: { form.name }, set: { form.setName($0) }),
                           help: form.nameLine, isProblem: form.nameLineIsProblem,
                           mark: FormMarks.name)
+                }
+                // The first window's name (issue 163), hidden for a script older than 0.12.0. A checkbox Toggle, and a
+                // field with its line while the box is clear; NewDeskForm decides what is sent.
+                if form.canNameFirstWindow {
+                    GridRow {
+                        Text(verbatim: NewDeskForm.Words.firstWindow)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Toggle(isOn: $form.windowSameAsDesk) { Text(verbatim: NewDeskForm.Words.sameAsDesk) }
+                                .toggleStyle(.checkbox)
+                                .accessibilityIdentifier(FormMarks.sameAsDesk)
+                            if let line = form.firstWindowLine {
+                                field(NewDeskForm.Words.firstWindow, text: $form.windowName,
+                                      help: line, isProblem: form.firstWindowLineIsProblem,
+                                      mark: FormMarks.firstWindowName)
+                            }
+                        }
+                    }
                 }
                 GridRow {
                     Text(verbatim: NewDeskForm.Words.command)
@@ -375,6 +392,8 @@ enum FormMarks {
     static let name = "form.name"
     static let command = "form.command"
     static let comesBack = "form.comesBack"
+    static let sameAsDesk = "form.sameAsDesk"
+    static let firstWindowName = "form.firstWindowName"
     static let whenItExits = "form.whenItExits"
     static let openInTab = "form.openInTab"
     static let cancel = "form.cancel"
