@@ -18,6 +18,44 @@ extension HostHarness {
         _ = shell("(sleep 120 | script -q /dev/null /bin/sh '\(file.path)' >/dev/null 2>&1 &)")
     }
 
+    /// As `startClient`, but everything the client writes to its terminal is kept, byte for byte, in the
+    /// file this returns (`script -F` flushes after each write), so a test can read the titles tmux sends.
+    @discardableResult
+    func startRecordedClient(_ label: String, cols: Int = 80, rows: Int = 24, _ argv: [String]) throws -> URL {
+        let file = home.appendingPathComponent("client-\(label).sh")
+        let record = home.appendingPathComponent("typescript-\(label)")
+        let quoted = argv.map { "'" + $0.replacingOccurrences(of: "'", with: "'\\''") + "'" }
+            .joined(separator: " ")
+        try "stty cols \(cols) rows \(rows)\nexec env TERM=xterm-256color LC_ALL=en_US.UTF-8 \(quoted)\n"
+            .write(to: file, atomically: true, encoding: .utf8)
+        _ = shell("(sleep 120 | script -q -F '\(record.path)' /bin/sh '\(file.path)' >/dev/null 2>&1 &)")
+        return record
+    }
+
+    /// The titles a recorded client was sent, in order: each `ESC ] <0, 1 or 2> ; <text>` ended by BEL or
+    /// ESC \, as `<number>;<text>`. The text is read as UTF-8, so a C1 control character sent in it (such
+    /// as U+009B, the bytes C2 9B) is still there to see.
+    func titles(in record: URL) -> [String] {
+        guard let data = try? Data(contentsOf: record) else { return [] }
+        let bytes = [UInt8](data)
+        var found: [String] = []
+        var i = 0
+        while i + 3 < bytes.count {
+            if bytes[i] == 0x1B, bytes[i + 1] == 0x5D, [0x30, 0x31, 0x32].contains(bytes[i + 2]), bytes[i + 3] == 0x3B {
+                var j = i + 4
+                while j < bytes.count, bytes[j] != 0x07, !(bytes[j] == 0x1B && j + 1 < bytes.count && bytes[j + 1] == 0x5C) {
+                    j += 1
+                }
+                guard j < bytes.count else { break }
+                let text = String(decoding: bytes[(i + 4)..<j], as: UTF8.self)
+                found.append("\(Character(Unicode.Scalar(bytes[i + 2])));\(text)")
+                i = j
+            }
+            i += 1
+        }
+        return found
+    }
+
     /// One line per attached client: `<session id>|<session name>|<client pid>|<tty>`.
     func clients() -> [String] {
         tmux(["list-clients", "-F", "#{session_id}|#{client_session}|#{client_pid}|#{client_tty}"]).stdout

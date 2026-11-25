@@ -4,7 +4,7 @@
 # Plain bash 3.2 (what macOS ships at /bin/bash): no associative arrays, no mapfile, no ${var,,}.
 set -u
 
-MACMOSH_HOST_VERSION=0.11.0
+MACMOSH_HOST_VERSION=0.13.0
 MACMOSH_PROTOCOL=1
 AGENT_LABEL=io.github.shariqh.macmosh.host
 
@@ -1012,6 +1012,7 @@ mm_open_view() {
         return 1
     fi
     mm_view_bar "$vid"
+    mm_view_title "$vid"
     if [ "$3" = 1 ]; then
         # The desk's own session is the target, so the window starts in the desk's folder as window-new's do.
         wid=$(mm_tmux new-window -d -P -F '#{window_id}' -t "$sid:" 2>/dev/null)
@@ -1109,6 +1110,55 @@ mm_view_bar() {
     mm_tmux set-option -t "$1" status-left "$bar" >/dev/null 2>&1
     if [ "$(mm_tmux show-options -t "$1" -v status-left 2>/dev/null)" != "$bar" ]; then
         mm_tmux set-option -u -t "$1" status-left >/dev/null 2>&1
+    fi
+    return 0
+}
+
+# --- A tab's title (issue 162, 0.13.0).
+#
+# A terminal tab's title is the name of the window it shows when that window has a name of its own, and
+# the desk's name otherwise. tmux writes it: set-titles "Attempt[s] to set the client terminal title",
+# with \e]0;...\007 for a terminal that appears to be xterm, and set-titles-string is the string it
+# writes, with formats expanded (man tmux 3.8). Both are session options, so they are set on the tab's
+# session only: its view, or the desk's own session for a tab attached to it (never for --cc, whose tabs
+# iTerm2 names itself). A window has a name of its own exactly when its automatic-rename is off (it is
+# turned off by "new-window or new-session, or later with rename-window, or with a terminal escape
+# sequence"). The desk's name is the view's @macmosh-desk, which desk-rename changes, or, on the desk's
+# own session, the session's own name. The string reads names through formats only: no name is pasted
+# into it, and a name read through a format is not expanded again, so it can't run a format or a #()
+# command (TabTitleTests).
+# tmux's own rename refuses a C0 control character and DEL, but it takes a C1 one written in UTF-8
+# (U+0080 to U+009F, such as U+009B, CSI), and a title showing such a name sends it to the terminal raw
+# (seen with tmux 3.8). So a name is shown only when it is made of characters that are not controls,
+# tested inside the format with a regular expression; otherwise the title is the desk's name, and with a
+# desk's name that fails the same test (only possible after a rename by hand) it is empty. Before
+# anything is set, the server is asked to tell a C1 control from text with that test; a server that
+# can't gets no title.
+# Like the bar, the title is only for show: it is read back and taken off when it did not come through
+# as written, and nothing here makes the tab fail. A person who turned set-titles on in his own tmux
+# settings keeps his own title, and MacMosh sets nothing. A tab opened by a script before 0.13.0 keeps
+# the title its terminal had.
+MM_TITLE_TEXT='^[^[:cntrl:]]+$'
+
+mm_title_string() {
+    local desk='#{?#{@macmosh-desk},#{@macmosh-desk},#{session_name}}' title
+    title="#{?#{&&:#{!:#{automatic-rename}},#{m/r:$MM_TITLE_TEXT,#{window_name}}},#{window_name},#{?#{m/r:$MM_TITLE_TEXT,$desk},$desk,}}"
+    printf '%s' "$title"
+}
+
+# Gives the session with this id (a view, or a desk's own session) the title above. Each format is put
+# in a variable first: bash 3.2 expands braces with a comma in a double-quoted word inside "$(...)"
+# (seen on macOS's /bin/bash), which would cut a format into pieces.
+mm_view_title() {
+    local id="$1" title probe
+    [ "$(mm_tmux show-options -gv set-titles 2>/dev/null)" = off ] || return 0
+    probe="#{m/r:$MM_TITLE_TEXT,x$(printf '\302\233')y}#{m/r:$MM_TITLE_TEXT,x y}"
+    [ "$(mm_tmux display-message -p -t "$id" "$probe" 2>/dev/null)" = 01 ] || return 0
+    title=$(mm_title_string)
+    mm_tmux set-option -t "$id" set-titles-string "$title" \; set-option -t "$id" set-titles on >/dev/null 2>&1
+    if [ "$(mm_tmux show-options -t "$id" -v set-titles-string 2>/dev/null)" != "$title" ] ||
+        [ "$(mm_tmux show-options -t "$id" -v set-titles 2>/dev/null)" != on ]; then
+        mm_tmux set-option -u -t "$id" set-titles \; set-option -u -t "$id" set-titles-string >/dev/null 2>&1
     fi
     return 0
 }
@@ -1336,6 +1386,8 @@ cmd_attach() {
         # attach fails, the option is never set, and status sweeps the view a minute later.
         set -- attach-session -t "$vid" \; set-option -t "$vid" destroy-unattached on
     else
+        # A tab on the desk's own session gets the same title as a view (see mm_view_title).
+        mm_view_title "$sid"
         set -- attach-session -t "$sid"
     fi
     exec tmux -L "$MACMOSH_SOCKET" "$@"
@@ -2024,7 +2076,9 @@ usage: macmosh-host <subcommand>
             --window opens this tab on one window of the desk, --new-window on a new one;
             other tabs on the desk stay where they are. --label names the tab for the
             status report (4 to 32 of 0-9 and a-f); with neither window option, the tab
-            opens on the window the desk shows now
+            opens on the window the desk shows now. Without --cc, the tab's title is the
+            name of the window it shows, or the desk's name when the window has no name
+            of its own
   desk-new <name> <folder> [--no-reopen] [--permanent] [--keep] [--command <text>]
             a new desk comes back after a restart unless --no-reopen, and is removed
             when its last shell exits unless --permanent
