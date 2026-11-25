@@ -37,6 +37,28 @@ import Testing
         }
     }
 
+    /// Issue 144 changed the stored copy by one line only: with Attic's script at 0.10.0 the menus are the stored
+    /// copy without its `Name a window…` lines, and there is one such line for each open desk of Attic's that
+    /// passes `WindowNameGate`, right after its New window line.
+    @Test func theWindowSampleMenusChangedOnlyByTheNameAWindowLine() throws {
+        let stored = try storedMenus("menu/windows-menu.txt")
+        let older = windowSampleInputs(version: "0.10.0").map(\.menu)
+        #expect(stored.count == older.count)
+        var added = 0
+        for (i, (want, got)) in zip(stored, older).enumerated() {
+            let kept = want.items.filter { $0.title != "Name a window…" }
+            added += want.items.count - kept.count
+            #expect(got.items == kept, "menu \(i)")
+            for (j, item) in want.items.enumerated() where item.title == "Name a window…" {
+                #expect(j > 0 && want.items[j - 1].title == "New window", "menu \(i), line \(j)")
+                guard case .tab(let args) = item.action else { Issue.record("menu \(i), line \(j)"); continue }
+                #expect(args.count == 4 && args[0] == "desk" && args[1] == "name-window" && args[2] == "attic")
+            }
+        }
+        // Five open desks in each of cases 0, 1, 3, 4 and 5; none in case 2 (0.7.0) and none for Spare.
+        #expect(added == 25)
+    }
+
     /// The format reads back what it writes, for every kind of action.
     @Test func theStoredFormatReadsBackEveryAction() throws {
         let menus = everySampleMenu() + moreSampleMenus() + windowSampleInputs().map(\.menu)

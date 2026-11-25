@@ -67,8 +67,9 @@ let windowsRecords = [atticRecord("3f9a2c71e5b7d4a6", minutesAgo: 20), atticReco
                       atticRecord("c1d2e3f4a5b6c7d8", minutesAgo: 30)]
 
 /// Menus with a line per window (issue #124), and the same report where the gate keeps today's shape. Their
-/// stored copy is `Fixtures/menu/windows-menu.txt`.
-func windowSampleInputs() -> [SampleMenuInput] {
+/// stored copy is `Fixtures/menu/windows-menu.txt`. Attic's script is `version` (0.11.0, which names windows,
+/// issue 144) in every case but the one from 0.7.0.
+func windowSampleInputs(version: String = "0.11.0") -> [SampleMenuInput] {
     func attic(_ status: HostStatus, mode: ConnectionMode = .mosh) -> Gathered {
         .checked(.sample(.ready(signIns: true), workhorse: .sample(id: "attic", name: "Attic", mode: mode), status: status,
                          homeReachable: true))
@@ -77,14 +78,15 @@ func windowSampleInputs() -> [SampleMenuInput] {
     // A tab opened on api's server a minute ago, not in the report yet.
     let fresh = TabsOnThisMac(records: windowsRecords + [atticRecord("9f3a1c2e5b7d4a60", asked: "@5", minutesAgo: 1)],
                               terminal: .iterm2)
+    let report = windowsReport(version: version)
     return [
-        SampleMenuInput(gathered: [attic(windowsReport())], tabs: here, now: windowsNow),
-        SampleMenuInput(gathered: [attic(windowsReport(), mode: .tabs)], tabs: here, now: windowsNow),
+        SampleMenuInput(gathered: [attic(report)], tabs: here, now: windowsNow),
+        SampleMenuInput(gathered: [attic(report, mode: .tabs)], tabs: here, now: windowsNow),
         SampleMenuInput(gathered: [attic(windowsReport(version: "0.7.0"))], tabs: here, now: windowsNow),
-        SampleMenuInput(gathered: [attic(windowsReport(), mode: .tabs)],
+        SampleMenuInput(gathered: [attic(report, mode: .tabs)],
                         tabs: TabsOnThisMac(records: windowsRecords, terminal: .appleTerminal), now: windowsNow),
-        SampleMenuInput(gathered: [attic(windowsReport())], tabs: fresh, now: windowsNow),
-        SampleMenuInput(gathered: [attic(windowsReport()), .checked(.sampleReady(id: "spare", name: "Spare"))],
+        SampleMenuInput(gathered: [attic(report)], tabs: fresh, now: windowsNow),
+        SampleMenuInput(gathered: [attic(report), .checked(.sampleReady(id: "spare", name: "Spare"))],
                         tabs: here, now: windowsNow),
     ]
 }

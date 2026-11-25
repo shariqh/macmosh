@@ -224,13 +224,15 @@ public enum MenuModel {
     }
 
     /// A desk past `WindowLinesGate` (issue #124): its row (`DeskWindows.title`) does what its submenu's first
-    /// line does, and the submenu is that first line, the window lines, New window in a tab of its own,
-    /// Rename… and Remove…, then the flags as grey text. A separator between each group that has lines.
+    /// line does, and the submenu is that first line, the window lines, New window in a tab of its own and
+    /// Name a window… when there is one (issue 144), Rename… and Remove…, then the flags as grey text. A separator
+    /// between each group that has lines.
     private static func deskEntry(_ deskID: String, _ desk: DeskLine, _ windows: DeskWindows) -> MenuEntry {
         func lines(_ buttons: [ActionButton]) -> [MenuEntry] { buttons.map { .button($0, under: deskID) } }
         var last = lines(desk.buttons.filter { ["rename", "remove"].contains($0.key) })
         if let flags = windows.flags { last.append(MenuEntry(id: "\(deskID):flags", title: flags)) }
-        let groups = [lines([windows.first]), lines(windows.windows), lines(windows.newWindow.map { [$0] } ?? []), last]
+        let adding = (windows.newWindow.map { [$0] } ?? []) + desk.buttons.filter { $0.key == ButtonRules.nameWindowKey }
+        let groups = [lines([windows.first]), lines(windows.windows), lines(adding), last]
         return MenuEntry(id: deskID, title: windows.title, action: windows.first.action,
                          submenu: joined(groups.filter { !$0.isEmpty }, under: deskID))
     }

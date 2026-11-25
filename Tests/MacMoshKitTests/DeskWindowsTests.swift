@@ -342,8 +342,9 @@ private let a = "aaaaaaaaaaaaaaaa", b = "bbbbbbbbbbbbbbbb", c = "ccccccccccccccc
 @Suite struct MenuWindowsTests {
     private func submenu(_ menu: MenuLines, _ id: String) -> [MenuEntry] { entry(menu.entries, id)?.submenu ?? [] }
 
+    /// From script 0.8.0, as the design draws it: 0.11.0 adds only "Name a window…" (MenuStoredCopyTests).
     @Test func theDesignsExampleReadsAsTheDesignDrawsIt() {
-        let menu = windowSampleInputs()[0].menu
+        let menu = windowSampleInputs(version: "0.8.0")[0].menu
         let block = menu.entries[0]
         #expect(([block] + block.children).map(\.title) == [
             "Attic · Ready",
@@ -387,7 +388,7 @@ private let a = "aaaaaaaaaaaaaaaa", b = "bbbbbbbbbbbbbbbb", c = "ccccccccccccccc
     /// With Tabs mode in iTerm2, or a script older than 0.8.0, the menu is exactly what it is without the
     /// gate: the menu of the same report from a script that never had window lines.
     @Test func whenTheGateFailsTheMenuIsTodays() {
-        let inputs = windowSampleInputs()
+        let inputs = windowSampleInputs(version: "0.8.0")
         let today = SampleMenuInput(gathered: [.checked(.sample(.ready(signIns: true), workhorse: .sample(id: "attic", name: "Attic"),
                                                                 status: windowsReport(version: "0.1.0"), homeReachable: true))],
                                     now: windowsNow).menu
