@@ -35,6 +35,9 @@ public final class MenuRefresher: ObservableObject {
     /// How many checks have ended since the app started, whatever they found. The window waits on it for the
     /// check after its action (`WindowActionRunner`), which a steady stream of checks can't hold up.
     @Published public private(set) var checksDone = 0
+    /// By workhorse id, the desks that ended (main window design, section 7.1 C): `EndedDeskTracker`, fed from
+    /// every check here, so it keeps track while the window is closed. Memory only; the menu never reads it.
+    @Published public private(set) var ended: [String: [EndedDesk]] = [:]
 
     private let load: @Sendable () throws -> [Workhorse]
     private let gather: @Sendable ([Workhorse]) async -> [Gathered]
@@ -54,6 +57,7 @@ public final class MenuRefresher: ObservableObject {
     private var missesInARow = 0
     /// Which workhorses have just been logged in to and are given a minute to start their desk server (issue #88).
     private var deskServerWait = DeskServerWait()
+    private var endedTracker = EndedDeskTracker()
 
     /// How long to wait before looking again at a workhorse that has just stopped answering.
     static let secondLook: Duration = .seconds(5)
@@ -147,6 +151,8 @@ public final class MenuRefresher: ObservableObject {
         if tabsSeen != seen { tabsSeen = seen }
         let waiting = deskServerWait.update(gathered)
         if waitingForDeskServer != waiting { waitingForDeskServer = waiting }
+        endedTracker.take(gathered, waiting: waiting, onList: Set(list.map(\.id)))
+        publishEnded()
         menu = MenuModel.build(gathered, waitingForDeskServer: waiting, tabs: tabs, now: now)
         logRefresh(MenuLog.refreshed(menu, workhorses: list.count))
     }
@@ -240,6 +246,34 @@ public final class MenuRefresher: ObservableObject {
     public func finishWindowAction(id: String, result: String) {
         results[id] = result
         notice = result
+    }
+
+    // MARK: Ended desks (step 5), for `WindowActionRunner`
+
+    /// The window is about to remove or rename that desk: it never shows as ended (`EndedDeskTracker`).
+    public func expectGone(id: String, desk: String) {
+        endedTracker.expectGone(workhorse: id, desk: desk)
+    }
+
+    /// That removal or rename failed, or the check after it has landed.
+    public func stopExpecting(id: String, desk: String) {
+        endedTracker.stopExpecting(workhorse: id, desk: desk)
+    }
+
+    /// Takes the ended desk off the list: Forget, or Start again worked.
+    public func forgetEnded(id: String, desk: String) {
+        endedTracker.forget(workhorse: id, desk: desk)
+        publishEnded()
+    }
+
+    /// Start again on that ended desk didn't work: it stays listed, with `reason`.
+    public func endedFailed(id: String, desk: String, reason: String) {
+        endedTracker.failed(workhorse: id, desk: desk, reason: reason)
+        publishEnded()
+    }
+
+    private func publishEnded() {
+        if ended != endedTracker.ended { ended = endedTracker.ended }
     }
 
     /// The real thing: this Mac's saved list and folders, the real checks with a 20-second budget,

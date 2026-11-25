@@ -92,6 +92,12 @@ public struct WorkhorsePage: Sendable, Equatable {
     public var desks: [DeskRow]
     /// "No desks yet." for a Ready workhorse with none.
     public var noDesks: String?
+    /// "Ended", for a Ready workhorse with at least one ended desk (step 5); nil otherwise.
+    public var endedHeading: String?
+    /// Its ended desks, newest first. None under a workhorse that is not Ready: nothing can be started there, and
+    /// its page shows the greyed list of its last Ready check instead (section 7.1 D). They are kept, and come back
+    /// with its next Ready check.
+    public var ended: [EndedRow]
     /// The desks of the last Ready check, for a workhorse that is not Ready now.
     public var stale: StaleDesks?
     public var foot: [BoardButton]
@@ -145,6 +151,9 @@ public struct WorkhorsePage: Sendable, Equatable {
         rows += activity.arriving.subtracting(shown).map(DeskRow.arriving)
         desks = rows.sorted { BoardModel.inNameOrder($0.name, $1.name) }
         noDesks = isReady && w.desks.isEmpty ? WindowWords.noDesks : nil
+        let canKeep = canKeepClosed
+        ended = isReady ? w.ended.map { EndedRow($0, now: now, timeZone: timeZone, activity: activity, canKeep: canKeep) } : []
+        endedHeading = ended.isEmpty ? nil : EndedRow.heading
         stale = StaleDesks(w, now: now, timeZone: timeZone)
         home = w.homeReachable.map(WorkhorseBlock.homeLine)
         result = w.result

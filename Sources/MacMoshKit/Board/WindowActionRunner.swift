@@ -2,9 +2,9 @@ import Combine
 import Foundation
 
 /// The window's desk actions, in the log's words (main window design, section 7.3), naming a window among them
-/// (issue 144).
+/// (issue 144), and Start again and Forget on an ended desk (step 5).
 public enum WindowActionKind: String, Sendable, Equatable {
-    case newDesk, rename, remove, nameWindow
+    case newDesk, rename, remove, nameWindow, startAgain, forget
 
     /// What the action's button reads while it runs.
     public var progress: String {
@@ -13,6 +13,8 @@ public enum WindowActionKind: String, Sendable, Equatable {
         case .rename: return RenameForm.Words.renaming
         case .remove: return RemoveConfirmation.removing
         case .nameWindow: return WindowNameForm.Words.naming
+        case .startAgain: return EndedRow.starting
+        case .forget: return EndedRow.forgetting
         }
     }
 }

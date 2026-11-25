@@ -336,3 +336,75 @@ private extension D {
         return d
     }
 }
+
+/// What the stand-in checks find, changed by a test between checks.
+private final class Found: @unchecked Sendable {
+    private let lock = NSLock()
+    private var desks: [D]
+    private var state: WorkhorseState = .ready(signIns: true)
+    init(_ desks: [D]) { self.desks = desks }
+    func set(_ next: [D], state s: WorkhorseState = .ready(signIns: true)) { lock.withLock { desks = next; state = s } }
+    func gather(_ list: [Workhorse]) -> [Gathered] {
+        lock.withLock {
+            list.map { w in
+                .checked(.sample(state, workhorse: w, status: try? report(desks), checkedAt: Date()))
+            }
+        }
+    }
+}
+
+/// The tracker belongs to the app: the refresher feeds it from every check, whether the window is open or not,
+/// and publishes what it lists; the window's board shows it.
+@MainActor @Suite struct EndedDeskRefresherTests {
+    @Test func theRefresherListsADeskThatEndedAndTheBoardShowsIt() async throws {
+        let found = Found([api(), recipes()])
+        let r = MenuRefresher(load: { [attic] }, gather: { found.gather($0) }, save: { _ in }, log: { _ in }, pause: { _ in })
+        let screen = BoardOnScreen(refresher: r, load: { [attic] }, log: { _ in })
+        await r.refresh()
+        #expect(r.ended.isEmpty)
+        found.set([api()])
+        await r.refresh()
+        #expect(r.ended["attic"]?.map(\.name) == ["recipes"])
+        #expect(r.ended["attic"]?.first?.folder == recipesFolder)
+        await screen.reloadList()
+        #expect(screen.board.workhorses.first?.ended.map(\.name) == ["recipes"])
+        #expect(screen.board.workhorses.first?.ended.first?.shownFolder == "~/Development/my recipes")
+        // The menu is built as before: it never lists an ended desk.
+        #expect(!r.menu.items.contains { $0.title.contains("recipes") })
+
+        r.endedFailed(id: "attic", desk: "recipes", reason: "The folder must exist on Attic.")
+        #expect(r.ended["attic"]?.first?.problem == "The folder must exist on Attic.")
+        #expect(screen.board.workhorses.first?.ended.first?.problem == "The folder must exist on Attic.")
+        r.forgetEnded(id: "attic", desk: "recipes")
+        #expect(r.ended.isEmpty)
+        #expect(screen.board.workhorses.first?.ended.isEmpty == true)
+    }
+
+    @Test func aDeskTheWindowRemovesIsNotListed() async throws {
+        let found = Found([api(), recipes()])
+        let r = MenuRefresher(load: { [attic] }, gather: { found.gather($0) }, save: { _ in }, log: { _ in }, pause: { _ in })
+        await r.refresh()
+        r.expectGone(id: "attic", desk: "recipes")
+        found.set([api()])
+        await r.refresh()
+        #expect(r.ended.isEmpty)
+        r.stopExpecting(id: "attic", desk: "recipes")
+    }
+
+    @Test func aWaitForTheDeskServerCountsNothing() async throws {
+        let found = Found([api(), recipes()])
+        let r = MenuRefresher(load: { [attic] }, gather: { found.gather($0) }, save: { _ in }, log: { _ in }, pause: { _ in })
+        await r.refresh()
+        found.set([], state: .waitingForLogin)
+        await r.refresh()
+        // Logged in: the desk server isn't up yet, and the refresher waits for it (issue #88).
+        found.set([], state: .notSetUp(.deskServerDown))
+        await r.refresh()
+        #expect(r.waitingForDeskServer == ["attic"])
+        #expect(r.ended.isEmpty)
+        // Up: api came back (reopen), recipes (no reopen) didn't.
+        found.set([api(), recipes(open: false)])
+        await r.refresh()
+        #expect(r.ended["attic"]?.map(\.name) == ["recipes"])
+    }
+}

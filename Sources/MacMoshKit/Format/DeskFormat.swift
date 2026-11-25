@@ -108,8 +108,13 @@ public enum DeskFormat {
         case .rename: return "Renamed \(desk.value) to \(new?.value ?? desk.value) on \(w.name)."
         case .remove: return "Removed the desk \(desk.value) from \(w.name)."
         case .nameWindow: return "Named a window of \(desk.value) on \(w.name)."   // the runner says which (windowNamed)
+        case .startAgain: return "Started \(desk.value) again on \(w.name)."
+        case .forget: return "Took \(desk.value) off the ended desks of \(w.name)."
         }
     }
+
+    /// Added to Start again's line when it was Start again and keep it.
+    public static let keptWhenItExits = "It is kept when it exits."
 
     /// The window's line after an action failed: what did not happen, then why.
     public static func windowFailed(_ kind: WindowActionKind, desk: String, reason: String) -> String {
@@ -118,6 +123,8 @@ public enum DeskFormat {
         case .rename: return "\(desk) wasn't renamed. \(reason)"
         case .remove: return "\(desk) wasn't removed. \(reason)"
         case .nameWindow: return "The window of \(desk) wasn't named. \(reason)"
+        case .startAgain: return "\(desk) wasn't started again. \(reason)"
+        case .forget: return "\(desk) wasn't taken off the ended desks. \(reason)"
         }
     }
 
@@ -131,6 +138,8 @@ public enum DeskFormat {
         case .rename: done = "renamed"
         case .remove: done = "removed"
         case .nameWindow: done = "named"
+        case .startAgain: done = "started"
+        case .forget: done = "taken off"
         }
         return "MacMosh didn't hear back from \(w.name) about \(desk) within \(seconds) seconds. The next check shows whether it was \(done)."
     }

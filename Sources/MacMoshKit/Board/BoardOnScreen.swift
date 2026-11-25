@@ -5,7 +5,7 @@ import Foundation
 /// action (main window design, section 7.2). It is the window's own, as `MenuOnScreen` is the menu's.
 ///
 /// It follows the values `MenuRefresher` publishes for the window (`latest`, `lastReady`, `checking`,
-/// `waitingForDeskServer`, and `tabsSeen`, the tabs the menu's last build had), builds the board from them
+/// `waitingForDeskServer`, `tabsSeen`, the tabs the menu's last build had, and `ended`), builds the board from them
 /// with `BoardModel.build`, and publishes it only
 /// when it differs from the board on screen. The menu's view never observes this, and the window's
 /// views never observe `MenuOnScreen`, so neither redraws the other. Nothing here changes the
@@ -35,6 +35,7 @@ public final class BoardOnScreen: ObservableObject {
         var waitingForDeskServer: Set<String>
         var tabs: TabsSeen?
         var results: [String: String] = [:]
+        var ended: [String: [EndedDesk]] = [:]
     }
 
     private let load: @Sendable () throws -> [Workhorse]
@@ -60,7 +61,8 @@ public final class BoardOnScreen: ObservableObject {
         self.now = now
         self.timeZone = timeZone
         inputs = Inputs(latest: refresher.latest, lastReady: refresher.lastReady, checking: refresher.checking,
-                        waitingForDeskServer: refresher.waitingForDeskServer, tabs: refresher.tabsSeen)
+                        waitingForDeskServer: refresher.waitingForDeskServer, tabs: refresher.tabsSeen,
+                        ended: refresher.ended)
         notice = refresher.notice
         board = BoardModel.build(latest: inputs.latest, lastReady: inputs.lastReady, checking: inputs.checking,
                                  order: [], waitingForDeskServer: inputs.waitingForDeskServer, tabs: inputs.tabs,
@@ -81,7 +83,8 @@ public final class BoardOnScreen: ObservableObject {
                 MainActor.assumeIsolated {
                     guard let self else { return }
                     self.take(Inputs(latest: latest, lastReady: lastReady, checking: checking,
-                                     waitingForDeskServer: waiting, tabs: tabs, results: self.inputs.results))
+                                     waitingForDeskServer: waiting, tabs: tabs, results: self.inputs.results,
+                                     ended: self.inputs.ended))
                 }
             })
         // The result line of the window's last action on each workhorse (step 4).
@@ -89,6 +92,14 @@ public final class BoardOnScreen: ObservableObject {
             MainActor.assumeIsolated {
                 guard let self, self.inputs.results != results else { return }
                 self.inputs.results = results
+                self.rebuild()
+            }
+        })
+        // The desks that ended (step 5), which the refresher's tracker lists from every check.
+        watches.append(refresher.$ended.sink { [weak self] ended in
+            MainActor.assumeIsolated {
+                guard let self, self.inputs.ended != ended else { return }
+                self.inputs.ended = ended
                 self.rebuild()
             }
         })
@@ -152,7 +163,7 @@ public final class BoardOnScreen: ObservableObject {
     private func rebuild() {
         let next = BoardModel.build(latest: inputs.latest, lastReady: inputs.lastReady, checking: inputs.checking,
                                     order: order, waitingForDeskServer: inputs.waitingForDeskServer, tabs: inputs.tabs,
-                                    results: inputs.results, now: now(), timeZone: timeZone)
+                                    ended: inputs.ended, results: inputs.results, now: now(), timeZone: timeZone)
         if next != board { board = next }
     }
 }
