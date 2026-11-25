@@ -30,7 +30,7 @@ private func notReadyChecks() -> [CheckResult] {
         for check in notReadyChecks() {
             let line = DeskFormat.notReady(check, for: .window, now: formatNow, timeZone: formatZone)
             #expect(!line.contains("\n"), "\(check.state): \(line)")
-            #expect(!line.contains("macmosh"), "\(check.state): \(line)")
+            #expect(!line.contains("macmosh "), "\(check.state): \(line)")
             #expect(!line.contains("Run:") && !line.contains("--"), "\(check.state): \(line)")
             #expect(line.hasPrefix(StatusFormat.headline(check) + "."), "\(check.state): \(line)")
         }
@@ -57,7 +57,7 @@ private func notReadyChecks() -> [CheckResult] {
         (.cantReach(.awayAndOffline), "Attic · Can't reach it. Tailscale says it is offline and you are away from home. It may have restarted: its home address is out of reach from here."),
         (.cantReach(.nothingAnswers), "Attic · Can't reach it. Nothing answers at either address: it is off, asleep or disconnected. If it just restarted, its home address may have changed."),
         (.notSetUp(.notPaired), "Attic · Not paired."),
-        (.notSetUp(.identityUnusable), "Attic · Your ssh key is locked."),
+        (.notSetUp(.identityUnusable), "Attic · Your ssh key is locked. MacMosh can't use ~/.ssh/macmosh_ed25519."),
         (.notSetUp(.hostScriptMissing), "Attic · Needs setting up."),
         (.notSetUp(.hostScriptOutdated), "Attic · Needs setting up."),
         (.notSetUp(.unreadableReport), "Attic · Couldn't read its status. It answered, but its status report was incomplete. MacMosh will try again."),
@@ -66,6 +66,17 @@ private func notReadyChecks() -> [CheckResult] {
     func eachStatesSentenceInTheWindow(state: WorkhorseState, sentence: String) {
         #expect(DeskFormat.notReady(.sample(state, workhorse: attic), for: .window, now: formatNow, timeZone: formatZone)
                 == sentence)
+    }
+
+    /// Only a sentence that names a `macmosh` command is dropped, never one that names the key file, whatever the
+    /// file is called (review of pull request #150).
+    @Test func theKeyFileSentenceStaysWhateverTheFileIsCalled() {
+        for file in [nil, "~/.ssh/macmosh_ed25519", "~/.ssh/id_ed25519"] {
+            let w = Workhorse.sample(id: "attic", name: "Attic", identityFile: file)
+            let line = DeskFormat.notReady(.sample(.notSetUp(.identityUnusable), workhorse: w), for: .window,
+                                           now: formatNow, timeZone: formatZone)
+            #expect(line == "Attic · Your ssh key is locked. MacMosh can't use \(file ?? "~/.ssh/macmosh_ed25519").")
+        }
     }
 
     @Test func lastSeenStaysInTheWindowsSentence() {

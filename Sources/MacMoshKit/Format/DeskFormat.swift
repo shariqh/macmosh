@@ -18,7 +18,8 @@ public enum DeskFormat {
         guard wording == .window else {
             return ([StatusFormat.headline(r)] + (hint.map { [$0] } ?? [])).joined(separator: "\n")
         }
-        let kept = hint.map(sentences)?.filter { !$0.contains("macmosh") } ?? []
+        // A command reads "macmosh " with a space, as in `withoutCommand`; the key file's name does not.
+        let kept = hint.map(sentences)?.filter { !$0.contains("macmosh ") } ?? []
         return ([StatusFormat.headline(r) + "."] + kept).joined(separator: " ")
             .replacingOccurrences(of: "\n", with: " ")
     }
