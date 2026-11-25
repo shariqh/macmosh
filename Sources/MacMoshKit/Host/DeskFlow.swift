@@ -68,9 +68,13 @@ public struct DeskFlow: Sendable {
     static let tries = 3
 
     private let commands: HostCommands
+    /// Whose words its failures are in: a terminal tab's, which may name a `macmosh` command, or the
+    /// MacMosh window's, which never do (`DeskFormat.Wording`).
+    private let wording: DeskFormat.Wording
 
-    public init(commands: HostCommands) {
+    public init(commands: HostCommands, wording: DeskFormat.Wording = .terminal) {
         self.commands = commands
+        self.wording = wording
     }
 
     // MARK: - The commands
@@ -113,7 +117,7 @@ public struct DeskFlow: Sendable {
                                        reopen: request.reopen, keep: request.keep, permanent: request.permanent,
                                        command: command)
         } catch {
-            return .failure(DeskFormat.message(error, workhorse: w))
+            return .failure(DeskFormat.message(error, workhorse: w, for: wording))
         }
         DeskFormat.created(name, on: w).forEach(ui.say)
         return DeskResult(code: 0, reason: nil, output: [], desk: name)
@@ -136,13 +140,8 @@ public struct DeskFlow: Sendable {
     public func removeDeskAsking(_ check: CheckResult, name: String, ui: Interaction) async -> DeskResult {
         await onDesk(check, name: name) { w, address, desk in
             let open = check.status?.desks.first { $0.name == desk }
-            if let open {
-                let count = open.windowCount == 1 ? "1 window" : "\(open.windowCount) windows"
-                let names = open.windows.map(\.name).filter { !$0.isEmpty }
-                let list = names.isEmpty ? "" : " (" + names.joined(separator: ", ") + ")"
-                ui.say("This removes the desk \(desk.value) and closes its \(count)\(list), with whatever is running in them.")
-            } else if check.status?.definitions.contains(where: { $0.name == desk }) == true {
-                ui.say("This removes the desk \(desk.value). It has no open windows.")
+            if open != nil || check.status?.definitions.contains(where: { $0.name == desk }) == true {
+                ui.say(DeskFormat.removeSentence(desk, open: open))
             } else {
                 throw HostCommandError.noSuchDesk
             }
@@ -187,7 +186,7 @@ public struct DeskFlow: Sendable {
             let names = try await commands.folders(on: check.workhorse, address: address)
             return DeskResult(code: 0, reason: nil, output: names)
         } catch {
-            return .failure(DeskFormat.message(error, workhorse: check.workhorse))
+            return .failure(DeskFormat.message(error, workhorse: check.workhorse, for: wording))
         }
     }
 
@@ -214,7 +213,7 @@ public struct DeskFlow: Sendable {
         } catch let stopped as DeskResult {
             return stopped
         } catch {
-            return .failure(DeskFormat.message(error, workhorse: check.workhorse))
+            return .failure(DeskFormat.message(error, workhorse: check.workhorse, for: wording))
         }
     }
 
@@ -259,7 +258,7 @@ public struct DeskFlow: Sendable {
                 listed = try await commands.folders(on: w, address: address)
                 if listed.isEmpty { ui.say("There are no folders in \(projects) on \(w.name).") }
             } catch {
-                ui.say("Couldn't list the folders in \(projects): \(DeskFormat.message(error, workhorse: w))")
+                ui.say("Couldn't list the folders in \(projects): \(DeskFormat.message(error, workhorse: w, for: wording))")
             }
         }
         let prompt: String

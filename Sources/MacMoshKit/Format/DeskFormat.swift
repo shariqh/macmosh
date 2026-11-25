@@ -12,13 +12,51 @@ public enum DeskFormat {
         return lines.joined(separator: "\n")
     }
 
-    /// A failure in plain words, naming the workhorse where that helps.
-    public static func message(_ error: Error, workhorse w: Workhorse) -> String {
-        guard let known = error as? HostCommandError else { return "\(error)" }
-        return message(known, workhorse: w)
+    /// Who reads a sentence: a terminal tab, where a `macmosh` command can be typed, or the MacMosh
+    /// window, where it can't (main window design, section 7.3).
+    public enum Wording: Sendable {
+        case terminal, window
     }
 
-    public static func message(_ error: HostCommandError, workhorse w: Workhorse) -> String {
+    /// A failure in plain words, naming the workhorse where that helps.
+    public static func message(_ error: Error, workhorse w: Workhorse, for wording: Wording = .terminal) -> String {
+        guard let known = error as? HostCommandError else { return "\(error)" }
+        return message(known, workhorse: w, for: wording)
+    }
+
+    public static func message(_ error: HostCommandError, workhorse w: Workhorse, for wording: Wording = .terminal) -> String {
+        guard wording == .window else { return terminalMessage(error, workhorse: w) }
+        switch error {
+        case .alreadyExists:
+            return "\(w.name) already has a desk with that name. Pick another name."
+        case .noSuchDesk:
+            return "\(w.name) has no desk with that name now."
+        case .noProjectsFolder:
+            return "No projects folder is set for \(w.name)."
+        case .serverDidNotStart:
+            return "The desk server on \(w.name) didn't start. Run the checklist on its page to fix it."
+        case .badInput, .nobodyLoggedIn:
+            return terminalMessage(error, workhorse: w)
+        case .failed(_, let message):
+            return withoutCommand(message)
+        }
+    }
+
+    /// The sentences of `message` without any that names a `macmosh` command ("Check it with: macmosh
+    /// status"). A message that is nothing but such a sentence is kept as it is.
+    static func withoutCommand(_ message: String) -> String {
+        var sentences: [String] = []
+        var rest = Substring(message)
+        while let end = rest.range(of: ". ") {
+            sentences.append(String(rest[..<end.lowerBound]) + ".")
+            rest = rest[end.upperBound...]
+        }
+        if !rest.isEmpty { sentences.append(String(rest)) }
+        let kept = sentences.filter { !$0.contains("macmosh ") }
+        return kept.isEmpty ? message : kept.joined(separator: " ")
+    }
+
+    private static func terminalMessage(_ error: HostCommandError, workhorse w: Workhorse) -> String {
         switch error {
         case .badInput:
             return "\(w.name) didn't accept that. A desk name uses letters, digits, - and _ only; a folder must exist on \(w.name) and be a full path or start with ~; a startup command can't contain a tab or a new line."
@@ -47,6 +85,38 @@ public enum DeskFormat {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.withoutEscapingSlashes]
         return String(decoding: try encoder.encode(names), as: UTF8.self)
+    }
+
+    /// What removing a desk closes, from the check's report: "This removes the desk website and closes its
+    /// 3 windows (claude, zsh, vim), with whatever is running in them." for an open desk (`open`, its session),
+    /// "This removes the desk notes. It has no open windows." for a closed one. The terminal's `desk remove
+    /// --ask` and the window's Remove confirmation both say it.
+    public static func removeSentence(_ name: DeskName, open: HostStatus.Desk?) -> String {
+        guard let open else { return "This removes the desk \(name.value). It has no open windows." }
+        let count = open.windowCount == 1 ? "1 window" : "\(open.windowCount) windows"
+        let names = open.windows.map(\.name).filter { !$0.isEmpty }
+        let list = names.isEmpty ? "" : " (" + names.joined(separator: ", ") + ")"
+        return "This removes the desk \(name.value) and closes its \(count)\(list), with whatever is running in them."
+    }
+
+    /// The window's line after an action worked, for the workhorse's page and the menu's notice:
+    /// "Created the desk garden-planner on Attic.", "Renamed api to api-v2 on Attic.", "Removed the desk
+    /// website from Attic." `new` is the new name of a rename.
+    public static func windowDone(_ kind: WindowActionKind, desk: DeskName, to new: DeskName?, on w: Workhorse) -> String {
+        switch kind {
+        case .newDesk: return "Created the desk \(desk.value) on \(w.name)."
+        case .rename: return "Renamed \(desk.value) to \(new?.value ?? desk.value) on \(w.name)."
+        case .remove: return "Removed the desk \(desk.value) from \(w.name)."
+        }
+    }
+
+    /// The window's line after an action failed: what did not happen, then why.
+    public static func windowFailed(_ kind: WindowActionKind, desk: String, reason: String) -> String {
+        switch kind {
+        case .newDesk: return "The desk \(desk) wasn't made. \(reason)"
+        case .rename: return "\(desk) wasn't renamed. \(reason)"
+        case .remove: return "\(desk) wasn't removed. \(reason)"
+        }
     }
 
     /// What `desk new` says when it worked.
