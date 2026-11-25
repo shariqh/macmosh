@@ -1112,6 +1112,12 @@ ended_sample() {
         result FAIL "a taken name has both Start again buttons off" "Start again, keep it, Forget: $v"
     fi
     expect_value "a taken name says why under its buttons" "ended.shop.note" "Attic already has a desk called shop." 3
+    # shop's command is longer than its line: the picture shows the line cut, and the text behind it is whole. A
+    # finding: whether the accessibility value of a cut line is the whole text is not something the app decides.
+    v=$(val "ended.shop.second")
+    # shellcheck disable=SC2088 # the row's text, a tilde and all
+    want="~/Development/shop · started with npm run dev -- --port 4000 --host 0.0.0.0 --open --watch --verbose --log-level debug --no-cache"
+    result "$([ "$v" = "$want" ] && echo PASS || echo DIFFERS)" "a long command is whole behind its cut line" "it reads: ${v:-nothing}"
 
     # Start again on recipes: one call, the same desk, its folder with a space and its command as one argument.
     since=$(moment)

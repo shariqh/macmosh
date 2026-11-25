@@ -24,6 +24,7 @@ import Testing
         #expect(recipes.folder == "/Users/alex/Development/my recipes" && recipes.command == #"claude --continue "fix it" $HOME"#)
         let garden = try #require(status.definitions.first { $0.name.value == "garden" })
         #expect(!garden.reopen && garden.keep && garden.command == "claude")
+        #expect(status.definitions.first { $0.name.value == "shop" }?.command == SampleEnded.longCommand)
         desks.endShells()
         status = try HostStatus.parse(desks.report())
         #expect(status.desks.map(\.name.value) == ["api"])

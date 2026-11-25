@@ -16,7 +16,8 @@ public enum SampleEnded {
     private static let clicked = OSAllocatedUnfairLock(initialState: false)
 
     /// The sample's desks as they are at launch: the folder of recipes has a space and its command a quote and a
-    /// dollar sign; garden doesn't come back after a restart and keeps its command running.
+    /// dollar sign; garden doesn't come back after a restart and keeps its command running; shop's command is too
+    /// long for its line, which the window cuts.
     static func makeDesks() -> SampleDesks {
         typealias D = SampleDesks.Desk
         let w = SampleDesks.windows
@@ -29,12 +30,15 @@ public enum SampleEnded {
               permanent: false, isOpen: true, reopen: false, keep: true),
             D(name: "recipes", windows: w(4, ["claude"]), folder: "/Users/alex/Development/my recipes",
               command: #"claude --continue "fix it" $HOME"#, permanent: false, isOpen: true),
-            D(name: "shop", windows: w(5, ["npm"]), folder: "/Users/alex/Development/shop", command: "npm run dev",
+            D(name: "shop", windows: w(5, ["npm"]), folder: "/Users/alex/Development/shop", command: longCommand,
               permanent: false, isOpen: true),
             D(name: "website", windows: w(6, ["claude", "zsh"]), folder: "/Users/alex/Development/website",
               command: "claude", permanent: true, isOpen: true),
         ], nextWindow: 7)
     }
+
+    /// shop's startup command, longer than its line in the window.
+    static let longCommand = "npm run dev -- --port 4000 --host 0.0.0.0 --open --watch --verbose --log-level debug --no-cache"
 
     /// A click on the window's Check now (`SampleRun.windowRan`): the first one ends the shells.
     static func checkNowClicked() {
