@@ -3,6 +3,8 @@ import Foundation
 /// The words the desk commands print, and the JSON of `macmosh folders --json`.
 public enum DeskFormat {
     public static let nameRule = "A desk name uses letters, digits, - and _ only, up to \(DeskName.maxLength) characters."
+    /// A new desk name that starts with `-` (issue #147): the window's forms and the terminal's say it alike.
+    public static let noLeadingDash = "A desk name can't start with -."
 
     /// What to say when the workhorse isn't Ready: its headline and the hint under it, which
     /// says what to do (design 5.2). No desk command goes near a workhorse in this state.

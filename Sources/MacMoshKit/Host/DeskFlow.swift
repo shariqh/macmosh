@@ -89,7 +89,9 @@ public struct DeskFlow: Sendable {
 
         let name: DeskName
         if let given = request.name {
-            guard let valid = DeskName(given) else { return .failure(DeskFormat.nameRule) }
+            guard let valid = DeskNameRule.newName(given) else {
+                return .failure(DeskNameRule.newNameProblem(given) ?? DeskFormat.nameRule)
+            }
             name = valid
         } else {
             guard let asked = askName(ui) else {
@@ -158,7 +160,9 @@ public struct DeskFlow: Sendable {
         await onDesk(check, name: old) { w, address, desk in
             let target: DeskName
             if let new {
-                guard let valid = DeskName(new) else { throw DeskResult.failure(DeskFormat.nameRule) }
+                guard let valid = DeskNameRule.newName(new) else {
+                    throw DeskResult.failure(DeskNameRule.newNameProblem(new) ?? DeskFormat.nameRule)
+                }
                 target = valid
             } else {
                 target = try askNewName(for: desk, ui)
@@ -222,8 +226,8 @@ public struct DeskFlow: Sendable {
         for _ in 0..<Self.tries {
             let answer = ui.ask("New name for \(desk.value): ").trimmingCharacters(in: .whitespacesAndNewlines)
             if answer.isEmpty { throw DeskResult.failure("Nothing was changed.") }
-            if let name = DeskName(answer) { return name }
-            ui.say(DeskFormat.nameRule)
+            if let name = DeskNameRule.newName(answer) { return name }
+            ui.say(DeskNameRule.newNameProblem(answer) ?? DeskFormat.nameRule)
         }
         throw DeskResult.failure("That wasn't a desk name three times, so MacMosh stopped. \(DeskFormat.nameRule)")
     }
@@ -232,8 +236,8 @@ public struct DeskFlow: Sendable {
     private func askName(_ ui: Interaction) -> DeskName? {
         for _ in 0..<Self.tries {
             let answer = ui.ask("Desk name: ").trimmingCharacters(in: .whitespacesAndNewlines)
-            if let name = DeskName(answer) { return name }
-            ui.say(DeskFormat.nameRule)
+            if let name = DeskNameRule.newName(answer) { return name }
+            ui.say(DeskNameRule.newNameProblem(answer) ?? DeskFormat.nameRule)
         }
         return nil
     }
