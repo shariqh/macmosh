@@ -1638,14 +1638,19 @@ settings_sample() {
             type_and settings.attic.keyFile "keys/work" return
         expect_value "a relative key file says what is wrong" "settings.attic.keyFile.line" \
             "A key file's path is full, starting with /, or starts with ~." 3
-        mkdir -p "$HOME/.ssh" && : > "$HOME/.ssh/sample_work_key"
-        # shellcheck disable=SC2088 # the text typed, a tilde and all
-        settings_step "a key file that is there is saved as typed" workhorses.json "attic.identityFile=~/.ssh/sample_work_key" ok \
-            type_and settings.attic.keyFile "~/.ssh/sample_work_key" return
-        settings_step "an emptied key file is MacMosh's own key again" workhorses.json "attic.identityFile=(gone)" ok \
-            type_and settings.attic.keyFile "" return
-        expect_value "the emptied key file's line says so" "settings.attic.keyFile.line" \
-            "Saved. MacMosh's own key is used from the next check on." 3
+        # An empty file in ~/.ssh, on a GitHub runner only: never in a person's own ~/.ssh.
+        if [ -n "${GITHUB_ACTIONS:-}" ]; then
+            mkdir -p "$HOME/.ssh" && : > "$HOME/.ssh/sample_work_key"
+            # shellcheck disable=SC2088 # the text typed, a tilde and all
+            settings_step "a key file that is there is saved as typed" workhorses.json "attic.identityFile=~/.ssh/sample_work_key" ok \
+                type_and settings.attic.keyFile "~/.ssh/sample_work_key" return
+            settings_step "an emptied key file is MacMosh's own key again" workhorses.json "attic.identityFile=(gone)" ok \
+                type_and settings.attic.keyFile "" return
+            expect_value "the emptied key file's line says so" "settings.attic.keyFile.line" \
+                "Saved. MacMosh's own key is used from the next check on." 3
+        else
+            result NOT-SHOWN "a key file that is there is saved as typed" "not on a GitHub runner, so no file is made in ~/.ssh"
+        fi
     else
         result FAIL "Advanced opens with a click" "no settings.attic.keyFile after the click"
     fi
@@ -1721,6 +1726,57 @@ settings_sample() {
     v="$(val settings.attic.name)|$(chosen settings.attic.connection)|$(chosen settings.attic.prediction)|$(val settings.attic.projectsFolder)|$(chosen settings.thisMac.terminal)"
     result "$([ "$v" = "Attic|Mosh|Adaptive||Pick for me" ] && echo PASS || echo FAIL)" "the window opened again shows the saved values" "$v"
     snap reopened
+
+    # A change made outside the page (as `macmosh set` would make it) shows at the next check, without leaving it.
+    local outside_since
+    outside_since=$(moment)
+    python3 -I - "$file" <<'PY'
+import json, os, sys
+path = sys.argv[1]
+with open(path) as f:
+    d = json.load(f)
+for w in d["workhorses"]:
+    if w["id"] == "attic":
+        w["projectsFolder"] = "~/Elsewhere"
+with open(path + ".w6", "w") as f:
+    json.dump(d, f)
+os.replace(path + ".w6", path)
+PY
+    # shellcheck disable=SC2088 # the text expected, a tilde and all
+    expect_value "the page follows a change made outside it at the next check" "settings.attic.projectsFolder" "~/Elsewhere" 6
+    v=$(setting_lines "$outside_since" | tr '\n' '|' | sed 's/|$//')
+    result "$([ -z "$v" ] && echo PASS || echo FAIL)" "a change made outside the page logs nothing of the page's" "log: ${v:-nothing}"
+
+    # A key file typed and not sent, then another sidebar line chosen: it is refused as focus leaves, and the page
+    # opened again still says why, under the field, with Advanced open by itself.
+    if click_id "settings.attic.advanced" && wait_id "settings.attic.keyFile" 4; then
+        typed_since=$(moment)
+        # shellcheck disable=SC2088 # the text typed, a tilde and all
+        clear_field "settings.attic.keyFile" && tool type "~/.ssh/still_no_key" > /dev/null
+        sleep 0.5
+        click_id "sidebar.attic" > /dev/null
+        sleep 1.5
+        click_id "sidebar.settings" > /dev/null
+        if wait_id "settings.attic.keyFile.line" 5; then
+            expect_value "a key file refused as the page was left is still explained there" "settings.attic.keyFile.line" \
+                "There is no file at ~/.ssh/still_no_key on this Mac, so it was not saved." 3
+            v=$(val settings.attic.keyFile)
+            result "$([ -z "$v" ] && echo PASS || echo FAIL)" "the refused key file's field shows what is stored" \
+                "it reads: ${v:-nothing}; log: $(setting_lines "$typed_since" | tr '\n' '|' | sed 's/|$//')"
+            snap refusal-kept
+        else
+            result FAIL "a key file refused as the page was left is still explained there" \
+                "no settings.attic.keyFile.line; log: $(setting_lines "$typed_since" | tr '\n' '|' | sed 's/|$//')"
+            snap refusal-lost
+        fi
+    else
+        result FAIL "a key file refused as the page was left is still explained there" "Advanced did not open"
+    fi
+
+    # Again, to the end of the page's steps: no click or key press set off the menu-open signal.
+    v=$(applog "$page_since" | grep -cE "menu opened|menu tracking")
+    result "$([ "$v" -eq 0 ] && echo PASS || echo FAIL)" "the page sets off no menu-open signal, to its last step" \
+        "$v 'menu opened' or 'menu tracking' line(s)"
     stop_app
 }
 
