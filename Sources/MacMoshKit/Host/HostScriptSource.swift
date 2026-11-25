@@ -480,8 +480,9 @@ mm_usage_error() {
 
 # desk-new <name> <folder> [options]. --window-name names the desk's first window (issue 163, 0.12.0). The
 # name keeps the window-name rule (mm_valid_window_name), or is exactly the desk's own name: a desk name can be
-# 64 characters and a window name 32, and a desk's own name holds only characters the window-name rule allows,
-# so naming the window after its desk works for every desk. The name is not stored in the desk list, so a desk
+# 64 characters and a window name 32, so naming the window after its desk works for every desk. The app's desk
+# names are ASCII letters, digits, - and _, which the window-name rule also allows; mm_valid_desk_name's ranges
+# can let other letters through in some locales, and such a desk's own name is taken here as it stands. The name is not stored in the desk list, so a desk
 # that comes back after a restart is one fresh window that tmux names, as with window-name.
 cmd_desk_new() {
     local name="" folder="" reopen=1 keep=0 permanent=0 command="" window_name="" named=0 npos=0 file tmp old

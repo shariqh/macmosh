@@ -76,7 +76,7 @@ struct DeskCommand: AsyncParsableCommand {
         var command: String?
 
         @Option(name: .customLong("window-name"),
-                help: "A name for the desk's first window: 1 to 32 letters, digits, spaces, -, _ and full stops, or the desk's own name. Left out, the window is named after the program running in it; the questions ask for it. Needs the workhorse script 0.12.0 or newer.")
+                help: "A name for the desk's first window, or the desk's own name. A window name is 1 to 32 letters, digits, spaces, -, _ and full stops. It can't start with a space or -, or end with a space. Left out with the desk's name and folder given, the window is named after the program running in it; when the questions run, they ask for it. Needs the workhorse script 0.12.0 or newer.")
         var windowName: String?
 
         func run() async throws {
