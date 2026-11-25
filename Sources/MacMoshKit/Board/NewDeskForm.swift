@@ -188,6 +188,14 @@ public struct NewDeskForm: Sendable, Equatable {
         DeskNameRule.problem(name, taken: takenNames, workhorse: workhorseName)
     }
 
+    /// The line under the name field: its help line while it is empty or fine, else what is wrong with it.
+    public var nameLine: String { nameLineIsProblem ? nameProblem ?? Words.nameHelp : Words.nameHelp }
+    public var nameLineIsProblem: Bool { !name.isEmpty && nameProblem != nil }
+
+    /// The line under the command field: its help line, or why it can't be sent.
+    public var commandLine: String { commandProblem ?? Words.commandHelp }
+    public var commandLineIsProblem: Bool { commandProblem != nil }
+
     public var commandProblem: String? {
         DeskNameRule.hasTabOrNewline(command) ? "A command to start can't contain a tab or a new line." : nil
     }

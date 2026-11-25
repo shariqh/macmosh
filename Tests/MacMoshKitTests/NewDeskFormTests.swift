@@ -182,6 +182,20 @@ private func form(version: String = "0.8.0", saved: Workhorse = attic()) throws 
         #expect(f.nameProblem == nil, "names differ by case, as tmux's do")
     }
 
+    /// Under the name: its help line until something is typed, then what is wrong with it, if anything.
+    @Test func theLineUnderTheNameIsItsHelpUntilSomethingIsWrong() throws {
+        var f = try form()
+        #expect(f.nameLine == "Letters, digits, - and _ only." && !f.nameLineIsProblem)
+        #expect(f.nameProblem == "Give the desk a name.")
+        f.setName("api")
+        #expect(f.nameLine == "Attic already has a desk called api." && f.nameLineIsProblem)
+        f.setName("garden-planner")
+        #expect(f.nameLine == "Letters, digits, - and _ only." && !f.nameLineIsProblem)
+        #expect(f.commandLine == "Leave it empty for a plain shell." && !f.commandLineIsProblem)
+        f.command = "a\tb"
+        #expect(f.commandLine == "A command to start can't contain a tab or a new line." && f.commandLineIsProblem)
+    }
+
     // MARK: the command
 
     @Test func aTabOrANewLineInTheCommandIsRefused() throws {

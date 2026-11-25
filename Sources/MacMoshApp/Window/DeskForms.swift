@@ -34,13 +34,13 @@ struct NewDeskSheet: View {
                 GridRow {
                     Text(verbatim: NewDeskForm.Words.name)
                     field(NewDeskForm.Words.name, text: Binding(get: { form.name }, set: { form.setName($0) }),
-                          help: form.nameProblem ?? NewDeskForm.Words.nameHelp, isProblem: form.nameProblem != nil,
+                          help: form.nameLine, isProblem: form.nameLineIsProblem,
                           mark: FormMarks.name)
                 }
                 GridRow {
                     Text(verbatim: NewDeskForm.Words.command)
                     field(NewDeskForm.Words.command, text: $form.command,
-                          help: form.commandProblem ?? NewDeskForm.Words.commandHelp, isProblem: form.commandProblem != nil,
+                          help: form.commandLine, isProblem: form.commandLineIsProblem,
                           mark: FormMarks.command)
                 }
                 GridRow {
@@ -97,6 +97,8 @@ struct NewDeskSheet: View {
         // https://developer.apple.com/documentation/swiftui/view/interactivedismissdisabled(_:)): "Conditionally
         // prevents interactive dismissal of presentations like popovers, sheets, and inspectors."
         .interactiveDismissDisabled(making)
+        // A container, so its fields keep their own identifiers (as the detail strip does).
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier(FormMarks.newDesk)
         .task { await readFolders() }
     }
@@ -228,6 +230,7 @@ struct RenameSheet: View {
         }
         .padding(20)
         .interactiveDismissDisabled(renaming)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier(FormMarks.rename)
     }
 
