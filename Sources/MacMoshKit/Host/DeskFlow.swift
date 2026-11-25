@@ -81,7 +81,7 @@ public struct DeskFlow: Sendable {
 
     public func newDesk(_ check: CheckResult, request: NewDeskRequest, ui: Interaction) async -> DeskResult {
         let address: String
-        switch Self.gate(check) {
+        switch Self.gate(check, wording: wording) {
         case .failure(let result): return result
         case .success(let found): address = found
         }
@@ -182,7 +182,7 @@ public struct DeskFlow: Sendable {
     /// The names of the folders inside the projects folder, in `output`.
     public func folders(_ check: CheckResult) async -> DeskResult {
         let address: String
-        switch Self.gate(check) {
+        switch Self.gate(check, wording: wording) {
         case .failure(let result): return result
         case .success(let found): address = found
         }
@@ -197,16 +197,16 @@ public struct DeskFlow: Sendable {
     // MARK: - Pieces
 
     /// A desk command needs a Ready workhorse. Either kind of Ready will do. Anything else stops here,
-    /// before any ssh, with the state's headline and hint.
-    static func gate(_ check: CheckResult) -> Result<String, DeskResult> {
-        guard case .ready = check.state else { return .failure(.failure(DeskFormat.notReady(check))) }
+    /// before any ssh, with the state's headline and hint, in the flow's words (`DeskFormat.notReady`).
+    static func gate(_ check: CheckResult, wording: DeskFormat.Wording) -> Result<String, DeskResult> {
+        guard case .ready = check.state else { return .failure(.failure(DeskFormat.notReady(check, for: wording))) }
         return .success(check.answeredAt ?? check.workhorse.mainAddress)
     }
 
     private func onDesk(_ check: CheckResult, name: String,
                         _ body: (Workhorse, String, DeskName) async throws -> Void) async -> DeskResult {
         let address: String
-        switch Self.gate(check) {
+        switch Self.gate(check, wording: wording) {
         case .failure(let result): return result
         case .success(let found): address = found
         }

@@ -8,10 +8,19 @@ public enum DeskFormat {
 
     /// What to say when the workhorse isn't Ready: its headline and the hint under it, which
     /// says what to do (design 5.2). No desk command goes near a workhorse in this state.
-    public static func notReady(_ r: CheckResult, now: Date = Date(), timeZone: TimeZone = .current) -> String {
-        var lines = [StatusFormat.headline(r)]
-        if let hint = StatusFormat.hint(r, now: now, timeZone: timeZone) { lines.append(hint) }
-        return lines.joined(separator: "\n")
+    ///
+    /// For a terminal tab, the headline and the hint on two lines; the hint can be "Run: macmosh prepare
+    /// attic --fix". For the window, one line with no `macmosh` command (issue #147): the headline as a
+    /// sentence, then the hint's sentences that don't name one ("Attic · Desk server is off.").
+    public static func notReady(_ r: CheckResult, for wording: Wording = .terminal, now: Date = Date(),
+                                timeZone: TimeZone = .current) -> String {
+        let hint = StatusFormat.hint(r, now: now, timeZone: timeZone)
+        guard wording == .window else {
+            return ([StatusFormat.headline(r)] + (hint.map { [$0] } ?? [])).joined(separator: "\n")
+        }
+        let kept = hint.map(sentences)?.filter { !$0.contains("macmosh") } ?? []
+        return ([StatusFormat.headline(r) + "."] + kept).joined(separator: " ")
+            .replacingOccurrences(of: "\n", with: " ")
     }
 
     /// Who reads a sentence: a terminal tab, where a `macmosh` command can be typed, or the MacMosh
@@ -37,7 +46,11 @@ public enum DeskFormat {
             return "No projects folder is set for \(w.name)."
         case .serverDidNotStart:
             return "The desk server on \(w.name) didn't start. Run the checklist on its page to fix it."
-        case .badInput, .nobodyLoggedIn:
+        case .badInput:
+            // The script's exit 6. The window's forms check the name, the path's form and the command before
+            // they send, so what is left is a folder that isn't there (issue #147).
+            return "\(w.name) didn't accept the name or the folder. The folder must exist on \(w.name)."
+        case .nobodyLoggedIn:
             return terminalMessage(error, workhorse: w)
         case .failed(_, let message):
             return withoutCommand(message)
@@ -47,15 +60,20 @@ public enum DeskFormat {
     /// The sentences of `message` without any that names a `macmosh` command ("Check it with: macmosh
     /// status"). A message that is nothing but such a sentence is kept as it is.
     static func withoutCommand(_ message: String) -> String {
+        let kept = sentences(message).filter { !$0.contains("macmosh ") }
+        return kept.isEmpty ? message : kept.joined(separator: " ")
+    }
+
+    /// The sentences of `text`, split after each ". ".
+    static func sentences(_ text: String) -> [String] {
         var sentences: [String] = []
-        var rest = Substring(message)
+        var rest = Substring(text)
         while let end = rest.range(of: ". ") {
             sentences.append(String(rest[..<end.lowerBound]) + ".")
             rest = rest[end.upperBound...]
         }
         if !rest.isEmpty { sentences.append(String(rest)) }
-        let kept = sentences.filter { !$0.contains("macmosh ") }
-        return kept.isEmpty ? message : kept.joined(separator: " ")
+        return sentences
     }
 
     private static func terminalMessage(_ error: HostCommandError, workhorse w: Workhorse) -> String {

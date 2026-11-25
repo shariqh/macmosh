@@ -37,8 +37,9 @@ import Testing
                 == "The desk server on Attic didn't start. Run the checklist on its page to fix it.")
         #expect(DeskFormat.message(.nobodyLoggedIn, workhorse: attic, for: .window)
                 == DeskFormat.message(.nobodyLoggedIn, workhorse: attic, for: .terminal))
+        // Exit 6 has a short sentence of its own in the window (issue #147, WindowNotReadyTests).
         #expect(DeskFormat.message(.badInput, workhorse: attic, for: .window)
-                == DeskFormat.message(.badInput, workhorse: attic, for: .terminal))
+                == "Attic didn't accept the name or the folder. The folder must exist on Attic.")
     }
 
     /// A message from ssh keeps its first sentence and loses the one that names a command.
