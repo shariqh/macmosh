@@ -93,9 +93,12 @@ struct NewDeskSheet: View {
                           mark: FormMarks.name)
                 }
                 // The first window's name (issue 163), hidden for a script older than 0.12.0. A checkbox Toggle, and a
-                // field with its line while the box is clear; NewDeskForm decides what is sent.
+                // field with its line while the box is clear; NewDeskForm decides what is sent. The label sits level
+                // with the checkbox, not with the middle of the column. Apple, GridRow.init(alignment:content:) (macOS
+                // 13.0, https://developer.apple.com/documentation/swiftui/gridrow/init(alignment:content:)): "alignment:
+                // An optional VerticalAlignment for the row."
                 if form.canNameFirstWindow {
-                    GridRow {
+                    GridRow(alignment: .firstTextBaseline) {
                         Text(verbatim: NewDeskForm.Words.firstWindow)
                         VStack(alignment: .leading, spacing: 4) {
                             Toggle(isOn: $form.windowSameAsDesk) { Text(verbatim: NewDeskForm.Words.sameAsDesk) }
