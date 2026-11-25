@@ -654,7 +654,7 @@ expect_value() {
 # "window-forms" is Attic, Ready, with no projects folder saved, whose desks a stand-in ssh changes. It writes
 # each call's exact remote command to the log (`sample ssh: ... run=<command>`) and answers as the script would.
 forms_sample() {
-    local since start v x y paste want typed deadline
+    local since start v x y paste want typed deadline clip
     start=$(moment)
     start_app window-forms || return
     if ! open_window; then stop_app; return; fi
@@ -707,6 +707,19 @@ forms_sample() {
     fi
     snap taken-name
 
+    # A typed path that is neither full nor starts with ~ says why under the field, and Make desk stays off.
+    click_id "form.path" > /dev/null
+    sleep 0.4
+    tool type "Development/garden" > /dev/null
+    expect_value "a refused path says why under the field" "form.path.help" "A path is full, starting with /, or starts with ~." 3
+    snap bad-path
+    clear_field "form.path"
+    if gone_id "form.path.help" 3; then
+        result PASS "the path's line goes once the field is empty" "form.path.help gone"
+    else
+        result FAIL "the path's line goes once the field is empty" "form.path.help is still there"
+    fi
+
     # The name and a command typed with posted keys.
     clear_field "form.name"
     tool type "garden-planner" > /dev/null
@@ -719,14 +732,25 @@ forms_sample() {
     # shellcheck disable=SC2016 # the text as typed, $HOME and all
     paste='claude --continue "fix it" $HOME; ls'
     printf '%s' "$paste" | pbcopy
-    clear_field "form.command"
-    tool chord v cmd > /dev/null
-    sleep 0.8
-    v=$(val "form.command")
-    if [ "$v" = "$paste" ]; then
-        result PASS "Command-V pastes into the command field" "the field reads back: $v"
+    # The clipboard is read back first, so an empty field after Command-V means the paste did not land, not that
+    # there was nothing to paste.
+    clip=$(pbpaste)
+    if [ "$clip" != "$paste" ]; then
+        result DIFFERS "Command-V pastes into the command field" "not tried: the clipboard was not set (pbpaste reads: ${clip:-nothing})"
+        v=""
     else
-        result DIFFERS "Command-V pastes into the command field" "after Command-V the field reads: ${v:-nothing}"
+        say "pbpaste reads back the text pbcopy was given"
+        clear_field "form.command"
+        tool chord v cmd > /dev/null
+        sleep 0.8
+        v=$(val "form.command")
+        if [ "$v" = "$paste" ]; then
+            result PASS "Command-V pastes into the command field" "the clipboard held the text, and the field reads back: $v"
+        else
+            result DIFFERS "Command-V pastes into the command field" "the clipboard held the text (pbpaste), and after Command-V the field reads: ${v:-nothing}"
+        fi
+    fi
+    if [ "$v" != "$paste" ]; then
         clear_field "form.command"
         tool type "$paste" > /dev/null
         sleep 0.5
@@ -740,9 +764,13 @@ forms_sample() {
     tool keys 36 1 100 > /dev/null
     sleep 0.6
     v=$(val "form.make")
-    [ "$v" = "Making…" ] && result PASS "the button says Making… while the desk is made" "form.make reads: $v"
+    if [ "$v" = "Making…" ]; then
+        result PASS "the button says Making… while the desk is made" "form.make reads: $v"
+    else
+        result DIFFERS "the button says Making… while the desk is made" "form.make reads: ${v:-nothing}"
+    fi
     snap making
-    want="sample ssh: to=alex@192.168.1.20 batch=yes stdin=closed limit=15s run=~/.macmosh/macmosh-host desk-new garden-planner '~/Development/garden-planner' --reopen --command '$typed'"
+    want="sample ssh: to=alex@192.168.1.20 batch=yes stdin=closed limit=15s run=~/.macmosh/macmosh-host desk-new garden-planner '~/Development/garden-planner' --reopen --command '$paste'"
     expect_log "Make desk sends the exact arguments" "$since" "$want"
     expect_log "Make desk writes its log line" "$since" "window action: newDesk ok"
     if gone_id "form.newDesk" 6; then
