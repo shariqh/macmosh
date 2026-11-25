@@ -123,6 +123,19 @@ private func ids(_ entries: [MenuEntry]) -> [String] {
         #expect(runner.calls.last?.argv.last == "~/.macmosh/macmosh-host desk-rename web web2")
     }
 
+    /// Three dashed answers: the stop names the rule the last answer broke, not the other one (review of #150).
+    @Test func theTerminalStopsWithTheRuleTheLastAnswerBroke() async {
+        let runner = FakeRunner { _ in FakeRunner.ok() }
+        let stop = "That wasn't a desk name three times, so MacMosh stopped. \(Self.sentence)"
+        let made = await flow(runner).newDesk(dashedCheck(), request: NewDeskRequest(),
+                                              ui: ScriptedInteraction(answers: ["--old", "-x", "--kill"]))
+        #expect(made.code == 1 && made.reason == stop)
+        let renamed = await flow(runner).renameDesk(dashedCheck(), from: "web", to: nil,
+                                                    ui: ScriptedInteraction(answers: ["--old", "-x", "--kill"]))
+        #expect(renamed.code == 1 && renamed.reason == stop)
+        #expect(runner.calls.isEmpty)
+    }
+
     /// The old name is not a new one: a desk called `--kill` can still be renamed in the terminal.
     @Test func aDeskWithALeadingDashCanBeRenamedInTheTerminal() async {
         let runner = FakeRunner { _ in FakeRunner.ok() }

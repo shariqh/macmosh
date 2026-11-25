@@ -101,10 +101,7 @@ public struct DeskFlow: Sendable {
             }
             name = valid
         } else {
-            guard let asked = askName(ui) else {
-                return .failure("That wasn't a desk name three times, so MacMosh stopped. \(DeskFormat.nameRule)")
-            }
-            name = asked
+            do { name = try askName(ui) } catch { return error as? DeskResult ?? .failure("\(error)") }
         }
 
         let folder: String
@@ -312,23 +309,32 @@ public struct DeskFlow: Sendable {
 
     /// Asks for a desk's new name, up to three tries. An empty answer stops with nothing changed.
     private func askNewName(for desk: DeskName, _ ui: Interaction) throws -> DeskName {
+        var problem = DeskFormat.nameRule
         for _ in 0..<Self.tries {
             let answer = ui.ask("New name for \(desk.value): ").trimmingCharacters(in: .whitespacesAndNewlines)
             if answer.isEmpty { throw DeskResult.failure("Nothing was changed.") }
             if let name = DeskNameRule.newName(answer) { return name }
-            ui.say(DeskNameRule.newNameProblem(answer) ?? DeskFormat.nameRule)
+            problem = DeskNameRule.newNameProblem(answer) ?? DeskFormat.nameRule
+            ui.say(problem)
         }
-        throw DeskResult.failure("That wasn't a desk name three times, so MacMosh stopped. \(DeskFormat.nameRule)")
+        throw Self.gaveUp(problem)
     }
 
-    /// Asks until it gets a valid name, up to three tries. nil after the third.
-    private func askName(_ ui: Interaction) -> DeskName? {
+    /// Asks until it gets a valid name, up to three tries. After the third it stops.
+    private func askName(_ ui: Interaction) throws -> DeskName {
+        var problem = DeskFormat.nameRule
         for _ in 0..<Self.tries {
             let answer = ui.ask("Desk name: ").trimmingCharacters(in: .whitespacesAndNewlines)
             if let name = DeskNameRule.newName(answer) { return name }
-            ui.say(DeskNameRule.newNameProblem(answer) ?? DeskFormat.nameRule)
+            problem = DeskNameRule.newNameProblem(answer) ?? DeskFormat.nameRule
+            ui.say(problem)
         }
-        return nil
+        throw Self.gaveUp(problem)
+    }
+
+    /// Three answers that weren't a desk name: the stop names the rule the last one broke.
+    private static func gaveUp(_ problem: String) -> DeskResult {
+        .failure("That wasn't a desk name three times, so MacMosh stopped. \(problem)")
     }
 
     static let commandQuestion = "Command to start in it (Enter for none): "
