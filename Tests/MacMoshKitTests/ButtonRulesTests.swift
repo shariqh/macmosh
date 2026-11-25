@@ -189,8 +189,8 @@ import Testing
     /// in the same order. The menu's order is the lines under the headline first, then its submenu's.
     /// The board is built with the tabs the menu was built with (issue #134): a desk's Open button runs
     /// exactly the menu's first line for that desk, and each window's button exactly the menu's line for that
-    /// window. The four known differences are named in `windowSide`, `isWindowOnly`, `deskRowClick` and
-    /// `flagsLine` below, so a new button on either side fails this test until someone decides where it goes.
+    /// window. The five known differences are named in `windowSide`, `isWindowOnly`, `deskRowClick`, `flagsLine`
+    /// and `nameAWindowSide` below, so a new button on either side fails this test until someone decides where it goes.
     @Test func theMenuAndTheBoardShareTheirButtonsForEverySampleState() throws {
         var inputs = everySampleInput() + moreSampleInputs() + windowSampleInputs()
         let fixture = try HostStatus.parse(fixture("status/desks-board.txt"))
@@ -201,7 +201,7 @@ import Testing
                                                                   status: fixture, homeReachable: true))]))
         inputs.append(SampleMenuInput(gathered: [.checked(.sample(.ready(signIns: false), workhorse: attic,
                                                                   status: off))]))
-        var compared = 0, windowOnly = 0, desks = 0, withWindowLines = 0, windowLines = 0
+        var compared = 0, windowOnly = 0, desks = 0, withWindowLines = 0, windowLines = 0, named = 0, namedOne = 0
         for (i, input) in inputs.enumerated() {
             let menu = input.menu
             let board = boardFor(input)
@@ -260,8 +260,19 @@ import Testing
                     }
                     windowLines += perWindow.count
                     lines.removeAll(where: isWindowLine)
-                    #expect(lines.map(\.title) == desk.buttons.map(\.title), "case \(i), \(name)")
-                    #expect(lines.map { windowSide($0.action) } == desk.buttons.map(\.action), "case \(i), \(name)")
+                    let sides = lines.flatMap { nameAWindowSide($0, desk) ?? [BoardButton(title: $0.title, action: windowSide($0.action))] }
+                    #expect(sides.map(\.title) == desk.buttons.map(\.title), "case \(i), \(name)")
+                    #expect(sides.map(\.action) == desk.buttons.map(\.action), "case \(i), \(name)")
+                    // The menu's Name a window… is a Name… on each window of a desk with more than one; nothing else
+                    // gives a window that button.
+                    let asks = lines.contains { nameAWindowSide($0, desk) != nil }
+                    for window in desk.windows {
+                        let want = asks && desk.windows.count > 1
+                            ? window.id.map { BoardButton(title: "Name…", action: .window(.nameWindow(workhorse: w.id, desk: name, window: $0))) }
+                            : nil
+                        #expect(window.nameButton == want, "case \(i), \(name), \(window.id ?? "-")")
+                    }
+                    if asks { if desk.windows.count > 1 { named += 1 } else { namedOne += 1 } }
                     if gated.contains(name) {
                         withWindowLines += 1
                         #expect(flagsLine(row) == flagsOnBoard(desk), "case \(i), \(name)")
@@ -277,6 +288,7 @@ import Testing
             }
         }
         #expect(compared > 50 && desks > 15 && windowOnly > 30 && withWindowLines > 20 && windowLines > 20)
+        #expect(named > 10 && namedOne > 5)
     }
 
     @Test func theNamedDifferencesAreTheOnlyOnes() {
@@ -285,9 +297,11 @@ import Testing
         #expect(windowSide(.tab(["desk", "rename", "mbp", "website"])) == .window(.rename(workhorse: "mbp", desk: "website")))
         #expect(windowSide(.tab(["desk", "remove", "mbp", "website", "--ask"]))
                 == .window(.remove(workhorse: "mbp", desk: "website")))
-        // Everything else is the menu's own action, unchanged, and BoardAction agrees with this test's list.
+        // Everything else is the menu's own action, unchanged, and BoardAction agrees with this test's list. The
+        // menu's Name a window… stays the menu's action here too: BoardModel puts the window's buttons in its place.
         let others: [MenuAction] = [.tab(["connect", "mbp", "website"]), .run(["desk", "window", "mbp", "website"]),
-                                    .tab(["desk", "remove", "mbp", "website"]), .refresh, .tab(["pair"])]
+                                    .tab(["desk", "remove", "mbp", "website"]), .refresh, .tab(["pair"]),
+                                    .tab(["desk", "name-window", "mbp", "website"])]
         for a in others { #expect(windowSide(a) == .menu(a)) }
         for a in others + [.tab(["desk", "new", "mbp"]), .tab(["desk", "rename", "mbp", "website"]),
                            .tab(["desk", "remove", "mbp", "website", "--ask"])] {
@@ -316,7 +330,7 @@ import Testing
     }
 }
 
-// MARK: The four known differences between the menu's buttons and the window's (a desk's first line, its
+// MARK: The five known differences between the menu's buttons and the window's (a desk's first line, its
 // window lines and New window are no longer among them: since issue #134 the board has the menu's own)
 
 /// 1. The menu's terminal-tab forms of `desk new`, `desk rename` and `desk remove --ask` are, in the
@@ -357,6 +371,15 @@ private func flagsLine(_ row: MenuEntry) -> String? {
 private func flagsOnBoard(_ desk: BoardDesk) -> String? {
     let set = [desk.keep == true ? "kept running" : nil, desk.permanent == true ? "permanent" : nil].compactMap { $0 }
     return set.isEmpty ? nil : set.joined(separator: ", ")
+}
+
+/// 5. The menu's `Name a window…` (issue 144), a tab that asks which window, is in the window a "Name…" button on
+///    each window of a desk with more than one, and "Name its window…" in the strip of a desk with one. nil for any
+///    other line; for this one, what it is in the strip: that button, or nothing.
+private func nameAWindowSide(_ line: MenuEntry, _ desk: BoardDesk) -> [BoardButton]? {
+    guard case .tab(let a) = line.action, a.count == 4, a[0] == "desk", a[1] == "name-window" else { return nil }
+    guard desk.windows.count == 1, let id = desk.windows[0].id else { return [] }
+    return [BoardButton(title: "Name its window…", action: .window(.nameWindow(workhorse: a[2], desk: a[3], window: id)))]
 }
 
 /// The lines that do something, in order: no separators and no text.

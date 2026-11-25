@@ -37,6 +37,13 @@ public struct NewDeskRequest: Sendable, Equatable {
     public var isInteractive: Bool { name == nil || folder == nil }
 }
 
+/// What `desk name-window` was given for the name: a name as typed (checked by `WindowName` before anything is
+/// sent), or `--auto`, to let the window follow its program's name again.
+public enum WantedWindowName: Sendable, Equatable {
+    case name(String)
+    case afterItsProgram
+}
+
 /// A mistake in how `macmosh desk new` was typed. The text says what to type instead.
 public enum DeskUsageError: Error, Equatable, CustomStringConvertible {
     case reopenAndNoReopen
@@ -177,6 +184,88 @@ public struct DeskFlow: Sendable {
             try await commands.newWindow(on: w, address: address, desk: desk)
             ui.say("Added a window to \(desk.value).")
         }
+    }
+
+    // MARK: Naming a window (issue 144)
+
+    /// `window-name` is in the workhorse script from this version on.
+    public static let nameWindowNeeds = "0.11.0"
+
+    /// Names one window of a desk, by its id, or lets it follow its program's name again: one call. What isn't
+    /// given is asked, which is the form the menu's `Name a window…` runs: with no `window`, the desk's windows
+    /// from the check's report, numbered as tmux numbers them, and which one (not asked when the desk has one
+    /// window; an empty answer changes nothing); with no name, the name, where an empty answer lets the window
+    /// follow its program's name again. A name is sent as typed once it keeps `WindowName`'s rule. Nothing is
+    /// asked or sent when the workhorse's script is older than 0.11.0.
+    public func nameWindow(_ check: CheckResult, desk: String, window: String?, to wanted: WantedWindowName?,
+                           ui: Interaction) async -> DeskResult {
+        await onDesk(check, name: desk) { w, address, name in
+            let version = check.status?.scriptVersion ?? ""
+            guard HostInstaller.isAtLeast(version, Self.nameWindowNeeds) else {
+                throw DeskResult.failure(DeskFormat.nameWindowNeedsNewerScript(w, version: version, for: wording))
+            }
+            if let window, !HostStatus.isWindowId(window) { throw DeskResult.failure(DeskFormat.windowByID) }
+            var naming: WindowNaming?
+            switch wanted {
+            case .name(let text)?:
+                guard let valid = WindowName(text) else { throw DeskResult.failure(WindowName.problem(text) ?? WindowName.rule) }
+                naming = .named(valid)
+            case .afterItsProgram?: naming = .afterItsProgram
+            case nil: break
+            }
+            let windows = check.status?.desks.first { $0.name == name }?.windows.filter { $0.id != nil }
+            let id: String
+            if let window {
+                id = window
+            } else {
+                guard let windows else { throw HostCommandError.noSuchDesk }
+                id = try askWindow(of: name, windows, ui)
+            }
+            let shown = windows?.first { $0.id == id }
+            let label = shown.map { "window \($0.index)" } ?? "window \(id)"
+            let chosen = try naming ?? askWindowName(label, now: shown?.name ?? "", ui)
+            do {
+                try await commands.nameWindow(on: w, address: address, desk: name, window: id, to: chosen)
+            } catch WindowNameError.windowClosed {
+                throw DeskResult.failure(DeskFormat.windowClosed)
+            }
+            ui.say(DeskFormat.windowNamed(name, window: label, chosen, on: w))
+        }
+    }
+
+    static let whichWindow = "Which window? Type its number: "
+
+    /// The desk's windows numbered, and which one, up to three tries. An empty answer stops with nothing changed.
+    private func askWindow(of desk: DeskName, _ windows: [HostStatus.Window], _ ui: Interaction) throws -> String {
+        guard !windows.isEmpty else { throw DeskResult.failure(DeskFormat.noWindowIDs(desk)) }
+        if windows.count == 1, let only = windows[0].id { return only }
+        ui.say("The windows of \(desk.value):")
+        DeskFormat.numberedWindows(windows).forEach(ui.say)
+        for _ in 0..<Self.tries {
+            let answer = ui.ask(Self.whichWindow).trimmingCharacters(in: .whitespacesAndNewlines)
+            if answer.isEmpty { throw DeskResult.failure(DeskFormat.nothingChanged) }
+            if let number = Int(answer) {
+                if let id = windows.first(where: { $0.index == number })?.id { return id }
+                ui.say("There is no window \(number) in \(desk.value).")
+            } else {
+                ui.say("Type the number of a window from the list.")
+            }
+        }
+        throw DeskResult.failure("That wasn't a window's number three times, so MacMosh stopped.")
+    }
+
+    /// The window's new name, up to three tries; an empty answer is "after its program", and end of input (Ctrl-D,
+    /// stdin closed) changes nothing. The answer is not trimmed.
+    private func askWindowName(_ label: String, now current: String, _ ui: Interaction) throws -> WindowNaming {
+        let which = current.isEmpty ? label : "\(label) (\(current))"
+        for _ in 0..<Self.tries {
+            guard let answer = ui.askOrEnd("Name for \(which), or Enter alone to let it follow its program's name again: ")
+            else { throw DeskResult.failure(DeskFormat.nothingChanged) }
+            if answer.isEmpty { return .afterItsProgram }
+            if let name = WindowName(answer) { return .named(name) }
+            ui.say(WindowName.problem(answer) ?? WindowName.rule)
+        }
+        throw DeskResult.failure("That wasn't a window name three times, so MacMosh stopped. \(WindowName.rule)")
     }
 
     /// The names of the folders inside the projects folder, in `output`.

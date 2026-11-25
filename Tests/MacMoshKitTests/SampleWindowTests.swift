@@ -100,6 +100,37 @@ import Testing
         #expect(status.desks.map(\.name.value) == ["api-v2", "blog", "garden-planner"])
     }
 
+    /// window-name as the script 0.11.0 answers it (issue 144): the desk's window by its id takes the name; --auto
+    /// gives back its program's name; a window that isn't the desk's is exit 4 with "That window has closed."; no
+    /// such desk is exit 4; a name that breaks the rule is exit 2. The report gives every window's id.
+    @Test func theStandInNamesWindowsAsTheScriptWould() throws {
+        let desks = SampleDesks()
+        var status = try HostStatus.parse(desks.report())
+        #expect(status.scriptVersion == "0.11.0")
+        let website = try #require(status.desks.first { $0.name.value == "website" })
+        #expect(website.windows.map(\.name) == ["claude", "zsh", "vim"])
+        let ids = website.windows.compactMap(\.id)
+        #expect(ids.count == 3 && Set(ids).count == 3)
+        #expect(status.desks.allSatisfy { $0.hasWindowInfo })
+        #expect(desks.run(["window-name", "website", ids[2], "front end"]).0 == 0)
+        status = try HostStatus.parse(desks.report())
+        #expect(status.desks.first { $0.name.value == "website" }?.windows.map(\.name) == ["claude", "zsh", "front end"])
+        #expect(desks.run(["window-name", "website", ids[2], "--auto"]).0 == 0)
+        status = try HostStatus.parse(desks.report())
+        #expect(status.desks.first { $0.name.value == "website" }?.windows.map(\.name) == ["claude", "zsh", "vim"])
+        let closed = desks.run(["window-name", "website", "@99", "x"])
+        #expect(closed.0 == 4 && closed.1 == "That window has closed.\n")
+        let other = try #require(status.desks.first { $0.name.value == "blog" }?.windows.first?.id)
+        #expect(desks.run(["window-name", "website", other, "x"]).0 == 4)
+        #expect(desks.run(["window-name", "nowhere", ids[0], "x"]).0 == 4)
+        #expect(desks.run(["window-name", "website", ids[0], "a#b"]).0 == 2)
+        // A desk made later gets a window with an id of its own.
+        #expect(desks.run(["desk-new", "garden-planner", "~/Development/garden-planner", "--reopen"]).0 == 0)
+        status = try HostStatus.parse(desks.report())
+        let made = try #require(status.desks.first { $0.name.value == "garden-planner" }?.windows.first?.id)
+        #expect(!ids.contains(made) && made != other)
+    }
+
     @Test func theStandInsLineHasTheExactRemoteCommand() {
         let line = SampleSSH.line(argv: ["ssh", "-o", "BatchMode=yes", "--", "alex@192.168.1.20", "~/.macmosh/macmosh-host desk-remove website --kill"],
                                   to: "alex@192.168.1.20", stdin: nil, timeout: .seconds(15),

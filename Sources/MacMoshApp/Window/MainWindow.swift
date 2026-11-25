@@ -12,7 +12,7 @@ import SwiftUI
 struct MainWindow: View {
     @ObservedObject var screen: BoardOnScreen
     let actions: MenuActionRunner
-    /// New desk, Rename and Remove, run in this process (step 4). The app's, not the window's, so an action
+    /// New desk, Rename, Remove and naming a window, run in this process (step 4, issue 144). The app's, not the window's, so an action
     /// started just before the window closes still finishes.
     @ObservedObject var forms: WindowActionRunner
     /// What the person chose in the sidebar. A choice that is no longer on the board falls back as
@@ -22,6 +22,8 @@ struct MainWindow: View {
     @State private var newDesk: NewDeskForm?
     @State private var renaming: RenameForm?
     @State private var removing: RemoveConfirmation?
+    /// The open sheet that names a window (issue 144).
+    @State private var namingWindow: WindowNameForm?
     @State private var confirmingRemove = false
 
     var body: some View {
@@ -58,6 +60,9 @@ struct MainWindow: View {
         }
         .sheet(item: $renaming) { form in
             RenameSheet(forms: forms, form: form) { renaming = nil }
+        }
+        .sheet(item: $namingWindow) { form in
+            WindowNameSheet(forms: forms, form: form) { namingWindow = nil }
         }
         // Apple, confirmationDialog(_:isPresented:titleVisibility:presenting:actions:message:) (macOS 13.0,
         // https://developer.apple.com/documentation/swiftui/view/confirmationdialog(_:ispresented:titlevisibility:presenting:actions:message:)):
@@ -113,6 +118,8 @@ struct MainWindow: View {
         case .remove(let id, let desk):
             removing = forms.removeConfirmation(id, desk: desk)
             confirmingRemove = removing != nil
+        case .nameWindow(let id, let desk, let window):
+            namingWindow = forms.nameWindowForm(id, desk: desk, window: window)
         }
     }
 
@@ -140,12 +147,15 @@ enum WindowMarks {
     static func strip(_ name: String) -> String { "desk.\(name).strip" }
     /// A window's button in its desk's strip: `desk.website.win.@3`.
     static func window(_ name: String, _ id: String) -> String { "desk.\(name).win.\(id)" }
+    /// A window's Name… button in its desk's strip: `desk.website.name.@3` (issue 144).
+    static func nameWindow(_ name: String, _ id: String) -> String { "desk.\(name).name.\(id)" }
     /// A button by what it does: `button.openAllWithoutTab`, `button.menu.connect.attic.api`.
     static func button(_ b: BoardButton) -> String {
         switch b.action {
         case .window(.newDesk): return "button.newDesk"
         case .window(.rename): return "button.rename"
         case .window(.remove): return "button.remove"
+        case .window(.nameWindow): return "button.nameWindow"
         case .window(.openAllWithoutTab): return "button.openAllWithoutTab"
         case .window(.startAgain), .window(.forget): return "button.ended"
         case .menu(.refresh): return "button.checkNow"

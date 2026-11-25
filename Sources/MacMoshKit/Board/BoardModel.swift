@@ -121,13 +121,26 @@ public enum BoardModel {
             }
         }
         let open = withButtons ? deskButtons.first { $0.key == "open" }.map(BoardButton.init) : nil
-        let buttons = withButtons ? deskButtons.filter { $0.key != "open" }.map(BoardButton.init) : []
+        // The menu's Name a window… asks in a tab which window; the window has a button per window instead (issue
+        // 144): "Name its window…" in the strip of a desk with one window, "Name…" on each window of any other.
+        let canName = withButtons && deskButtons.contains { $0.key == ButtonRules.nameWindowKey }
+        let all = session?.windows ?? []
+        func naming(_ window: String, _ title: String) -> BoardButton {
+            BoardButton(title: title, action: .window(.nameWindow(workhorse: id, desk: line.name, window: window)))
+        }
+        let onlyWindow = canName && all.count == 1 ? all[0].id : nil
+        let buttons = withButtons ? deskButtons.filter { $0.key != "open" }.compactMap { b -> BoardButton? in
+            guard b.key == ButtonRules.nameWindowKey else { return BoardButton(b) }
+            return onlyWindow.map { naming($0, WindowWords.nameItsWindow) }
+        } : []
         let lines = withButtons ? perWindow?.windows ?? [] : []
         return BoardDesk(
             name: line.name, isOpen: line.isOpen,
-            windows: (session?.windows ?? []).map { w in
+            windows: all.map { w in
                 let mine = w.id.flatMap { id in lines.first { $0.key == "win:\(id)" } }
-                return BoardWindow(index: w.index, name: w.name, id: w.id, tabs: w.tabs, button: mine.map(BoardButton.init))
+                let name = canName && all.count > 1 ? w.id.map { naming($0, WindowWords.nameWindow) } : nil
+                return BoardWindow(index: w.index, name: w.name, id: w.id, tabs: w.tabs, button: mine.map(BoardButton.init),
+                                   nameButton: name)
             },
             windowCount: session?.windowCount ?? 0,
             tabsOpen: session == nil ? 0 : perWindow?.tabs ?? session?.attached ?? 0,

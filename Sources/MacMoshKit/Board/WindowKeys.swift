@@ -3,7 +3,7 @@ import Foundation
 /// The keys the MacMosh window answers itself (issue #147): Command-V, C, X, A, Z and Shift-Command-Z in its text
 /// fields, and Command-W to close it. The app has no Dock icon and no menu bar of its own, and on GitHub's
 /// runners a posted Command-V left a text field empty although typed keys reached it, even with an Edit menu in the
-/// app's main menu (main window design, "Changes since approval", item 7). This is the rule; the app's key monitor
+/// app's main menu (main window design, "Changes since approval", item 8). This is the rule; the app's key monitor
 /// (`WindowKeysMonitor`) reads each press, asks `action(for:)` and `closes(sheetOpen:making:)`, and sends the item's
 /// standard action to the first responder.
 ///

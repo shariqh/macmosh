@@ -166,8 +166,9 @@ struct DeskRowView: View {
 }
 
 /// The detail strip: one line per window when the desk has the menu's line per window (its words and a small
-/// "Go to" or "Open" button), then Folder, Starts with, After a restart, When its last shell exits, "Keeps its
-/// command running" when set, and New window, Rename…, Remove….
+/// "Go to" or "Open" button) or its windows can be named (a small "Name…", issue 144), then Folder, Starts with,
+/// After a restart, When its last shell exits, "Keeps its command running" when set, and New window, Name its
+/// window… (a desk with one window), Rename…, Remove….
 struct DeskDetail: View {
     let row: DeskRow
     let run: (BoardButton) -> Void
@@ -184,11 +185,22 @@ struct DeskDetail: View {
                             // that is proportionally smaller size for space-constrained views."
                             // The window's words are its help tag too, so the button's accessibility hint names
                             // its window (help(_:), quoted above).
-                            Button { run(line.button) } label: { Text(verbatim: line.button.title) }
-                                .controlSize(.small)
-                                .disabled(!line.button.isEnabled)
-                                .help(Text(verbatim: line.words))
-                                .accessibilityIdentifier(WindowMarks.window(row.name, line.id))
+                            HStack(spacing: 6) {
+                                if let open = line.button {
+                                    Button { run(open) } label: { Text(verbatim: open.title) }
+                                        .controlSize(.small)
+                                        .disabled(!open.isEnabled)
+                                        .help(Text(verbatim: line.words))
+                                        .accessibilityIdentifier(WindowMarks.window(row.name, line.id))
+                                }
+                                if let name = line.name {
+                                    Button { run(name) } label: { Text(verbatim: name.title) }
+                                        .controlSize(.small)
+                                        .disabled(!name.isEnabled)
+                                        .help(Text(verbatim: line.words))
+                                        .accessibilityIdentifier(WindowMarks.nameWindow(row.name, line.id))
+                                }
+                            }
                         }
                     }
                 }

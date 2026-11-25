@@ -27,6 +27,9 @@
 # form's text field, when Command-W closes anything with a form or the menu open, does not close the window
 # without them, ends the app or stops the menu from opening, or when one of these keys sets off the menu-open
 # signal (issue #147). How a picture looks never fails it.
+# Naming a window (issue 144) fails when a desk's details lack their Name… buttons or Name its window…, the
+# sheet does not open, refuse a name or name its window, Name or Use its program's name does not send its exact
+# arguments, or the row does not show the name after the check.
 set -uo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -807,30 +810,41 @@ forms_sample() {
     fi
     snap after-cut
 
-    # Command-Z brings the text back, and Shift-Command-Z cuts it again.
-    tool chord z cmd > /dev/null
-    sleep 0.6
-    v=$(val "form.command")
-    if [ "$v" = "$paste" ]; then
-        result PASS "Command-Z undoes the cut" "the field reads: $v"
+    # Command-Z brings the text back, and Shift-Command-Z cuts it again. Each is tried only from the state the key
+    # before it left, so neither passes when nothing happened: without the cut, Command-Z is not shown.
+    if [ -n "$(val "form.command")" ]; then
+        result NOT-SHOWN "Command-Z undoes the cut" "the cut did not happen, so there is nothing to undo"
     else
-        result FAIL "Command-Z undoes the cut" "the field reads: ${v:-nothing}"
+        tool chord z cmd > /dev/null
+        sleep 0.6
+        v=$(val "form.command")
+        if [ "$v" = "$paste" ]; then
+            result PASS "Command-Z undoes the cut" "the field reads: $v"
+        else
+            result FAIL "Command-Z undoes the cut" "the field reads: ${v:-nothing}"
+        fi
     fi
-    tool chord z shiftcmd > /dev/null
-    sleep 0.6
-    v=$(val "form.command")
-    if [ -z "$v" ]; then
-        result PASS "Shift-Command-Z redoes the cut" "the field is empty"
+    if [ "$(val "form.command")" != "$paste" ]; then
+        result NOT-SHOWN "Shift-Command-Z redoes the cut" "the field does not hold the undone text, so there is nothing to redo"
     else
-        result FAIL "Shift-Command-Z redoes the cut" "the field reads: $v"
+        tool chord z shiftcmd > /dev/null
+        sleep 0.6
+        v=$(val "form.command")
+        if [ -z "$v" ]; then
+            result PASS "Shift-Command-Z redoes the cut" "the field is empty"
+        else
+            result FAIL "Shift-Command-Z redoes the cut" "the field reads: $v"
+        fi
     fi
 
-    # Command-W with the form open closes nothing: neither the form nor the window (issue #147).
+    # Command-W with the form open closes nothing: neither the form nor the window (issue #147). This row means
+    # something only when "Command-W closes the window" passes in the same run (window_keys), and so does the one
+    # with the menu open.
     tool chord w cmd > /dev/null
     sleep 1.5
     n=$(windows)
     if [ "${n:-0}" -eq 1 ] && wax find "form.newDesk" | grep -q '^found'; then
-        result PASS "Command-W with the form open closes nothing" "windows=1, form.newDesk still there"
+        result PASS "Command-W with the form open closes nothing" "windows=1, form.newDesk still there (read with: Command-W closes the window)"
     else
         result FAIL "Command-W with the form open closes nothing" "windows=${n:-?}; form.newDesk: $(wax find "form.newDesk" | head -n 1)"
     fi
@@ -983,7 +997,7 @@ window_keys() {
         sleep 1
         n=$(windows)
         if [ "${n:-0}" -eq 1 ]; then
-            result PASS "Command-W with the menu open closes nothing" "windows=1"
+            result PASS "Command-W with the menu open closes nothing" "windows=1 (read with: Command-W closes the window)"
         else
             result FAIL "Command-W with the menu open closes nothing" "windows=${n:-?}"
         fi
@@ -1048,6 +1062,164 @@ window_keys() {
     stop_app
 }
 
+############################################################ naming a window (issue 144)
+# The "window-forms" sample again, in a fresh app, so website is there with its three windows (@4 claude, @5 zsh,
+# @6 vim; blog has one, @3). Its script is 0.11.0 and its report gives the windows' ids, so website's details have
+# a Name… on each window and blog's strip has Name its window…. The stand-in ssh names the window as the script
+# would and writes each call's exact remote command to the log.
+window_names_sample() {
+    local since v missing want deadline id
+    start_app window-forms || return
+    # The same sample as forms_sample: its pictures and results are named apart.
+    sample=window-names
+    if ! open_window; then stop_app; return; fi
+    sleep 2
+
+    # website's details: each window has its Name… beside its Open.
+    if ! click_id "desk.website" || ! wait_id "desk.website.strip" 5; then
+        result FAIL "a desk's details have a Name… on each window" "no strip for website"
+        stop_app
+        return
+    fi
+    sleep 0.5
+    missing=""
+    for id in @4 @5 @6; do
+        v=$(val "desk.website.name.$id")
+        [ "$v" = "Name…" ] || missing="$missing [$id: ${v:-none}]"
+    done
+    if [ -z "$missing" ]; then
+        result PASS "a desk's details have a Name… on each window" "desk.website.name.@4, @5 and @6 read Name…"
+    else
+        result FAIL "a desk's details have a Name… on each window" "missing or wrong:$missing"
+    fi
+    snap details-name-buttons
+
+    # Name… on vim (window 2) opens the sheet, its field holding the name, selected.
+    if ! click_id "desk.website.name.@6" || ! wait_id "form.nameWindow" 6; then
+        result FAIL "Name… opens the sheet" "no sheet for website's window @6"
+        snap no-sheet
+        stop_app
+        return
+    fi
+    result PASS "Name… opens the sheet" "form.nameWindow found"
+    sleep 1
+    v=$(wax text "Name a window of" | grep '^text' | tail -n 1 | sed 's/^text //')
+    result "$([ "$v" = "Name a window of website" ] && echo PASS || echo FAIL)" "the sheet's title names the desk" "it reads: ${v:-nothing}"
+    v=$(wax text "Name for window" | grep '^text' | tail -n 1 | sed 's/^text //')
+    result "$([ "$v" = "Name for window 2 (vim)" ] && echo PASS || echo FAIL)" "the sheet's label names the window and its name" "it reads: ${v:-nothing}"
+    expect_value "the field holds the window's name" "form.windowName" "vim" 3
+    v=$(wax selected "form.windowName" | grep '^selected' | tail -n 1 | sed 's/^selected //')
+    result "$([ "$v" = "vim" ] && echo PASS || echo DIFFERS)" "the field's name is selected" "the selected text reads: ${v:-nothing}"
+    v=$(wax enabled "form.nameButton" | grep '^enabled' | tail -n 1)
+    result "$([ "$v" = "enabled false" ] && echo PASS || echo FAIL)" "Name is off while the name is unchanged" "${v:-no answer}"
+    expect_value "the line under the field is the rule" "form.windowName.help" \
+        "A window name is 1 to 32 letters, digits, spaces, -, _ and full stops. It can't start with a space or -, or end with a space." 3
+    snap sheet
+
+    # Typing with nothing clicked: the selected name is replaced. A finding; the field is cleared after either way.
+    tool type "-x" > /dev/null
+    sleep 0.5
+    v=$(val "form.windowName")
+    result "$([ "$v" = "-x" ] && echo PASS || echo DIFFERS)" "typing replaces the selected name" "the field reads: ${v:-nothing}"
+    if [ "$v" != "-x" ]; then
+        clear_field "form.windowName"
+        tool type "-x" > /dev/null
+        sleep 0.5
+    fi
+    # A refused name says why under the field, and Name stays off.
+    expect_value "a name starting with - is refused with its reason" "form.windowName.help" "A window name can't start with -." 3
+    v=$(wax enabled "form.nameButton" | grep '^enabled' | tail -n 1)
+    result "$([ "$v" = "enabled false" ] && echo PASS || echo FAIL)" "Name is off while the name is refused" "${v:-no answer}"
+    snap refused
+
+    # A name with a space, typed with posted keys; Return presses Name: one call, the name as one argument.
+    clear_field "form.windowName"
+    tool type "front end" > /dev/null
+    expect_value "a name with a space reaches the field" "form.windowName" "front end" 3
+    v=$(wax enabled "form.nameButton" | grep '^enabled' | tail -n 1)
+    result "$([ "$v" = "enabled true" ] && echo PASS || echo FAIL)" "Name is on for a valid new name" "${v:-no answer}"
+    snap typed
+    since=$(moment)
+    tool keys 36 1 100 > /dev/null
+    # The row is read before the log, which takes a second or two to read: the sample's check takes 0.8 s.
+    if gone_id "form.nameWindow" 6; then
+        result PASS "the sheet closes once the window is named" "form.nameWindow gone"
+    else
+        result FAIL "the sheet closes once the window is named" "the sheet is still there"
+    fi
+    v=$(val "desk.website.status")
+    result "$([ "$v" = "Updating…" ] && echo PASS || echo DIFFERS)" "the desk's row says Updating… until the check lands" "it reads: ${v:-nothing}"
+    snap updating
+    want="sample ssh: to=alex@192.168.1.20 batch=yes stdin=closed limit=15s run=~/.macmosh/macmosh-host window-name website @6 'front end'"
+    expect_log "Name sends the exact arguments" "$since" "$want"
+    expect_log "Name writes its log line" "$since" "window action: nameWindow ok"
+    expect_value "the page says what Name did" "page.result" 'Named window 2 of website "front end" on Attic.' 10
+    # After the check, the row's list of names and the details show the new name whole.
+    deadline=$((SECONDS + 10))
+    v=$(val "desk.website")
+    while [[ "$v" != *"claude, zsh, front end"* ]] && [ "$SECONDS" -lt "$deadline" ]; do sleep 0.5; v=$(val "desk.website"); done
+    if [[ "$v" == *"claude, zsh, front end"* ]]; then
+        result PASS "after the check the row shows the new name" "desk.website reads: $v"
+    else
+        result FAIL "after the check the row shows the new name" "desk.website reads: ${v:-nothing}"
+    fi
+    v=$(wax text "front end" | grep '^text' | tail -n 1 | sed 's/^text //')
+    result "$([ "$v" = "front end" ] && echo PASS || echo DIFFERS)" "the details show the window's new name whole" "the window's line reads: ${v:-nothing}"
+    sleep 1
+    snap after-name
+
+    # Use its program's name: --auto, and the name goes back to the program's.
+    if click_id "desk.website.name.@6" && wait_id "form.nameWindow" 6; then
+        sleep 1
+        v=$(wax text "Name for window" | grep '^text' | tail -n 1 | sed 's/^text //')
+        result "$([ "$v" = "Name for window 2 (front end)" ] && echo PASS || echo FAIL)" "the sheet names the window by its new name" "it reads: ${v:-nothing}"
+        snap sheet-again
+        since=$(moment)
+        click_id "form.useProgramsName"
+        expect_log "Use its program's name sends --auto" "$since" \
+            "sample ssh: to=alex@192.168.1.20 batch=yes stdin=closed limit=15s run=~/.macmosh/macmosh-host window-name website @6 --auto"
+        expect_log "Use its program's name writes its log line" "$since" "window action: nameWindow ok"
+        expect_value "the page says the window follows its program again" "page.result" \
+            "Window 2 of website follows its program's name again on Attic." 10
+        deadline=$((SECONDS + 10))
+        v=$(val "desk.website")
+        while [[ "$v" != *"claude, zsh, vim"* ]] && [ "$SECONDS" -lt "$deadline" ]; do sleep 0.5; v=$(val "desk.website"); done
+        result "$([[ "$v" == *"claude, zsh, vim"* ]] && echo PASS || echo FAIL)" "after the check the row shows the program's name again" "desk.website reads: ${v:-nothing}"
+        sleep 1
+        snap after-auto
+    else
+        result FAIL "Name… opens the sheet again" "no sheet for website's window @6"
+    fi
+
+    # blog has one window, so no list: its strip has Name its window….
+    click_id "desk.blog" > /dev/null
+    sleep 1
+    if wax find "desk.blog.name.@3" | grep -q '^found'; then
+        result FAIL "a desk with one window lists no window" "desk.blog.name.@3 is there"
+    else
+        result PASS "a desk with one window lists no window" "no desk.blog.name.@3"
+    fi
+    v=$(val "button.nameWindow")
+    result "$([ "$v" = "Name its window…" ] && echo PASS || echo FAIL)" "a desk with one window has Name its window…" "button.nameWindow reads: ${v:-nothing}"
+    snap one-window
+    if click_id "button.nameWindow" && wait_id "form.nameWindow" 6; then
+        sleep 1
+        v=$(wax text "Name for window" | grep '^text' | tail -n 1 | sed 's/^text //')
+        result "$([ "$v" = "Name for window 0 (zsh)" ] && echo PASS || echo FAIL)" "Name its window… opens the sheet for its window" "it reads: ${v:-nothing}"
+        snap one-window-sheet
+        since=$(moment)
+        click_id "form.cancel"
+        if gone_id "form.nameWindow" 4 && ! applog "$since" | grep -qF "window-name"; then
+            result PASS "Cancel closes the sheet and sends nothing" "form.nameWindow gone; no window-name in the log"
+        else
+            result FAIL "Cancel closes the sheet and sends nothing" "the sheet is there, or a window-name call was sent"
+        fi
+    else
+        result FAIL "Name its window… opens the sheet for its window" "no sheet for blog"
+    fi
+    stop_app
+}
+
 ############################################################ the run
 say "driving the window of $APP on $os ($(sw_vers -productVersion))"
 tool preflight > /dev/null
@@ -1055,6 +1227,7 @@ lim 10 "$TOOL" move 600 500 > /dev/null
 
 forms_sample
 window_keys
+window_names_sample
 six_desks
 windows_sample
 ready_then_locked

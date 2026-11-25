@@ -89,13 +89,18 @@ public struct BoardWindow: Sendable, Equatable {
     /// or open one), when the desk is past the menu's gate and has more than one window (issue #134); nil
     /// otherwise, as the menu then has no such line.
     public var button: BoardButton?
+    /// "Name…", which opens the window's sheet for naming this window (issue 144): for each window with an id of
+    /// a desk with more than one window, past `WindowNameGate`; nil otherwise (a desk with one window has "Name its
+    /// window…" in its strip instead).
+    public var nameButton: BoardButton?
 
-    public init(index: Int, name: String, id: String?, tabs: Int?, button: BoardButton? = nil) {
+    public init(index: Int, name: String, id: String?, tabs: Int?, button: BoardButton? = nil, nameButton: BoardButton? = nil) {
         self.index = index
         self.name = name
         self.id = id
         self.tabs = tabs
         self.button = button
+        self.nameButton = nameButton
     }
 }
 
@@ -236,6 +241,8 @@ public enum WindowAction: Sendable, Equatable {
     case startAgain(workhorse: String, desk: String, keepIt: Bool)
     /// Takes an ended desk off the list.
     case forget(workhorse: String, desk: String)
+    /// The sheet that names one window of a desk, by the window's id (issue 144).
+    case nameWindow(workhorse: String, desk: String, window: String)
     /// Opens these tabs, one after another: a tab on each window no tab shows, on every running desk, and a
     /// plain tab on a desk with none that is not past the menu's gate (section 7.1 A, issue #134). Each is a
     /// list of `macmosh` arguments.

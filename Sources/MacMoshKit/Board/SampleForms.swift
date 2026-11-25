@@ -5,7 +5,8 @@ import Foundation
 import os
 
 /// The `window-forms` sample (main window design, section 8, step 4): the workhorse Attic, Ready, with no
-/// projects folder saved, whose desks change as the window's New desk, Rename and Remove act on them. No
+/// projects folder saved, whose desks change as the window's New desk, Rename and Remove act on them, and whose
+/// windows' names change as the window names them (issue 144). No
 /// ssh runs: `SampleSSH` stands in for it, writes the exact arguments to the log, and answers as the workhorse
 /// script would. Every name in here is made up.
 public enum SampleForms {
@@ -64,33 +65,51 @@ public enum SampleForms {
 
 /// The sample's desks, which the stand-in ssh changes as the script would.
 final class SampleDesks: @unchecked Sendable {
+    /// One tmux window: its id, its name, and the program running in it, which `--auto` names it after.
+    struct Window {
+        var id: String
+        var name: String
+        var program: String
+    }
+
     struct Desk {
         var name: String
-        var windows: [String]
+        var windows: [Window]
         var folder: String
         var command: String
         var permanent: Bool
         var isOpen: Bool
     }
 
+    private static func windows(_ first: Int, _ programs: [String]) -> [Window] {
+        programs.enumerated().map { Window(id: "@\(first + $0.offset)", name: $0.element, program: $0.element) }
+    }
+
     private let lock = NSLock()
+    private var nextWindow = 7
     private var all: [Desk] = [
-        Desk(name: "api", windows: ["server", "tests"], folder: "/Users/alex/Development/api", command: "", permanent: false, isOpen: true),
-        Desk(name: "blog", windows: ["zsh"], folder: "/Users/alex/Development/blog", command: "", permanent: false, isOpen: true),
-        Desk(name: "website", windows: ["claude", "zsh", "vim"], folder: "/Users/alex/Development/website",
+        Desk(name: "api", windows: windows(1, ["server", "tests"]), folder: "/Users/alex/Development/api", command: "",
+             permanent: false, isOpen: true),
+        Desk(name: "blog", windows: windows(3, ["zsh"]), folder: "/Users/alex/Development/blog", command: "", permanent: false,
+             isOpen: true),
+        Desk(name: "website", windows: windows(4, ["claude", "zsh", "vim"]), folder: "/Users/alex/Development/website",
              command: "claude --continue", permanent: false, isOpen: true),
         Desk(name: "notes", windows: [], folder: "/Users/alex/notes", command: "", permanent: true, isOpen: false),
     ]
 
-    /// A workhorse script 0.8.0 report of the desks as they are now. The `def` fields are the name, reopen,
-    /// keep, permanent, the folder and the command.
+    /// A workhorse script 0.11.0 report of the desks as they are now, with each window's id (`windowinfo`: the
+    /// desk, the window's number, its id, 1 for the one the desk shows, and its tabs). The `def` fields are the
+    /// name, reopen, keep, permanent, the folder and the command.
     func report() -> String {
         lock.withLock {
-            var lines = ["macmosh-host\t1\t0.8.0", "os\t26.1\tarm64", "console\talex", "server\tup", "signins\tok",
+            var lines = ["macmosh-host\t1\t0.11.0", "os\t26.1\tarm64", "console\talex", "server\tup", "signins\tok",
                          "agent\tinstalled", "power\tsleep=0\twomp=1", "battery\tpresent\tac\t82"]
             for d in all where d.isOpen {
                 lines.append("desk\t\(d.name)\t\(d.windows.count)\t0")
-                lines += d.windows.enumerated().map { "window\t\(d.name)\t\($0.offset)\t\($0.element)" }
+                lines += d.windows.enumerated().map { "window\t\(d.name)\t\($0.offset)\t\($0.element.name)" }
+                lines += d.windows.enumerated().map {
+                    "windowinfo\t\(d.name)\t\($0.offset)\t\($0.element.id)\t\($0.offset == 0 ? 1 : 0)\t0"
+                }
             }
             lines += all.map { "def\t\($0.name)\t1\t0\t\($0.permanent ? 1 : 0)\t\($0.folder)\t\($0.command)" }
             return (lines + ["end"]).joined(separator: "\n") + "\n"
@@ -102,7 +121,7 @@ final class SampleDesks: @unchecked Sendable {
         all.contains { $0.name == name && ($0.isOpen || $0.permanent) }
     }
 
-    /// What the script's `desk-new`, `desk-rename` and `desk-remove` do, by exit code (0, 4 or 7).
+    /// What the script's `desk-new`, `desk-rename`, `desk-remove` and `window-name` do, by exit code (0, 2, 4 or 7).
     func run(_ args: [String]) -> (Int32, String) {
         lock.withLock {
             guard let command = args.first else { return (2, "") }
@@ -115,13 +134,25 @@ final class SampleDesks: @unchecked Sendable {
                 let first = started.split(separator: " ").first.map(String.init) ?? "zsh"
                 let home = "/Users/alex"
                 let folder = args[2].hasPrefix("~/") ? home + args[2].dropFirst(1) : args[2]
-                all.append(Desk(name: name, windows: [first], folder: folder, command: started,
-                                permanent: args.contains("--permanent"), isOpen: true))
+                all.append(Desk(name: name, windows: [Window(id: "@\(nextWindow)", name: first, program: first)], folder: folder,
+                                command: started, permanent: args.contains("--permanent"), isOpen: true))
+                nextWindow += 1
                 return (0, "")
             case "desk-rename" where args.count == 3:
                 guard let i = all.firstIndex(where: { $0.name == args[1] }) else { return (4, "macmosh-host: no such desk: \(args[1])\n") }
                 if taken(args[2]) { return (7, "macmosh-host: the desk \(args[2]) already exists\n") }
                 all[i].name = args[2]
+                return (0, "")
+            case "window-name" where args.count == 4:
+                let wanted = args[3]
+                if wanted != "--auto", !WindowName.keepsScriptRule(wanted) {
+                    return (2, "macmosh-host: a window name is 1 to 32 characters, each a letter, a digit, a space, -, _ or a full stop, and it can't start or end with a space\n")
+                }
+                guard let d = all.firstIndex(where: { $0.name == args[1] && $0.isOpen }) else {
+                    return (4, "macmosh-host: no such desk: \(args[1])\n")
+                }
+                guard let w = all[d].windows.firstIndex(where: { $0.id == args[2] }) else { return (4, "That window has closed.\n") }
+                all[d].windows[w].name = wanted == "--auto" ? all[d].windows[w].program : wanted
                 return (0, "")
             case "desk-remove" where args.count >= 2:
                 guard all.contains(where: { $0.name == args[1] }) else { return (4, "macmosh-host: no such desk: \(args[1])\n") }
