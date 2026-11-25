@@ -13,8 +13,9 @@ import MacMoshKit
 /// X, C, V and A (run 45541029198). A posted Command-V still left a field empty, and so it did with the same items
 /// added by the app (run 45543907012), while the menu bar on screen stayed Finder's. Apple,
 /// `NSApplication.ActivationPolicy.accessory`
-/// (https://developer.apple.com/documentation/appkit/nsapplication/activationpolicy-swift.enum/accessory): "The
-/// application doesn't appear in the Dock and doesn't have a menu bar". So the keys are taken here instead.
+/// (https://developer.apple.com/documentation/appkit/nsapplication/activationpolicy-swift.enum/accessory), says the
+/// app "doesn't appear in the Dock and doesn't have a menu bar", but no Apple page says whether such an app sends
+/// key equivalents to its main menu. The keys are taken here because of what those two CI runs showed.
 ///
 /// Apple, NSEvent `addLocalMonitorForEvents(matching:handler:)` (macOS 10.6,
 /// https://developer.apple.com/documentation/appkit/nsevent/addlocalmonitorforevents(matching:handler:)): "Installs
@@ -34,8 +35,11 @@ import MacMoshKit
     func start(making: @escaping () -> Bool) {
         self.making = making
         guard monitor == nil else { return }
-        // The monitor's handler runs on the main thread, where the app's events are dispatched. The event goes on
-        // as before (it is returned) unless `perform` handled its press.
+        // The monitor's handler runs on the main thread. Apple, `addLocalMonitorForEvents`: "only events that are
+        // dispatched through the applications sendEvent(_:) method will be passed to your handler", and NSApplication
+        // `sendEvent(_:)` (https://developer.apple.com/documentation/appkit/nsapplication/sendevent(_:)): "sendEvent(_:)
+        // messages are sent from the main event loop (the run() method)." The event goes on as before (it is
+        // returned) unless `perform` handled its press.
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             let press = Self.press(event)
             return MainActor.assumeIsolated { WindowKeysMonitor.shared.perform(press) } ? nil : event
