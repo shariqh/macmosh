@@ -148,19 +148,20 @@ extension HostScriptTests {
     /// - rename-window expands a format in the name it is given (so the script refuses #);
     /// - a name that starts with - is taken as the name after --;
     /// - turning the window's automatic-rename on again names it after the program running in it at
-    ///   once, though the program prints nothing.
+    ///   once, though the program prints nothing. The program is started before the rename, so the pane
+    ///   has no output between the rename and the option being turned on.
     @Test func whatTmuxDoesWhenAWindowIsRenamed() throws {
         let h = try HostHarness(); defer { h.cleanUp() }
         _ = h.run(["start"])
         let (desk, ids) = try deskWithWindows(h, "website", 2)
         try wait(h) { name(h, desk, ids[0]) == program(h, ids[0]) && !program(h, ids[0]).isEmpty }
         #expect(h.tmux(["show-options", "-w", "-t", ids[0], "automatic-rename"]).stdout == "")
+        type(h, ids[0], "sleep 4343")
+        try wait(h) { program(h, ids[0]) == "sleep" && name(h, desk, ids[0]) == "sleep" }
 
         #expect(h.tmux(["rename-window", "-t", desk + ":" + ids[0], "--", "my name.1"]).exitCode == 0)
         #expect(name(h, desk, ids[0]) == "my name.1")
         #expect(h.tmux(["show-options", "-w", "-t", ids[0], "automatic-rename"]).stdout == "automatic-rename off\n")
-        type(h, ids[0], "sleep 4343")
-        try wait(h) { program(h, ids[0]) == "sleep" }
         Thread.sleep(forTimeInterval: 1.5)
         #expect(name(h, desk, ids[0]) == "my name.1")
 
@@ -169,8 +170,9 @@ extension HostScriptTests {
         #expect(h.tmux(["rename-window", "-t", desk + ":" + ids[1], "--", "-n"]).exitCode == 0)
         #expect(name(h, desk, ids[1]) == "-n")
 
+        // sleep prints nothing, so only the option change can bring the program's name back.
         #expect(h.tmux(["set-option", "-w", "-t", desk + ":" + ids[0], "automatic-rename", "on"]).exitCode == 0)
-        try wait(h, seconds: 5) { name(h, desk, ids[0]) == "sleep" }
+        try wait(h) { name(h, desk, ids[0]) == "sleep" }
     }
 
     // MARK: - Naming a window
@@ -214,7 +216,7 @@ extension HostScriptTests {
         let r = h.run(["window-name", "website", ids[0], "--auto"])
         #expect(r.exitCode == 0, "\(r.stderr)")
         #expect(r.stdout.isEmpty && r.stderr.isEmpty)
-        try wait(h, seconds: 5) { name(h, desk, ids[0]) == "sleep" }
+        try wait(h) { name(h, desk, ids[0]) == "sleep" }
         #expect(names(h, desk)[0] == "\(ids[0])\tsleep\t1")
         try wait(h) { windowLines(h.run(["status"]).stdout, "website").first == "window\twebsite\t0\tsleep" }
         #expect(hostLog(h).contains("window-name\twebsite: window \(ids[0]) named after its program again\n"), "\(hostLog(h))")
@@ -300,7 +302,7 @@ extension HostScriptTests {
         let notesBefore = names(h, notes)
         let unchanged = { names(h, desk) == before && names(h, notes) == notesBefore }
 
-        for window in ["1", "@", "@1x", "%1", "$1", "@-1", "@ 1", "", "website"] {
+        for window in ["1", "@", "@1x", "%1", "$1", "@-1", "@ 1", "", "website", "@00", "@0" + String(ids[1].dropFirst())] {
             for last in ["fine", "--auto"] {
                 let r = h.run(["window-name", "website", window, last])
                 #expect(r.exitCode == 2, "\(window): \(r.stderr)")
@@ -324,10 +326,38 @@ extension HostScriptTests {
         #expect(hostLog(h).contains("window-name\tno such desk: api\n"), "\(hostLog(h))")
         #expect(!hostLog(h).contains("fine"))
         #expect(!FileManager.default.fileExists(atPath: h.home.appendingPathComponent(".macmosh/lock").path))
+
+        // A window of the desk that really closed, by its own id.
+        _ = h.tmux(["kill-window", "-t", ids[1]])
+        try wait(h) { !windowIDs(h, desk).contains(ids[1]) }
+        for last in ["fine", "--auto"] {
+            let r = h.run(["window-name", "website", ids[1], last])
+            #expect(r.exitCode == 4, "\(r.stderr)")
+            #expect(r.stderr == "That window has closed.\n", "\(r.stderr)")
+        }
     }
 
-    /// No desk server: nothing to name, and none is started.
-    @Test func withNoDeskServerTheDeskIsNotOpen() throws {
+    /// A desk argument that is not a desk name never goes into the log: a new line in it would make a
+    /// line of its own, and a window name given in its place would put that name in the log.
+    @Test func aDeskArgumentThatIsNotADeskNameIsNotLogged() throws {
+        let h = try HostHarness(); defer { h.cleanUp() }
+        _ = h.run(["start"])
+        let (_, ids) = try deskWithWindows(h, "website", 1)
+        for deskName in ["x\nFAKE\tline", "build logs"] {
+            let before = hostLog(h).split(separator: "\n", omittingEmptySubsequences: false).count
+            let r = h.run(["window-name", deskName, ids[0], "website"])
+            #expect(r.exitCode == 4, "\(r.stderr)")
+            let log = hostLog(h)
+            let lines = log.split(separator: "\n", omittingEmptySubsequences: false)
+            #expect(lines.count == before + 1, "\(log)")
+            #expect(lines.dropLast().last?.hasSuffix("\twindow-name\tno such desk") == true, "\(log)")
+            #expect(!log.contains("FAKE") && !log.contains("build logs"), "\(log)")
+        }
+    }
+
+    /// No desk server: nothing to name, and none is started. The desk is "no such desk", as it is when
+    /// the server runs without it.
+    @Test func withNoDeskServerThereIsNoSuchDeskAndNoneIsStarted() throws {
         let h = try HostHarness(); defer { h.cleanUp() }
         let r = h.run(["window-name", "website", "@1", "fine"])
         #expect(r.exitCode == 4, "\(r.stderr)")

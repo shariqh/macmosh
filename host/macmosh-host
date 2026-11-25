@@ -834,10 +834,11 @@ cmd_window_name() {
     name="$1"
     wid="$2"
     wanted="$3"
+    # tmux writes a window id with no leading zero, so @03 is never one.
     case "$wid" in
         @[0-9]*)
             case "${wid#@}" in
-                *[!0-9]*) mm_usage_error window-name "the window must be given by its id, such as @3" ;;
+                *[!0-9]* | 0?*) mm_usage_error window-name "the window must be given by its id, such as @3" ;;
             esac
             ;;
         *) mm_usage_error window-name "the window must be given by its id, such as @3" ;;
@@ -849,8 +850,13 @@ cmd_window_name() {
     fi
     # No mm_require_server here: with no desk server there is no window to name, and starting one
     # would only make each desk again as one fresh window.
-    sid=""
-    if mm_valid_desk_name "$name"; then sid=$(mm_session_id "$name"); fi
+    # The argument goes into the log only once it is a desk name, as in window-new.
+    if ! mm_valid_desk_name "$name"; then
+        echo "macmosh-host: no such desk: $name" >&2
+        mm_log window-name "no such desk"
+        return 4
+    fi
+    sid=$(mm_session_id "$name")
     if [ -z "$sid" ]; then
         echo "macmosh-host: no such desk: $name" >&2
         mm_log window-name "no such desk: $name"
