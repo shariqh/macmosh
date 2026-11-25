@@ -107,6 +107,7 @@ public enum DeskFormat {
         case .newDesk: return "Created the desk \(desk.value) on \(w.name)."
         case .rename: return "Renamed \(desk.value) to \(new?.value ?? desk.value) on \(w.name)."
         case .remove: return "Removed the desk \(desk.value) from \(w.name)."
+        case .nameWindow: return "Named a window of \(desk.value) on \(w.name)."   // the runner says which (windowNamed)
         }
     }
 
@@ -116,6 +117,7 @@ public enum DeskFormat {
         case .newDesk: return "The desk \(desk) wasn't made. \(reason)"
         case .rename: return "\(desk) wasn't renamed. \(reason)"
         case .remove: return "\(desk) wasn't removed. \(reason)"
+        case .nameWindow: return "The window of \(desk) wasn't named. \(reason)"
         }
     }
 
@@ -128,6 +130,7 @@ public enum DeskFormat {
         case .newDesk: done = "made"
         case .rename: done = "renamed"
         case .remove: done = "removed"
+        case .nameWindow: done = "named"
         }
         return "MacMosh didn't hear back from \(w.name) about \(desk) within \(seconds) seconds. The next check shows whether it was \(done)."
     }

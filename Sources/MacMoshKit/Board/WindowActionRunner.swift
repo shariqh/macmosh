@@ -1,9 +1,10 @@
 import Combine
 import Foundation
 
-/// The window's three desk actions, in the log's words (main window design, section 7.3).
+/// The window's desk actions, in the log's words (main window design, section 7.3), naming a window among them
+/// (issue 144).
 public enum WindowActionKind: String, Sendable, Equatable {
-    case newDesk, rename, remove
+    case newDesk, rename, remove, nameWindow
 
     /// What the action's button reads while it runs.
     public var progress: String {
@@ -11,6 +12,7 @@ public enum WindowActionKind: String, Sendable, Equatable {
         case .newDesk: return NewDeskForm.Words.making
         case .rename: return RenameForm.Words.renaming
         case .remove: return RemoveConfirmation.removing
+        case .nameWindow: return WindowNameForm.Words.naming
         }
     }
 }
@@ -26,7 +28,7 @@ public enum WindowActionResult: Sendable, Equatable {
 public struct WindowActivity: Sendable, Equatable {
     public var busy: [String: WindowActionKind]
     public var making: Bool
-    /// Desks renamed or removed, until the check after it lands.
+    /// Desks renamed or removed, or a window of them named, until the check after it lands.
     public var updating: Set<String>
     /// Desks just made, until the check after it lands; each has a row before the check brings it.
     public var arriving: Set<String>
@@ -43,7 +45,7 @@ public struct WindowActivity: Sendable, Equatable {
     public static let updatingWords = "Updating…"
 }
 
-/// Runs the MacMosh window's New desk, Rename and Remove in this process (main window design, section 7.2),
+/// Runs the MacMosh window's New desk, Rename, Remove and naming a window (issue 144) in this process (main window design, section 7.2),
 /// through `DeskFlow` with a `QuietInteraction`, so nothing can wait on a question. Each is one key-only,
 /// batch ssh call with its input closed and a 15-second limit (`HostCommands`), to the address that last
 /// answered (the refresher's last check). It belongs to the app, not to the window, so an action started just
@@ -179,6 +181,37 @@ public final class WindowActionRunner: ObservableObject {
         log(MenuLog.windowAction(.rename, ok: result.code == 0))
         guard result.code == 0 else { return failed(.rename, id: id, desk: desk, reason: result.reason, on: check.workhorse) }
         let line = DeskFormat.windowDone(.rename, desk: old, to: new, on: check.workhorse)
+        follow(id, marking: desk, line: line)
+        return .done(line)
+    }
+
+    // MARK: Naming a window (issue 144)
+
+    /// The sheet for that window of that desk, from the workhorse's last check; nil when the check has no such
+    /// window or its windows can't be named.
+    public func nameWindowForm(_ id: String, desk: String, window: String) -> WindowNameForm? {
+        refresher.latest[id].flatMap { WindowNameForm(check: $0, desk: desk, window: window) }
+    }
+
+    /// Names the form's window (Name), or lets it follow its program's name again (Use its program's name). The
+    /// window is the form's by its id; its number is only in the words.
+    public func nameWindow(_ form: WindowNameForm, to naming: WindowNaming) async -> WindowActionResult {
+        let id = form.workhorseID, desk = form.desk
+        if let refused = startRefused(id, desk) { return refused }
+        guard let check = refresher.latest[id], let name = DeskName(desk) else { return .failed(Self.noCheck(form.workhorseName)) }
+        let wanted: WantedWindowName
+        switch naming {
+        case .named(let given): wanted = .name(given.value)
+        case .afterItsProgram: wanted = .afterItsProgram
+        }
+        busy[id, default: [:]][desk] = .nameWindow
+        let result = await flow.nameWindow(check, desk: desk, window: form.windowID, to: wanted, ui: QuietInteraction())
+        busy[id]?[desk] = nil
+        log(MenuLog.windowAction(.nameWindow, ok: result.code == 0))
+        guard result.code == 0 else {
+            return failed(.nameWindow, id: id, desk: desk, reason: result.reason, on: check.workhorse)
+        }
+        let line = DeskFormat.windowNamed(name, window: "window \(form.number)", naming, on: check.workhorse)
         follow(id, marking: desk, line: line)
         return .done(line)
     }

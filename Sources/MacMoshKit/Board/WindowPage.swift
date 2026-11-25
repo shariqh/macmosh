@@ -34,6 +34,11 @@ public enum WindowWords {
     public static let newWindow = "New window"
     public static let rename = "Rename…"
     public static let remove = "Remove…"
+    /// A window's button in a desk's details that opens the sheet naming it (issue 144). Not "Rename…", which is
+    /// the desk's own button in the same strip.
+    public static let nameWindow = "Name…"
+    /// The strip's button for a desk with one window, which has no list of windows.
+    public static let nameItsWindow = "Name its window…"
 
     /// "Checked 14:02", with the menu's short time ("yesterday 14:02", "3 Jan").
     public static func checked(_ date: Date, now: Date, timeZone: TimeZone) -> String {
@@ -169,17 +174,20 @@ public struct DetailLine: Sendable, Equatable {
 
 /// One window of a desk in its detail strip (issue #134): the menu's words for it ("claude (in a tab)",
 /// "vim", "zsh (open in another tab)") and a small button, "Go to" or "Open", that runs the menu's action
-/// for that window.
+/// for that window; and, when its windows can be named (issue 144), a small "Name…". A window the menu has no
+/// line for (iTerm2's Tabs mode) is listed by its name, or "window <number>", with only its Name… button.
 public struct WindowLine: Sendable, Equatable, Identifiable {
     /// tmux's window id, `@` and digits.
     public var id: String
     public var words: String
-    public var button: BoardButton
+    public var button: BoardButton?
+    public var name: BoardButton?
 
-    public init(id: String, words: String, button: BoardButton) {
+    public init(id: String, words: String, button: BoardButton?, name: BoardButton? = nil) {
         self.id = id
         self.words = words
         self.button = button
+        self.name = name
     }
 }
 
@@ -195,7 +203,8 @@ public struct DeskRow: Sendable, Equatable, Identifiable {
     public var open: BoardButton?
     /// The menu's words for that click, "Go to website" or "Open the 1 window not in a tab": the button's help tag.
     public var openWords: String?
-    /// One line per window when the desk has the menu's line per window and more than one window; none otherwise.
+    /// One line per window when the desk has the menu's line per window and more than one window, or when its
+    /// windows can be named and it has more than one; none otherwise.
     public var windowLines: [WindowLine]
     /// The folder and the unusual facts: "~/notes · Kept when it exits".
     public var second: String
@@ -203,10 +212,11 @@ public struct DeskRow: Sendable, Equatable, Identifiable {
     public var detail: [DetailLine]
     /// "Keeps its command running", when the desk has that flag.
     public var facts: [String]
-    /// New window (when open), Rename…, Remove…, with the strip's short titles.
+    /// New window (when open), Name its window… (one window, issue 144), Rename…, Remove…, with the strip's short
+    /// titles.
     public var detailButtons: [BoardButton]
-    /// "Renaming…" or "Removing…" while one of the window's actions runs on it, "Updating…" until the check
-    /// after it lands; nil otherwise. Shown in place of the tab count.
+    /// "Renaming…", "Removing…" or "Naming…" while one of the window's actions runs on it, "Updating…" until the
+    /// check after it lands; nil otherwise. Shown in place of the tab count.
     public var status: String?
     /// A click on the row opens a detail strip with something in it; a new desk's row before its check has none.
     public var hasStrip: Bool { !(detail.isEmpty && facts.isEmpty && windowLines.isEmpty && detailButtons.isEmpty) }
@@ -226,9 +236,11 @@ public struct DeskRow: Sendable, Equatable, Identifiable {
         open = desk.open.map { BoardButton(title: WindowWords.openOrGoTo($0.action), note: $0.note, action: $0.action) }
         openWords = desk.open?.title
         windowLines = desk.windows.compactMap { w in
-            guard let id = w.id, let b = w.button else { return nil }
-            return WindowLine(id: id, words: b.title,
-                              button: BoardButton(title: WindowWords.openOrGoTo(b.action), action: b.action))
+            guard let id = w.id, w.button != nil || w.nameButton != nil else { return nil }
+            let words = w.button?.title ?? (w.name.isEmpty ? "window \(w.index)" : w.name)
+            return WindowLine(id: id, words: words,
+                              button: w.button.map { BoardButton(title: WindowWords.openOrGoTo($0.action), action: $0.action) },
+                              name: w.nameButton)
         }
         if desk.madeByMacMosh {
             var parts = [desk.folder ?? ""]
@@ -268,7 +280,7 @@ public struct DeskRow: Sendable, Equatable, Identifiable {
             }
             open = open.map(off)
             detailButtons = detailButtons.map(off)
-            windowLines = windowLines.map { WindowLine(id: $0.id, words: $0.words, button: off($0.button)) }
+            windowLines = windowLines.map { WindowLine(id: $0.id, words: $0.words, button: $0.button.map(off), name: $0.name.map(off)) }
         }
     }
 
