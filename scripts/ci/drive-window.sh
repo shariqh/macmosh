@@ -882,6 +882,8 @@ forms_sample() {
 window_names_sample() {
     local since v missing want deadline id
     start_app window-forms || return
+    # The same sample as forms_sample: its pictures and results are named apart.
+    sample=window-names
     if ! open_window; then stop_app; return; fi
     sleep 2
 
@@ -951,9 +953,7 @@ window_names_sample() {
     snap typed
     since=$(moment)
     tool keys 36 1 100 > /dev/null
-    want="sample ssh: to=alex@192.168.1.20 batch=yes stdin=closed limit=15s run=~/.macmosh/macmosh-host window-name website @6 'front end'"
-    expect_log "Name sends the exact arguments" "$since" "$want"
-    expect_log "Name writes its log line" "$since" "window action: nameWindow ok"
+    # The row is read before the log, which takes a second or two to read: the sample's check takes 0.8 s.
     if gone_id "form.nameWindow" 6; then
         result PASS "the sheet closes once the window is named" "form.nameWindow gone"
     else
@@ -962,6 +962,9 @@ window_names_sample() {
     v=$(val "desk.website.status")
     result "$([ "$v" = "Updating…" ] && echo PASS || echo DIFFERS)" "the desk's row says Updating… until the check lands" "it reads: ${v:-nothing}"
     snap updating
+    want="sample ssh: to=alex@192.168.1.20 batch=yes stdin=closed limit=15s run=~/.macmosh/macmosh-host window-name website @6 'front end'"
+    expect_log "Name sends the exact arguments" "$since" "$want"
+    expect_log "Name writes its log line" "$since" "window action: nameWindow ok"
     expect_value "the page says what Name did" "page.result" 'Named window 2 of website "front end" on Attic.' 10
     # After the check, the row's list of names and the details show the new name whole.
     deadline=$((SECONDS + 10))

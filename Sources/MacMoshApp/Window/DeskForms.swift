@@ -280,9 +280,11 @@ struct WindowNameSheet: View {
     @State var form: WindowNameForm
     let close: () -> Void
     @State private var failure: String?
-    /// Apple, TextField.init(text:selection:prompt:axis:label:) (macOS 15.0,
-    /// https://developer.apple.com/documentation/swiftui/textfield/init(text:selection:prompt:axis:label:)):
-    /// "Creates a text field with a binding to the current selection"; TextSelection.init(range:) (macOS 15.0,
+    /// Apple, TextField.init(_:text:selection:prompt:axis:) with a title that is a `StringProtocol` (macOS 15.0,
+    /// https://developer.apple.com/documentation/swiftui/textfield/init(_:text:selection:prompt:axis:)-80y12):
+    /// "Creates a text field with a binding to the current selection and a text label generated from a title
+    /// string." (The form with a label closure is not in Xcode 16.4's SDK: the macos-15 runner refused it.)
+    /// TextSelection.init(range:) (macOS 15.0,
     /// https://developer.apple.com/documentation/swiftui/textselection/init(range:)): "Create a single selection
     /// with a given range."
     @State private var selection: TextSelection?
@@ -297,7 +299,7 @@ struct WindowNameSheet: View {
         VStack(alignment: .leading, spacing: 10) {
             Text(verbatim: form.title).font(.headline)
             Text(verbatim: form.label)
-            TextField(text: $form.name, selection: $selection, prompt: Text(verbatim: "")) { Text(verbatim: form.label) }
+            TextField(form.label, text: $form.name, selection: $selection, prompt: Text(verbatim: ""))
                 .labelsHidden()
                 .frame(width: 320)
                 .focused($fieldHasFocus)
