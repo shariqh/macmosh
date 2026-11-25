@@ -18,5 +18,8 @@ public final class QuietInteraction: Interaction, @unchecked Sendable {
 
     public func ask(_ prompt: String) -> String { "" }
 
+    /// End of input, so a question where an empty line means something stops too.
+    public func askOrEnd(_ prompt: String) -> String? { nil }
+
     public func waitForKey(_ prompt: String) {}
 }

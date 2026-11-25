@@ -10,11 +10,16 @@ public protocol Interaction: Sendable {
     /// Prints `prompt` with no line break and returns one line from the terminal, without its
     /// line break. An empty string when there is nothing to read.
     func ask(_ prompt: String) -> String
+    /// Like `ask`, but nil at end of input (Ctrl-D, or standard input closed), for a question where an empty
+    /// line means something, so backing out can't be read as that.
+    func askOrEnd(_ prompt: String) -> String?
     /// Prints `prompt` and waits for any key.
     func waitForKey(_ prompt: String)
 }
 
 extension Interaction {
+    public func askOrEnd(_ prompt: String) -> String? { ask(prompt) }
+
     /// The last line of every command that runs in a terminal tab. On a non-zero code it says the reason
     /// and waits for a key, so the tab doesn't vanish (design 7.2). Returns the code.
     public func finish(_ code: Int32, reason: String?) -> Int32 {
@@ -44,6 +49,11 @@ public struct TerminalInteraction: Interaction {
     public func ask(_ prompt: String) -> String {
         write(prompt)
         return readLine(strippingNewline: true) ?? ""
+    }
+
+    public func askOrEnd(_ prompt: String) -> String? {
+        write(prompt)
+        return readLine(strippingNewline: true)
     }
 
     /// Reads one key with the terminal's line editing and echo off, then puts the terminal back.

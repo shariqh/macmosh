@@ -22,10 +22,11 @@
 # button does not run the menu's action for that window, or a desk whose tab can be found opens a tab
 # instead of going to it. In the "window-forms" sample (step 4) it fails when New desk…, Rename… or Remove… does
 # not open its form, a form does not refuse a taken name, a form's button does not send its exact arguments to
-# the stand-in ssh, or the page does not say what happened. Naming a window (issue 144) fails when a desk's
-# details lack their Name… buttons or Name its window…, the sheet does not open, refuse a name or name its window,
-# Name or Use its program's name does not send its exact arguments, or the row does not show the name after the
-# check. Whether Command-V pastes into a text field is reported, never failed. How a picture looks never fails it.
+# the stand-in ssh, or the page does not say what happened. Whether Command-V pastes into a text field is
+# reported, never failed. How a picture looks never fails it.
+# Naming a window (issue 144) fails when a desk's details lack their Name… buttons or Name its window…, the
+# sheet does not open, refuse a name or name its window, Name or Use its program's name does not send its exact
+# arguments, or the row does not show the name after the check.
 set -uo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)

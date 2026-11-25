@@ -250,11 +250,13 @@ public struct DeskFlow: Sendable {
         throw DeskResult.failure("That wasn't a window's number three times, so MacMosh stopped.")
     }
 
-    /// The window's new name, up to three tries; an empty answer is "after its program". The answer is not trimmed.
+    /// The window's new name, up to three tries; an empty answer is "after its program", and end of input (Ctrl-D,
+    /// stdin closed) changes nothing. The answer is not trimmed.
     private func askWindowName(_ label: String, now current: String, _ ui: Interaction) throws -> WindowNaming {
         let which = current.isEmpty ? label : "\(label) (\(current))"
         for _ in 0..<Self.tries {
-            let answer = ui.ask("Name for \(which), or Enter alone to let it follow its program's name again: ")
+            guard let answer = ui.askOrEnd("Name for \(which), or Enter alone to let it follow its program's name again: ")
+            else { throw DeskResult.failure(DeskFormat.nothingChanged) }
             if answer.isEmpty { return .afterItsProgram }
             if let name = WindowName(answer) { return .named(name) }
             ui.say(WindowName.problem(answer) ?? WindowName.rule)

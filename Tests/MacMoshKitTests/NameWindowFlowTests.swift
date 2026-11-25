@@ -209,6 +209,26 @@ private let closed = "That window has closed.\n"
         #expect(ui.said.last == "Window 2 of website follows its program's name again on Attic.")
     }
 
+    /// End of input (Ctrl-D, or stdin closed) at the name question is not "Enter alone": it changes nothing and
+    /// sends nothing, for a one-window desk (where the name is the only question) and for a given window.
+    @Test func endOfInputAtTheNameChangesNothing() async {
+        let runner = FakeRunner { _ in FakeRunner.ok() }
+        let ui = ScriptedInteraction(answers: [])
+        #expect(await flow(runner).nameWindow(checked(), desk: "blog", window: nil, to: nil, ui: ui) == .failure("Nothing changed."))
+        #expect(ui.asked == ["Name for window 0 (zsh), or Enter alone to let it follow its program's name again: "])
+        let given = ScriptedInteraction(answers: [])
+        #expect(await flow(runner).nameWindow(checked(), desk: "website", window: "@3", to: nil, ui: given) == .failure("Nothing changed."))
+        #expect(runner.calls.isEmpty)
+    }
+
+    /// The window's own quiet stand-in answers no question, so a name left out sends nothing.
+    @Test func aQuietInteractionAtTheNameSendsNothing() async {
+        let runner = FakeRunner { _ in FakeRunner.ok() }
+        let result = await flow(runner, .window).nameWindow(checked(), desk: "website", window: "@3", to: nil, ui: QuietInteraction())
+        #expect(result == .failure("Nothing changed."))
+        #expect(runner.calls.isEmpty)
+    }
+
     /// The window is given: only the name is asked.
     @Test func aGivenWindowIsNotAskedFor() async {
         let runner = FakeRunner { _ in FakeRunner.ok() }
