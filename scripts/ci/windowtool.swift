@@ -17,6 +17,7 @@
 //                                       that identifier (a radio-group Picker): "found x y AXRadioButton" (issue 157)
 //   windowtool <pid> chosen <identifier>    the title of the chosen radio button in it: "chosen <title>", or
 //                                       "chosen none" (issue 157)
+//   windowtool <pid> checked <identifier>   whether that checkbox is ticked: "checked 1" or "checked 0" (issue 163)
 //
 // find, value, text, button, enabled and selected look in the MacMosh window first (its sheets are inside it), then in
 // the app's other windows, where a dialog may be.
@@ -30,7 +31,7 @@ import ApplicationServices
 
 let args = CommandLine.arguments
 guard args.count >= 3, let pid = pid_t(args[1]) else {
-    print("usage: windowtool <pid> windows|front|frame|find|value|text|close|button|enabled|selected|radio|chosen|dump [argument]")
+    print("usage: windowtool <pid> windows|front|frame|find|value|text|close|button|enabled|selected|radio|chosen|checked|dump [argument]")
     exit(2)
 }
 let command = args[2]
@@ -127,6 +128,14 @@ case "enabled":
     let hit = everything().first { text($0.element, "AXIdentifier") == argument }
     if let hit {
         print("enabled \((attribute(hit.element, kAXEnabledAttribute) as? Bool) ?? true)")
+    } else {
+        print("notfound")
+    }
+case "checked":
+    // A checkbox's AXValue is a number, which `label` does not read.
+    let hit = everything().first { text($0.element, "AXIdentifier") == argument }
+    if let hit {
+        print("checked \((attribute(hit.element, kAXValueAttribute) as? NSNumber)?.intValue ?? -1)")
     } else {
         print("notfound")
     }

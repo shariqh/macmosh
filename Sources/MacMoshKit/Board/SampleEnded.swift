@@ -4,7 +4,7 @@
 import Foundation
 import os
 
-/// The `window-ended` sample (main window design, section 8, step 5): the workhorse Attic, Ready, script 0.11.0,
+/// The `window-ended` sample (main window design, section 8, step 5): the workhorse Attic, Ready, script 0.12.0,
 /// whose desks are all open at first. The first click on the window's Check now ends the last shell of recipes,
 /// garden, blog and shop, and closes website, which is permanent; at the same moment a permanent desk called shop,
 /// closed, takes shop's name, so shop is ended with its name taken again. The check after it lists the four under

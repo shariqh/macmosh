@@ -31,6 +31,11 @@
 # sheet does not open, refuse a name or name its window, Name or Use its program's name does not send its exact
 # arguments, or the row does not show the name after the check.
 # The Settings page (issue 157, the "window-settings" sample) fails as settings_sample says.
+# A new desk's first window (issue 163) fails when the New desk form's "Same name as the desk" box is not there and
+# ticked at script 0.12.0, clearing it does not show the field and its line, a bad name is not refused with the
+# rule's sentence, Make desk does not send exactly the window's name (the desk's, its own, or none), or the new
+# desk's row does not show that name after the check; and, in the "window-forms-0.11" sample, when the form shows the
+# line or sends anything about the window to an older script.
 set -uo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -672,6 +677,39 @@ expect_value() {
     return 1
 }
 
+# expect_line <check> <moment> <line>: one of the stand-in's desk-new lines since then is exactly that line, with
+# nothing after it (expect_log only looks for the text inside a line).
+expect_line() {
+    local lines
+    wait_log "$2" " desk-new " 10 > /dev/null
+    sleep 1
+    lines=$(applog "$2" | grep -F "sample ssh: " | grep -F " desk-new " | sed 's/.*sample ssh: /sample ssh: /')
+    if printf '%s\n' "$lines" | grep -qxF -- "$3"; then
+        result PASS "$1" "the log has exactly: $3"
+    else
+        result FAIL "$1" "expected exactly: $3; desk-new lines: $(printf '%s' "$lines" | tr '\n' '|')"
+    fi
+}
+
+# expect_row <check> <desk> <start>: within 10 s the desk's row reads its name, its windows' names and its folder,
+# starting with that text ("recipes, build logs, ").
+expect_row() {
+    local deadline=$((SECONDS + 10)) v=""
+    while [ "$SECONDS" -lt "$deadline" ]; do
+        v=$(val "desk.$2")
+        if [[ "$v" == "$3"* ]]; then
+            result PASS "$1" "desk.$2 reads: $v"
+            return 0
+        fi
+        sleep 0.5
+    done
+    result FAIL "$1" "desk.$2 reads: ${v:-nothing} (expected it to start with: $3)"
+    return 1
+}
+
+# checked <identifier>: "checked 1" when the checkbox is ticked, "checked 0" when clear, else what windowtool said.
+checked() { wax checked "$1" | grep -E '^(checked|notfound)' | tail -n 1; }
+
 # The New desk form, Rename and Remove in the window (main window design, section 8, step 4): the sample
 # "window-forms" is Attic, Ready, with no projects folder saved, whose desks a stand-in ssh changes. It writes
 # each call's exact remote command to the log (`sample ssh: ... run=<command>`) and answers as the script would.
@@ -718,6 +756,15 @@ forms_sample() {
     # A click on a folder names the desk after it.
     click_id "form.folder.garden-planner"
     expect_value "a chosen folder names the desk" "form.name" "garden-planner" 3
+
+    # The first window's line (issue 163): at script 0.12.0 its box is there and ticked at first, with no field.
+    v=$(checked "form.sameAsDesk")
+    result "$([ "$v" = "checked 1" ] && echo PASS || echo FAIL)" "the first window's box is there and ticked at first" "${v:-no answer}"
+    if wax find "form.firstWindowName" | grep -q '^found'; then
+        result FAIL "ticked, the form has no field for the window's own name" "form.firstWindowName is there"
+    else
+        result PASS "ticked, the form has no field for the window's own name" "no form.firstWindowName"
+    fi
 
     # A taken name is refused as it is typed, and Make desk is off.
     clear_field "form.name"
@@ -893,7 +940,8 @@ forms_sample() {
         result DIFFERS "the button says Making… while the desk is made" "form.make reads: ${v:-nothing}"
     fi
     snap making
-    want="sample ssh: to=alex@192.168.1.20 batch=yes stdin=closed limit=15s run=~/.macmosh/macmosh-host desk-new garden-planner '~/Development/garden-planner' --reopen --command '$paste'"
+    # The box is ticked, so the first window gets the desk's name (issue 163).
+    want="sample ssh: to=alex@192.168.1.20 batch=yes stdin=closed limit=15s run=~/.macmosh/macmosh-host desk-new garden-planner '~/Development/garden-planner' --reopen --window-name garden-planner --command '$paste'"
     expect_log "Make desk sends the exact arguments" "$since" "$want"
     expect_log "Make desk writes its log line" "$since" "window action: newDesk ok"
     if gone_id "form.newDesk" 6; then
@@ -914,8 +962,11 @@ forms_sample() {
         result FAIL "once the check lands the new desk's row is the check's" "desk.garden-planner.status reads: ${v:-nothing}"
     fi
     expect_log "Open it in a tab now runs the menu's open for the new desk" "$since" "menu action: tab connect (window)"
+    expect_row "ticked, the new desk's first window has the desk's name" "garden-planner" "garden-planner, garden-planner, "
     sleep 2
     snap after-new-desk
+
+    first_window_forms
 
     # Rename… on api: the field holds the old name; a new one is sent as typed.
     click_id "desk.api" > /dev/null
@@ -992,6 +1043,139 @@ forms_sample() {
     else
         result DIFFERS "the forms set off no menu-open signal" "'menu opened' lines: $v (one is the menu's own)"
     fi
+    stop_app
+}
+
+# The first window's line of the New desk form (issue 163), in the "window-forms" sample after garden-planner was
+# made with the box ticked: the form again on recipes, cleared and empty, with a bad name and with a name of its own,
+# each pictured; Make desk with that name; then a desk with the box clear and the field empty. The stand-in names the
+# window as the script would, and the row shows its name after the check.
+first_window_forms() {
+    local since v help="Left empty, the window is named after the program running in it."
+    if ! click_id "button.newDesk" || ! wait_id "form.folder.recipes" 8; then
+        result FAIL "New desk… opens the form again with its folders" "no form, or no row for recipes"
+        snap no-form-again
+        return
+    fi
+    sleep 0.5
+    click_id "form.folder.recipes"
+    expect_value "a chosen folder names the second desk" "form.name" "recipes" 3
+    # The command field holds the last command sent; emptied, so these desks start a plain shell.
+    clear_field "form.command"
+    v=$(checked "form.sameAsDesk")
+    result "$([ "$v" = "checked 1" ] && echo PASS || echo FAIL)" "a new form has the box ticked again" "${v:-no answer}"
+    snap first-window-ticked
+
+    # Clear: the field and its grey line show, and Make desk stays on.
+    click_id "form.sameAsDesk"
+    if ! wait_id "form.firstWindowName" 3; then
+        result FAIL "clearing the box shows the field for the window's own name" "no form.firstWindowName; the box: $(checked "form.sameAsDesk")"
+        snap no-window-field
+        tool keys 53 1 100 > /dev/null
+        return
+    fi
+    result PASS "clearing the box shows the field for the window's own name" "form.firstWindowName found; the box: $(checked "form.sameAsDesk")"
+    expect_value "clear and empty, the line says tmux names the window" "form.firstWindowName.help" "$help" 3
+    v=$(wax enabled "form.make" | grep '^enabled' | tail -n 1)
+    result "$([ "$v" = "enabled true" ] && echo PASS || echo FAIL)" "Make desk is on with the box clear and the field empty" "${v:-no answer}"
+    snap first-window-clear-empty
+
+    # A name that breaks the rule: the rule's sentence, and Make desk is off.
+    click_id "form.firstWindowName" > /dev/null
+    sleep 0.4
+    tool type "a#b" > /dev/null
+    expect_value "a bad window name shows the rule's sentence" "form.firstWindowName.help" \
+        "A window name uses letters, digits, spaces, -, _ and full stops only." 3
+    v=$(wax enabled "form.make" | grep '^enabled' | tail -n 1)
+    result "$([ "$v" = "enabled false" ] && echo PASS || echo FAIL)" "Make desk is off while the window's name is bad" "${v:-no answer}"
+    snap first-window-bad-name
+
+    # A name of its own, with a space.
+    clear_field "form.firstWindowName"
+    tool type "build logs" > /dev/null
+    expect_value "a window name with a space reaches the field" "form.firstWindowName" "build logs" 3
+    expect_value "a good window name brings the grey line back" "form.firstWindowName.help" "$help" 3
+    v=$(wax enabled "form.make" | grep '^enabled' | tail -n 1)
+    result "$([ "$v" = "enabled true" ] && echo PASS || echo FAIL)" "Make desk is on with a window name of its own" "${v:-no answer}"
+    snap first-window-named
+    since=$(moment)
+    tool keys 36 1 100 > /dev/null
+    expect_line "Make desk sends the window's own name" "$since" \
+        "sample ssh: to=alex@192.168.1.20 batch=yes stdin=closed limit=15s run=~/.macmosh/macmosh-host desk-new recipes '~/Development/recipes' --reopen --window-name 'build logs'"
+    if gone_id "form.newDesk" 6; then
+        result PASS "the form closes once recipes is made" "form.newDesk gone"
+    else
+        result FAIL "the form closes once recipes is made" "the sheet is still there"
+        snap form-stays
+        tool keys 53 1 100 > /dev/null
+        return
+    fi
+    expect_value "the result line is unchanged with a window name" "page.result" "Created the desk recipes on Attic." 10
+    expect_row "after the check the new desk's row shows the window's own name" "recipes" "recipes, build logs, "
+    sleep 1
+    snap after-named-window
+
+    # Clear and empty: nothing about the window is sent, and tmux names it after its program.
+    if ! click_id "button.newDesk" || ! wait_id "form.newDesk" 6; then
+        result FAIL "New desk… opens the form a third time" "no form"
+        return
+    fi
+    sleep 1
+    click_id "form.path" > /dev/null
+    sleep 0.4
+    # shellcheck disable=SC2088 # the text typed into the field, a tilde and all
+    tool type "~/Development/shop" > /dev/null
+    expect_value "a typed path names the third desk" "form.name" "shop" 3
+    click_id "form.sameAsDesk"
+    wait_id "form.firstWindowName" 3 || true
+    v=$(checked "form.sameAsDesk")
+    result "$([ "$v" = "checked 0" ] && echo PASS || echo FAIL)" "the box is clear for the third desk" "${v:-no answer}"
+    snap first-window-clear-before-make
+    since=$(moment)
+    tool keys 36 1 100 > /dev/null
+    expect_line "clear and empty, Make desk sends nothing about the window" "$since" \
+        "sample ssh: to=alex@192.168.1.20 batch=yes stdin=closed limit=15s run=~/.macmosh/macmosh-host desk-new shop '~/Development/shop' --reopen"
+    gone_id "form.newDesk" 6 || tool keys 53 1 100 > /dev/null
+    expect_row "after the check the window is named after its program" "shop" "shop, zsh, "
+    sleep 1
+    snap after-unnamed-window
+}
+
+# The "window-forms-0.11" sample (issue 163): the forms sample with a workhorse script older than 0.12.0. Its New desk
+# form has no first-window line, and Make desk sends nothing about the window; the stand-in refuses --window-name as
+# a 0.11.0 script does.
+forms_older_script() {
+    local since v
+    start_app window-forms-0.11 || return
+    if ! open_window; then stop_app; return; fi
+    sleep 2
+    if ! click_id "button.newDesk" || ! wait_id "form.newDesk" 6; then
+        result FAIL "New desk… opens the form with an older script" "no New desk sheet"
+        snap no-form
+        stop_app
+        return
+    fi
+    sleep 1
+    click_id "form.path" > /dev/null
+    sleep 0.4
+    # shellcheck disable=SC2088 # the text typed into the field, a tilde and all
+    tool type "~/Development/shop" > /dev/null
+    expect_value "a typed path names the desk" "form.name" "shop" 3
+    v=$(checked "form.sameAsDesk")
+    if [ "$v" = "notfound" ] && ! wax find "form.firstWindowName" | grep -q '^found'; then
+        result PASS "with an older script the form has no first-window line" "no form.sameAsDesk, no form.firstWindowName"
+    else
+        result FAIL "with an older script the form has no first-window line" "form.sameAsDesk: ${v:-no answer}"
+    fi
+    snap older-script-form
+    since=$(moment)
+    tool keys 36 1 100 > /dev/null
+    expect_line "with an older script Make desk sends nothing about the window" "$since" \
+        "sample ssh: to=alex@192.168.1.20 batch=yes stdin=closed limit=15s run=~/.macmosh/macmosh-host desk-new shop '~/Development/shop' --reopen"
+    expect_value "the older script makes the desk" "page.result" "Created the desk shop on Attic." 10
+    expect_row "with an older script tmux names the window" "shop" "shop, zsh, "
+    sleep 1
+    snap older-script-after
     stop_app
 }
 
@@ -1794,6 +1978,7 @@ tool preflight > /dev/null
 lim 10 "$TOOL" move 600 500 > /dev/null
 
 forms_sample
+forms_older_script
 window_keys
 window_names_sample
 six_desks

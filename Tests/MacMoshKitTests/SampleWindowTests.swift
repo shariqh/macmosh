@@ -141,7 +141,7 @@ import Testing
     @Test func theStandInNamesWindowsAsTheScriptWould() throws {
         let desks = SampleDesks()
         var status = try HostStatus.parse(desks.report())
-        #expect(status.scriptVersion == "0.11.0")
+        #expect(status.scriptVersion == "0.12.0")
         let website = try #require(status.desks.first { $0.name.value == "website" })
         #expect(website.windows.map(\.name) == ["claude", "zsh", "vim"])
         let ids = website.windows.compactMap(\.id)
@@ -164,6 +164,42 @@ import Testing
         status = try HostStatus.parse(desks.report())
         let made = try #require(status.desks.first { $0.name.value == "garden-planner" }?.windows.first?.id)
         #expect(!ids.contains(made) && made != other)
+    }
+
+    /// desk-new --window-name as the script 0.12.0 answers it (issue 163): the first window has the name; a name that
+    /// is neither the desk's own nor keeps the rule is exit 6 and nothing is made; without it the window is named after
+    /// its program.
+    @Test func theStandInNamesTheFirstWindowAsTheScriptWould() throws {
+        let desks = SampleDesks()
+        #expect(desks.run(["desk-new", "garden-planner", "~/Development/garden-planner", "--reopen", "--window-name",
+                           "garden-planner", "--command", "claude --continue"]).0 == 0)
+        #expect(desks.run(["desk-new", "recipes", "~/Development/recipes", "--reopen", "--window-name", "build logs"]).0 == 0)
+        #expect(desks.run(["desk-new", "shop", "~/Development/shop", "--reopen"]).0 == 0)
+        let refused = desks.run(["desk-new", "garden", "~/Development/garden", "--reopen", "--window-name", "a#b"])
+        #expect(refused.0 == 6)
+        #expect(refused.1 == "macmosh-host: a window name is 1 to 32 characters, each a letter, a digit, a space, -, _ or a full stop, and it can't start or end with a space\n")
+        let status = try HostStatus.parse(desks.report())
+        #expect(status.desks.first { $0.name.value == "garden-planner" }?.windows.map(\.name) == ["garden-planner"])
+        #expect(status.desks.first { $0.name.value == "recipes" }?.windows.map(\.name) == ["build logs"])
+        #expect(status.desks.first { $0.name.value == "shop" }?.windows.map(\.name) == ["zsh"])
+        #expect(!status.desks.contains { $0.name.value == "garden" })
+    }
+
+    /// The forms sample with an older script (issue 163): its report says 0.11.0, so the form has no first-window line.
+    @Test func theOlderScriptFormsSampleShowsNoFirstWindowLine() throws {
+        let run = try #require(SampleRun.named("window-forms-0.11"))
+        #expect(run.startedLine == "sample menu: window-forms-0.11")
+        #expect(run.workhorses.map(\.id) == ["attic"])
+        let check = SampleForms.result(SampleForms.attic, desks: SampleForms.olderDesks)
+        #expect(check.status?.scriptVersion == "0.11.0")
+        let form = NewDeskForm(check: check, saved: SampleForms.attic)
+        #expect(!form.canNameFirstWindow)
+        #expect(NewDeskForm(check: SampleForms.result(SampleForms.attic), saved: SampleForms.attic).canNameFirstWindow)
+        // Its stand-in refuses the option, as a 0.11.0 script does, so a form that sent it would fail in CI.
+        let desks = SampleDesks(version: "0.11.0")
+        let old = desks.run(["desk-new", "shop", "~/Development/shop", "--reopen", "--window-name", "shop"])
+        #expect(old.0 == 2 && old.1 == "macmosh-host: unknown option --window-name\n")
+        #expect(desks.run(["desk-new", "shop", "~/Development/shop", "--reopen"]).0 == 0)
     }
 
     @Test func theStandInsLineHasTheExactRemoteCommand() {

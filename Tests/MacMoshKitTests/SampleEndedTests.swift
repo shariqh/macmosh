@@ -18,7 +18,7 @@ import Testing
     @Test func checkNowEndsTheDesksOnce() throws {
         let desks = SampleEnded.makeDesks()
         var status = try HostStatus.parse(desks.report())
-        #expect(status.scriptVersion == "0.11.0")
+        #expect(status.scriptVersion == "0.12.0")
         #expect(status.desks.map(\.name.value) == ["api", "blog", "garden", "recipes", "shop", "website"])
         let recipes = try #require(status.definitions.first { $0.name.value == "recipes" })
         #expect(recipes.folder == "/Users/alex/Development/my recipes" && recipes.command == #"claude --continue "fix it" $HOME"#)

@@ -21,6 +21,9 @@ public enum SampleWindow: String, CaseIterable, Sendable {
     /// Step 4: Attic, Ready, with no projects folder saved, whose desks the window's New desk, Rename and
     /// Remove change through a stand-in ssh (`SampleForms`).
     case forms = "window-forms"
+    /// Issue 163: the `window-forms` sample with a workhorse script older than 0.12.0, so the New desk form shows no
+    /// first-window line and sends nothing about the window (`SampleForms.olderDesks`).
+    case formsOlderScript = "window-forms-0.11"
     /// Step 5: Attic, Ready, whose desks end at the first click on Check now, so the window lists them under
     /// Ended (`SampleEnded`).
     case ended = "window-ended"
@@ -31,7 +34,7 @@ public enum SampleWindow: String, CaseIterable, Sendable {
     var workhorses: [Workhorse] {
         switch self {
         case .unreadableList: return []
-        case .forms, .ended: return [SampleForms.attic]
+        case .forms, .formsOlderScript, .ended: return [SampleForms.attic]
         case .settings: return [SampleSettings.attic, SampleSettings.spare]
         default: return [SampleMenu.main]
         }
@@ -41,7 +44,7 @@ public enum SampleWindow: String, CaseIterable, Sendable {
     /// its own saved list, so a projects folder saved from the form shows.
     func load() throws -> [Workhorse] {
         if self == .unreadableList { throw StoreError.unreadable("workhorses.json: not JSON") }
-        if self == .forms { return try WorkhorseStore(paths: SampleForms.paths).load() }
+        if self == .forms || self == .formsOlderScript { return try WorkhorseStore(paths: SampleForms.paths).load() }
         if self == .settings { return try WorkhorseStore(paths: SampleSettings.paths).load() }
         return workhorses
     }
@@ -62,6 +65,8 @@ public enum SampleWindow: String, CaseIterable, Sendable {
             return []
         case .forms:
             return [.checked(SampleForms.result(SampleForms.attic))]
+        case .formsOlderScript:
+            return [.checked(SampleForms.result(SampleForms.attic, desks: SampleForms.olderDesks))]
         case .ended:
             return [.checked(SampleEnded.result(SampleForms.attic))]
         case .settings:
@@ -83,6 +88,7 @@ public enum SampleWindow: String, CaseIterable, Sendable {
     /// The real refresher, with the saved list and the checks replaced.
     @MainActor public func refresher() -> MenuRefresher {
         if self == .forms { return SampleForms.refresher() }
+        if self == .formsOlderScript { return SampleForms.refresher(desks: SampleForms.olderDesks) }
         if self == .ended { return SampleEnded.refresher() }
         if self == .settings { return SampleSettings.refresher() }
         let sample = self
@@ -132,7 +138,7 @@ public enum SampleWindow: String, CaseIterable, Sendable {
             let paths = window == .settings ? SampleSettings.paths : SampleForms.paths
             let settingsPaths: Paths
             switch window {
-            case .settings, .forms: settingsPaths = paths
+            case .settings, .forms, .formsOlderScript: settingsPaths = paths
             case .unreadableList: settingsPaths = SampleSettings.paths(forSample: window.rawValue, list: nil)
             default: settingsPaths = SampleSettings.paths(forSample: window.rawValue, list: window.workhorses)
             }
@@ -147,6 +153,7 @@ public enum SampleWindow: String, CaseIterable, Sendable {
     private static func ssh(_ window: SampleWindow) -> CommandRunner {
         switch window {
         case .forms: return SampleSSH()
+        case .formsOlderScript: return SampleSSH(desks: SampleForms.olderDesks)
         case .ended: return SampleSSH(desks: SampleEnded.desks)
         default: return SampleNoCommands()
         }
