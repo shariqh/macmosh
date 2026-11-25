@@ -259,6 +259,9 @@ Design: `superpowers/specs/2026-11-18-macmosh-v1-design.md`. Plan: `superpowers/
 | 00:48 | GitHub | agent | Filed the leftovers of the ended-desks review (issue #156) | Six small things. One of them: nothing says what "keep it" means before the click. |
 | 00:49 | Agent Inbox | agent | Widened the rollout question to all three | One swap of the app on the Air now brings paste, window names and ended desks. The narrower choice, paste and window names only, stays as an option. Both builds are made and signed. |
 | 00:50 | MBP | agent | Started main-window step 6, the Settings page (issue #157) | The terminal choice and each workhorse's name, connection, typing prediction, projects folder and ssh key file, in the window. It is the last step the approved design asks for. |
+| 04:12 | MBP | agents | Merged main-window step 6, the Settings page (PR #159) | The sidebar gains `Settings`: this Mac's terminal, and each workhorse's name, connection, typing prediction, projects folder and ssh key file. A choice is saved on the click and a text field on Return or on leaving it, with the same checks as `macmosh set`. The review found six things, all fixed before the merge. After a Connection change a desk's window lines followed the old connection until the next check, so the next tab could fail. The line for Never, "Never waits for the workhorse every time", read as its opposite. A value refused as the page was left lost its red line. The page did not follow changes made elsewhere, its own Remove button included. Tabbing through a field could write back an old value over one set in a terminal. A key file written as `~user/…` was refused with an untrue sentence. The writer's report and the design also said that closing the window saves typed text; the logs of five runs showed the save comes when the window is opened again, and all three places were corrected. Steps 1 to 6 of the approved design are now all merged. |
+| 04:14 | GitHub | agent | Filed the leftovers of the Settings page review (issue #160) | Ten small things. Four are wording choices for Shariq, for example that nothing on the page says changes save themselves. |
+| 04:19 | Agent Inbox | agent | Widened the rollout question to all four | One swap of the app on the Air now brings paste, window names, ended desks and the Settings page. The narrower choice is now everything but the Settings page. The builds are made and signed. The Air is still out of reach. |
 
 ## Shot list (video)
 
@@ -266,6 +269,7 @@ Design: `superpowers/specs/2026-11-18-macmosh-v1-design.md`. Plan: `superpowers/
 - "Paste did nothing": an app with no menu bar of its own, and a CI job that pressed Command-V to find out before he did.
 - The guess that was wrong: "the app has no Edit menu". It had one, and its keys never fired.
 - "i'm always losing tabs": a list of desks that just ended, and the reviewer who saw that "ended about 07:13" could be eight hours wrong.
+- "Closing the window saves it": written in three places, and wrong. The logs of five runs showed the save happening when the window was opened again.
 - "it creates a duplicate session": a window and a menu built side by side, and the window never learned the menu's rules.
 - The agent makes a desk for itself: tmux inside tmux, and zsh reading `=macmosh` as the name of a command.
 - "desktop app in flight?": thirteen agents on one script change, a menu redesigned in 14 minutes, and a load average of 110 on the Mac that was also doing his real work.
