@@ -167,6 +167,9 @@ public struct EndedDesk: Sendable, Equatable {
     public var keep: Bool
     /// When a check first found it gone.
     public var endedAt: Date
+    /// When a check last found it open; nil when not known. Far from `endedAt` (the Mac asleep, the workhorse
+    /// locked), the row says it ended between the two.
+    public var lastSeenAt: Date?
     /// Why the last Start again on it didn't work, in one line; nil when none failed.
     public var problem: String?
     /// Set by `BoardModel.build`: the folder shown the short way.
@@ -177,13 +180,15 @@ public struct EndedDesk: Sendable, Equatable {
     /// ("Attic already has a desk called recipes."); nil otherwise.
     public var taken: String?
 
-    public init(name: String, folder: String, command: String?, reopen: Bool, keep: Bool, endedAt: Date) {
+    public init(name: String, folder: String, command: String?, reopen: Bool, keep: Bool, endedAt: Date,
+                lastSeenAt: Date? = nil) {
         self.name = name
         self.folder = folder
         self.command = command
         self.reopen = reopen
         self.keep = keep
         self.endedAt = endedAt
+        self.lastSeenAt = lastSeenAt
         self.problem = nil
         self.shownFolder = folder
         self.buttons = []

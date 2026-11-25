@@ -47,13 +47,15 @@ import Testing
     }
 
     /// Through the sample's own refresher: the first checks list nothing; after the stand-in's shells end, the next
-    /// check lists the four ended desks, and the board marks shop as taken.
+    /// check lists garden (no reopen), and the one after it the four ended desks, and the board marks shop as taken.
     @Test func itsRefresherListsTheEndedDesks() async throws {
         let desks = SampleEnded.makeDesks()
         let r = SampleEnded.refresher(desks: desks, checkTakes: .zero)
         await r.refresh()
         #expect(r.ended.isEmpty)
         desks.endShells()
+        await r.refresh()
+        #expect(r.ended["attic"]?.map(\.name) == ["garden"])
         await r.refresh()
         #expect(r.ended["attic"]?.map(\.name) == ["blog", "garden", "recipes", "shop"])
         let board = BoardModel.build(latest: r.latest, lastReady: r.lastReady, checking: [], order: [SampleForms.attic],

@@ -99,6 +99,7 @@ private func api(open: Bool = true) -> D { D(name: "api", open: open, folder: "/
         var t = EndedDeskTracker()
         t.feed(try ready([api()], at: 0))
         t.feed(try ready([api(open: false)], at: 1))
+        t.feed(try ready([api(open: false)], at: 2))   // with reopen: one more check
         #expect(t.ended["attic"]?.first?.command == nil)
         #expect(t.ended["attic"]?.first?.reopen == true)
     }
@@ -151,6 +152,7 @@ private func api(open: Bool = true) -> D { D(name: "api", open: open, folder: "/
         let after = try report([api(), gone])
         #expect(after.desks.map(\.name.value) == ["api"])
         t.feed(try ready([api(), gone], at: 1))
+        t.feed(try ready([api(), gone], at: 2))   // with reopen: one more check
         #expect(t.names() == ["website"])
     }
 
@@ -242,7 +244,8 @@ private func api(open: Bool = true) -> D { D(name: "api", open: open, folder: "/
         t.feed(try ready([api(), recipes()], at: 0))
         t.expectGone(workhorse: "attic", desk: "recipes")
         t.stopExpecting(workhorse: "attic", desk: "recipes")   // the remove failed: nothing was removed
-        t.feed(try ready([api()], at: 1))
+        t.feed(try ready([api(), recipes()], at: 1))   // the mark goes at this Ready check
+        t.feed(try ready([api()], at: 2))
         #expect(t.names() == ["recipes"])
     }
 
@@ -317,6 +320,69 @@ private func api(open: Bool = true) -> D { D(name: "api", open: open, folder: "/
         #expect(t.ended["attic"]?.first { $0.name == "api" }?.problem == nil)
         t.forget(workhorse: "attic", desk: "blog")
         #expect(t.names() == ["api"])
+    }
+
+    /// A long gap between two Ready checks (the Mac asleep overnight, the workhorse locked): the desk ended
+    /// somewhere in it, so the entry keeps when it was last seen open as well as when it was first missed.
+    @Test func aLongGapKeepsWhenTheDeskWasLastSeenOpen() throws {
+        var t = EndedDeskTracker()
+        t.feed(.sample(.ready(signIns: true), workhorse: attic, status: try report([api(), recipes()]),
+                       checkedAt: utcDate(2027, 1, 14, 23, 2)))
+        t.feed(.sample(.locked, workhorse: attic, status: nil, checkedAt: utcDate(2027, 1, 14, 23, 30)))
+        t.feed(.sample(.ready(signIns: true), workhorse: attic, status: try report([api()]),
+                       checkedAt: utcDate(2027, 1, 15, 7, 13)))
+        let e = try #require(t.ended["attic"]?.first)
+        #expect(e.lastSeenAt == utcDate(2027, 1, 14, 23, 2))
+        #expect(e.endedAt == utcDate(2027, 1, 15, 7, 13))
+    }
+
+    /// A restart between two Ready checks with no other check between them: the first Ready check after it can
+    /// land while the agent is still opening the desks with reopen one by one. A missing desk whose definition is
+    /// still there with reopen gets one more Ready check, gap or not.
+    @Test func aDeskWithReopenGetsOneMoreCheckEvenWithoutAGap() throws {
+        var t = EndedDeskTracker()
+        t.feed(try ready([api(), recipes()], at: 0))
+        t.feed(try ready([api(open: false), recipes()], at: 1))
+        #expect(t.ended.isEmpty)
+        // Still not open at the next one: listed, from the check that first missed it.
+        t.feed(try ready([api(open: false), recipes()], at: 2))
+        #expect(t.names() == ["api"])
+        #expect(t.ended["attic"]?.first?.endedAt == utcDate(2027, 1, 15, 15, 1))
+        #expect(t.ended["attic"]?.first?.lastSeenAt == utcDate(2027, 1, 15, 15, 0))
+        // Back by the next one: never listed.
+        var u = EndedDeskTracker()
+        u.feed(try ready([api(), recipes()], at: 0))
+        u.feed(try ready([api(open: false), recipes()], at: 1))
+        u.feed(try ready([api(), recipes()], at: 2))
+        u.feed(try ready([api(), recipes()], at: 3))
+        #expect(u.ended.isEmpty)
+    }
+
+    /// The window removed recipes, and the check after the call was Locked: that check compared nothing, so
+    /// taking the mark back then must not let the next Ready check list the desk.
+    @Test func aMarkLastsUntilAReadyCheckAfterTheCall() throws {
+        var t = EndedDeskTracker()
+        t.feed(try ready([api(), recipes()], at: 0))
+        t.expectGone(workhorse: "attic", desk: "recipes")
+        t.feed(other(.locked, at: 1))
+        t.stopExpecting(workhorse: "attic", desk: "recipes")
+        t.feed(try ready([api()], at: 2))
+        #expect(t.ended.isEmpty)
+        // Taken back for good after that Ready check: a desk of that name made again and ended is listed.
+        t.feed(try ready([api(), recipes()], at: 3))
+        t.feed(try ready([api()], at: 4))
+        #expect(t.names() == ["recipes"])
+    }
+
+    /// The same when the check after the call never finished in time (`.stillChecking`).
+    @Test func aMarkLastsPastACheckThatNeverFinished() throws {
+        var t = EndedDeskTracker()
+        t.feed(try ready([api(), recipes()], at: 0))
+        t.expectGone(workhorse: "attic", desk: "recipes")
+        t.take([.stillChecking(attic)], waiting: [], onList: ["attic", "spare"])
+        t.stopExpecting(workhorse: "attic", desk: "recipes")
+        t.feed(try ready([api()], at: 2))
+        #expect(t.ended.isEmpty)
     }
 
     @Test func aWorkhorseOffTheListIsForgotten() throws {

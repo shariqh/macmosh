@@ -1244,8 +1244,21 @@ ended_sample() {
     fi
     snap at-start
 
-    # Check now: the stand-in's shells end, and the check after it lists four ended desks.
+    # Check now: the stand-in's shells end. The check after it lists garden, which has no reopen; the others keep
+    # their reopen lines, so they get one more check (they may be on their way back after a restart). A second
+    # Check now lists them. A background check landing in between can list them early, so that is DIFFERS.
     since=$(moment)
+    click_id "button.checkNow" > /dev/null
+    if wait_id "ended.garden" 10; then
+        if wax find "ended.recipes" | grep -q '^found'; then
+            result DIFFERS "a desk with reopen waits one more check" "ended.recipes already there (a background check may have landed)"
+        else
+            result PASS "a desk with reopen waits one more check" "ended.garden there, no ended.recipes yet"
+        fi
+    else
+        result FAIL "a desk without reopen shows under Ended at the next check" "no ended.garden within 10 s of Check now"
+    fi
+    sleep 1
     click_id "button.checkNow" > /dev/null
     if wait_id "ended.recipes" 10; then
         result PASS "a desk whose last shell exited shows under Ended" "ended.recipes found"

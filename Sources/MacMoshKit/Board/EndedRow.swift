@@ -9,7 +9,7 @@ import Foundation
 public struct EndedRow: Sendable, Equatable, Identifiable {
     public var id: String { name }
     public var name: String
-    /// "ended about 15:10", with the day when it was not today.
+    /// "ended about 15:10", with the day when it was not today, or "ended between 23:02 and 07:13" after a long gap.
     public var when: String
     /// The folder the short way, then " · started with <command>" when it had one. One line: a long command is cut
     /// on screen by the view, never in what Start again sends.
@@ -34,7 +34,7 @@ public struct EndedRow: Sendable, Equatable, Identifiable {
     public init(_ desk: EndedDesk, now: Date, timeZone: TimeZone, activity: WindowActivity = WindowActivity(),
                 canKeep: Bool = true) {
         name = desk.name
-        when = Self.when(desk.endedAt, now: now, timeZone: timeZone)
+        when = Self.when(desk.endedAt, lastSeen: desk.lastSeenAt, now: now, timeZone: timeZone)
         second = Self.second(folder: desk.shownFolder, command: desk.command)
         note = desk.taken ?? desk.problem
         let running = activity.busy[desk.name]
@@ -54,26 +54,43 @@ public struct EndedRow: Sendable, Equatable, Identifiable {
         }
     }
 
+    /// Longer than the slowest poll (5 minutes) and a little: the desk ended somewhere between the last check that
+    /// found it open and the one that missed it, and the row says so.
+    public static let longGap: TimeInterval = 6 * 60
+
     /// "ended about 15:10" today, "ended yesterday about 15:10", "ended on 3 Jan about 15:10", and with the year
-    /// when it is not this one. Times in `timeZone`.
-    public static func when(_ date: Date, now: Date, timeZone: TimeZone) -> String {
+    /// when it is not this one. When `lastSeen` (the last check that found it open) is more than `longGap` before
+    /// `date` (the check that missed it): "ended between 23:02 and 07:13", each time with its day when it was not
+    /// today ("ended between yesterday 23:02 and 07:13"). Times in `timeZone`.
+    public static func when(_ date: Date, lastSeen: Date? = nil, now: Date, timeZone: TimeZone) -> String {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = timeZone
-        func format(_ pattern: String) -> String {
+        func format(_ d: Date, _ pattern: String) -> String {
             let f = DateFormatter()
             f.locale = Locale(identifier: "en_US_POSIX")
             f.timeZone = timeZone
             f.dateFormat = pattern
-            return f.string(from: date)
+            return f.string(from: d)
         }
-        let time = "about " + format("HH:mm")
-        if calendar.isDate(date, inSameDayAs: now) || date > now { return "ended " + time }
-        if let before = calendar.date(byAdding: .day, value: -1, to: now), calendar.isDate(date, inSameDayAs: before) {
-            return "ended yesterday " + time
+        /// nil today, "yesterday", or "3 Jan" (with the year when it is not this one).
+        func day(_ d: Date) -> String? {
+            if calendar.isDate(d, inSameDayAs: now) || d > now { return nil }
+            if let before = calendar.date(byAdding: .day, value: -1, to: now), calendar.isDate(d, inSameDayAs: before) {
+                return "yesterday"
+            }
+            return calendar.component(.year, from: d) == calendar.component(.year, from: now)
+                ? format(d, "d MMM") : format(d, "d MMM yyyy")
         }
-        let day = calendar.component(.year, from: date) == calendar.component(.year, from: now)
-            ? format("d MMM") : format("d MMM yyyy")
-        return "ended on \(day) \(time)"
+        if let lastSeen, date.timeIntervalSince(lastSeen) > longGap {
+            let both = [lastSeen, date].map { d in [day(d), format(d, "HH:mm")].compactMap { $0 }.joined(separator: " ") }
+            return "ended between \(both[0]) and \(both[1])"
+        }
+        let time = "about " + format(date, "HH:mm")
+        switch day(date) {
+        case nil: return "ended " + time
+        case "yesterday": return "ended yesterday " + time
+        case let d?: return "ended on \(d) \(time)"
+        }
     }
 
     /// "~/Development/recipes · started with claude", or the folder alone.

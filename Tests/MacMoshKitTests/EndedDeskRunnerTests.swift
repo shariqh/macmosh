@@ -53,7 +53,8 @@ private final class Desks: @unchecked Sendable {
 }
 
 /// Attic saved in a temporary store, a refresher whose checks read `desks`, and the runner. Its first check sees
-/// recipes, garden and blog open; its second, those three gone, so they are ended.
+/// recipes, garden and blog open; its second, those three gone, and its third the same, so they are ended (garden
+/// and blog have reopen, so they count one check later).
 @MainActor private struct Rig {
     let store: WorkhorseStore
     let desks: Desks
@@ -80,6 +81,7 @@ private final class Desks: @unchecked Sendable {
                                     log: { lines.add($0) })
         await refresher.refresh()
         desks.close(["recipes", "garden", "blog"])
+        await refresher.refresh()
         await refresher.refresh()
     }
 
@@ -337,6 +339,7 @@ private func ok() -> FakeRunner { FakeRunner { _ in FakeRunner.ok() } }
         // Its last shell exits later: it is listed, as the failed removal left no mark.
         rig.desks.close(["blog"])
         await rig.refresher.refresh()
+        await rig.refresher.refresh()   // blog has reopen: one more check
         #expect(rig.ended.contains("blog"))
     }
 }

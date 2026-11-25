@@ -50,6 +50,23 @@ private func enabled(_ row: EndedRow) -> [Bool] { row.buttons.map(\.isEnabled) }
         #expect(EndedRow.when(utcDate(2027, 1, 15, 3, 0), now: formatNow, timeZone: tokyo) == "ended yesterday about 12:00")
     }
 
+    /// When the desk was last seen open long before the check that missed it (the Mac asleep, the workhorse
+    /// locked), the row says between which two times it ended, not a time that may be hours off.
+    @Test func aLongGapSaysBetweenWhichTimes() throws {
+        let at = { (seen: Date, missed: Date) in EndedRow.when(missed, lastSeen: seen, now: formatNow, timeZone: formatZone) }
+        #expect(at(utcDate(2027, 1, 15, 7, 2), utcDate(2027, 1, 15, 15, 13)) == "ended between 07:02 and 15:13")
+        #expect(at(utcDate(2027, 1, 14, 23, 2), utcDate(2027, 1, 15, 7, 13)) == "ended between yesterday 23:02 and 07:13")
+        #expect(at(utcDate(2027, 1, 3, 23, 2), utcDate(2027, 1, 14, 7, 13))
+                == "ended between 3 Jan 23:02 and yesterday 07:13")
+        // A gap no longer than the slowest poll (5 minutes) and a little: "about" the check that missed it.
+        #expect(at(utcDate(2027, 1, 15, 15, 7), utcDate(2027, 1, 15, 15, 13)) == "ended about 15:13")
+        #expect(EndedRow.when(utcDate(2027, 1, 15, 15, 13), now: formatNow, timeZone: formatZone) == "ended about 15:13")
+        var desk = ended("recipes", at: utcDate(2027, 1, 15, 7, 13))
+        desk.lastSeenAt = utcDate(2027, 1, 14, 23, 2)
+        let row = try #require(try page([desk]).ended.first)
+        #expect(row.when == "ended between yesterday 23:02 and 07:13")
+    }
+
     @Test func noCommandIsTheFolderAlone() throws {
         let row = try #require(try page([ended("blog", folder: "/Users/alex/Development/blog", command: nil)]).ended.first)
         #expect(row.second == "~/Development/blog")

@@ -268,7 +268,7 @@ public final class WindowActionRunner: ObservableObject {
     /// entry stays until a check shows the desk open.
     public func startAgain(_ id: String, desk: String, keepIt: Bool) async -> WindowActionResult {
         if let refused = startRefused(id, desk) { return refused }
-        guard let check = refresher.latest[id] else { return .failed(Self.noCheck(id)) }
+        guard let check = refresher.latest[id] else { return .failed(Self.noCheck(refresher.lastReady[id]?.workhorse.name ?? id)) }
         let w = check.workhorse
         guard let entry = refresher.ended[id]?.first(where: { $0.name == desk }), let name = DeskName(desk) else {
             return .failed("\(desk) is no longer among the ended desks of \(w.name).")
