@@ -16,6 +16,10 @@ public enum SettingField: String, Sendable, Equatable, CaseIterable {
         case .keyFile: return "identity"
         }
     }
+
+    /// Whether a save asks for one ordinary check: the connection and the terminal decide whether a desk shows one
+    /// line per window (`WindowLinesGate`), which the window and the menu take from the last check.
+    public var asksForCheck: Bool { self == .connection || self == .terminal }
 }
 
 /// The grey line under a setting after a change: "Saved." and what uses it next, or why nothing was saved.
@@ -112,7 +116,7 @@ public enum SettingsWords {
         switch p {
         case .adaptive: what = "Adaptive shows it on slow links and through network glitches."
         case .always: what = "Always shows it on fast links too, once mosh is confident."
-        case .never: what = "Never waits for the workhorse every time."
+        case .never: what = "With Never, you see what you type only after the workhorse answers."
         case .experimental: what = "Experimental shows it even when it may be wrong."
         }
         return "Mosh can show what you type before the workhorse answers. \(what) Only Mosh uses this."
@@ -178,11 +182,27 @@ public enum SettingsRules {
         }
     }
 
+    /// Whether text typed in a field is what the field showed (`shown`), compared as `plan` compares it with what is
+    /// stored: the same after trimming, and for the key file, empty and `default` alike. Then it is no change.
+    public static func sameAsShown(_ field: SettingField, typed: String, shown: String) -> Bool {
+        func normal(_ text: String) -> String {
+            switch field {
+            case .name: return text.trimmingCharacters(in: .whitespacesAndNewlines)
+            case .projectsFolder: return text.trimmingCharacters(in: .whitespaces)
+            case .keyFile:
+                let v = text.trimmingCharacters(in: .whitespaces)
+                return v == "default" ? "" : v
+            case .terminal, .connection, .prediction: return text
+            }
+        }
+        return normal(typed) == normal(shown)
+    }
+
     /// What `typed` saves into `field` of `stored`. Text fields are trimmed of spaces at both ends, as the New desk
     /// form trims its projects folder; the name is trimmed by `WorkhorseSetting` itself. A value equal to what is
     /// stored is `.unchanged`. An empty key file means MacMosh's own key (`identity default`); any other must be a
-    /// full path or start with `~`, and a file must be there (`keyFileExists`, after a leading `~` is expanded with
-    /// `home` for the check only). What is stored is what `macmosh set` stores for the same value.
+    /// full path or start with `~`, and a file must be there (`keyFileExists`, after a leading `~` is expanded for the
+    /// check only: `~` and `~/` with `home`, `~user/` as ssh's key path is, `expandedForCheck`). What is stored is what `macmosh set` stores for the same value.
     public static func plan(_ field: SettingField, typed: String, stored w: Workhorse,
                             keyFileExists: (String) -> Bool, home: String) -> SettingPlan {
         guard let key = field.setKey else { return .refused("") }
@@ -220,11 +240,16 @@ public enum SettingsRules {
         return trial == stored ? .unchanged : .set(key: "terminal", value: value)
     }
 
-    /// A leading `~` alone, or `~/`, as the home folder; anything else as it is.
+    /// A leading `~` alone, or `~/`, as the home folder; `~user/` as that user's home folder, the way
+    /// `KeyManager.identityURL` expands the stored path for ssh; anything else as it is. Apple, NSString
+    /// expandingTildeInPath (https://developer.apple.com/documentation/foundation/nsstring/expandingtildeinpath):
+    /// "A new string made by expanding the initial component of the receiver, if it begins with "~" or "~user", to
+    /// its full path value. Returns a new string matching the receiver if the receiver's initial component can't be
+    /// expanded."
     public static func expandedForCheck(_ path: String, home: String) -> String {
         if path == "~" { return home }
         if path.hasPrefix("~/") { return home + path.dropFirst(1) }
-        return path
+        return (path as NSString).expandingTildeInPath
     }
 }
 
@@ -326,6 +351,10 @@ public struct WorkhorseSettings: Sendable, Equatable, Identifiable {
         remove = BoardButton(ButtonRules.removeMacMosh(w.id))
         self.line = line
     }
+
+    /// Advanced opens by itself when the last change was a refused key file, so its sentence is seen: a refusal
+    /// can land as the page is left (focus leaving sends the field), and the page opens again with Advanced closed.
+    public var opensAdvanced: Bool { line?.field == .keyFile && line?.isProblem == true }
 
     /// The line under that setting: its last change's, or for an empty projects folder what New desk does then.
     public func under(_ field: SettingField) -> SettingLine? {

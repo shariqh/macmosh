@@ -64,7 +64,9 @@ struct MacMoshApp: App {
 
     /// The Settings page's runner on that store: a key file is looked for on this Mac, Pick for me is `TabOpener`'s
     /// rule with no setting, and after each save the window's board reads the saved list again, so the sidebar and
-    /// the page's heading show a new name at once. Nothing here starts a check.
+    /// the page's heading show a new name at once. After a connection or terminal save it asks the refresher for one
+    /// ordinary check, which nothing waits for (`refresh` folds a request made during a check into one more), so a
+    /// desk's window lines follow the new connection.
     private static func settingsRunner(_ store: WorkhorseStore, board: BoardOnScreen) -> SettingsRunner {
         SettingsRunner(
             store: store, home: FileManager.default.homeDirectoryForCurrentUser.path,
@@ -73,7 +75,11 @@ struct MacMoshApp: App {
                 return FileManager.default.fileExists(atPath: path, isDirectory: &folder) && !folder.boolValue
             },
             pickForMe: { TabOpener.terminal(settings: AppSettings(), fileExists: { FileManager.default.fileExists(atPath: $0) }) },
-            saved: { await board.reloadList() })
+            saved: { await board.reloadList() },
+            check: {
+                let refresher = board.refresher
+                Task { await refresher.refresh() }
+            })
     }
 
     /// Apple, MenuBarExtra `init(isInserted:content:label:)` (macOS 13.0,

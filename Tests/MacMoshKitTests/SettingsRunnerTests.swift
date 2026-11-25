@@ -15,18 +15,20 @@ import Testing
         let runner: SettingsRunner
         let log: Box<[String]>
         let reloaded: Box<Int>
+        /// How many checks a save asked for.
+        let checks: Box<Int>
     }
 
     private func rig(_ list: [Workhorse]? = nil, keyFiles: Set<String> = []) async throws -> Rig {
         let paths = try temporaryPaths()
         let store = WorkhorseStore(paths: paths)
         try store.save(list ?? [attic, spare])
-        let log = Box<[String]>([]), reloaded = Box(0)
+        let log = Box<[String]>([]), reloaded = Box(0), checks = Box(0)
         let runner = SettingsRunner(store: store, home: "/Users/alex", keyFileExists: { keyFiles.contains($0) },
                                     pickForMe: { .iterm2 }, log: { line in log.value.append(line) },
-                                    saved: { reloaded.value += 1 })
+                                    saved: { reloaded.value += 1 }, check: { checks.value += 1 })
         await runner.reload()
-        return Rig(paths: paths, store: store, runner: runner, log: log, reloaded: reloaded)
+        return Rig(paths: paths, store: store, runner: runner, log: log, reloaded: reloaded, checks: checks)
     }
 
     /// The saved list's fields as JSON objects, to show exactly which changed.
@@ -159,6 +161,34 @@ import Testing
         #expect(r.runner.page.thisMac.line == nil)
     }
 
+    /// A desk's window lines depend on its connection and on the terminal (`WindowLinesGate`), which the last check
+    /// read. A save of either asks for one ordinary check, which the save does not wait for; no other save asks.
+    @Test func aConnectionOrTerminalSaveAsksForOneCheckAndDoesNotWaitForIt() async throws {
+        let paths = try temporaryPaths()
+        let store = WorkhorseStore(paths: paths)
+        try store.save([attic, spare])
+        let gate = Gate(), asked = Box(0)
+        let runner = SettingsRunner(store: store, home: "/Users/alex", keyFileExists: { _ in true },
+                                    pickForMe: { .iterm2 }, log: { _ in },
+                                    check: { asked.value += 1; Task { await gate.hold() } })
+        await runner.reload()
+        _ = await runner.save(.connection, of: "attic", typed: "tabs")
+        #expect(asked.value == 1)
+        // The save has returned while its check is still held.
+        #expect(await gate.reached())
+        await gate.open()
+        _ = await runner.chooseTerminal("iterm2")
+        #expect(asked.value == 2)
+        #expect(await gate.reached())
+        await gate.open()
+        for (field, typed) in [(SettingField.name, "Loft"), (.prediction, "never"), (.projectsFolder, "~/Code"),
+                               (.connection, "tabs"), (.name, "")] {
+            _ = await runner.save(field, of: "attic", typed: typed)
+        }
+        // A name, a prediction, a folder, a value already saved and a refusal ask for none.
+        #expect(asked.value == 2)
+    }
+
     // MARK: Refusals
 
     @Test func anEmptyNameSavesNothingAndSaysWhy() async throws {
@@ -228,6 +258,63 @@ import Testing
         #expect(r.runner.page.none?.hasPrefix("Can't read MacMosh's saved settings") == true)
     }
 
+    /// The page left while a key file was being refused (focus leaving sends it): when the page opens again, the
+    /// refusal is still under its field. Saved lines go, and so does a line about a workhorse no longer listed.
+    @Test func aRefusalIsStillShownWhenThePageOpensAgain() async throws {
+        let den = Workhorse.sample(id: "den", name: "Den")
+        let r = try await rig([attic, spare, den])
+        _ = await r.runner.save(.keyFile, of: "attic", typed: "~/.ssh/id_typo")
+        _ = await r.runner.save(.name, of: "spare", typed: "Loft")
+        try r.store.remove(id: "den")
+        _ = await r.runner.save(.connection, of: "den", typed: "ssh")
+        await r.runner.reload(clearingLines: true)
+        let page = r.runner.page
+        #expect(page.workhorses[0].under(.keyFile)?.words == "There is no file at ~/.ssh/id_typo on this Mac, so it was not saved.")
+        #expect(page.workhorses[0].opensAdvanced)
+        #expect(page.workhorses[1].line == nil)
+        #expect(page.notices.isEmpty)
+    }
+
+    /// A field the person did not edit sends what it showed. If the file changed since (`macmosh set` in a
+    /// terminal), that is not a change: nothing is written back over the other writer's value, and nothing is logged.
+    @Test func aFieldPassedThroughWithoutTypingNeverWritesBackWhatItShowed() async throws {
+        let r = try await rig(keyFiles: ["/Users/alex/.ssh/id_work", "/Users/alex/.ssh/id_new"])
+        _ = await r.runner.save(.keyFile, of: "attic", typed: "~/.ssh/id_work")
+        r.log.value = []
+        try r.store.update(id: "attic") { w in
+            w.projectsFolder = "~/Code"
+            w.name = "Den"
+            w.identityFile = "~/.ssh/id_new"
+        }
+        let bytes = try Data(contentsOf: r.paths.workhorsesFile)
+        #expect(await r.runner.save(.projectsFolder, of: "attic", typed: "~/Development", shown: "~/Development") == .unchanged)
+        #expect(await r.runner.save(.name, of: "attic", typed: "Attic ", shown: "Attic") == .unchanged)
+        #expect(await r.runner.save(.keyFile, of: "attic", typed: "~/.ssh/id_work", shown: "~/.ssh/id_work") == .unchanged)
+        #expect(try Data(contentsOf: r.paths.workhorsesFile) == bytes)
+        #expect(r.log.value.isEmpty)
+        // What the person did type is still saved, against the file as it is now.
+        #expect(await r.runner.save(.projectsFolder, of: "attic", typed: "~/Notes", shown: "~/Development")
+                == .saved(SettingLine(field: .projectsFolder, words: "Saved. Used by the next New desk.", isProblem: false)))
+        let w = try r.store.find("attic")
+        #expect(w.projectsFolder == "~/Notes" && w.name == "Den" && w.identityFile == "~/.ssh/id_new")
+    }
+
+    /// Two reads of the files that end out of order: the older never replaces what the newer showed.
+    @Test func anOlderReadNeverReplacesANewerOne() async throws {
+        let r = try await rig()
+        let gate = Gate()
+        r.runner.holdRead = { _ in await gate.hold() }
+        let older = Task { await r.runner.reload() }
+        #expect(await gate.reached())
+        r.runner.holdRead = nil
+        try r.store.update(id: "attic") { $0.name = "Loft" }
+        await r.runner.reload()
+        #expect(r.runner.page.workhorses[0].name == "Loft")
+        await gate.open()
+        await older.value
+        #expect(r.runner.page.workhorses[0].name == "Loft")
+    }
+
     // MARK: Beside a background check
 
     /// A check's `absorb` writes the report's fields; a save writes one setting. Both go through `update` under the
@@ -282,5 +369,29 @@ import Testing
         _ = await r.runner.save(.name, of: "attic", typed: "Loft")
         let w = try r.store.find("attic")
         #expect(w.name == "Loft" && w.mode == .ssh)
+    }
+}
+
+/// Holds one task until the test opens it.
+actor Gate {
+    private var held: CheckedContinuation<Void, Never>?
+    var waiting: Bool { held != nil }
+
+    func hold() async {
+        await withCheckedContinuation { held = $0 }
+    }
+
+    func open() {
+        held?.resume()
+        held = nil
+    }
+
+    /// Whether a task is held within five seconds.
+    func reached() async -> Bool {
+        let deadline = ContinuousClock.now + .seconds(5)
+        while held == nil, ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        return held != nil
     }
 }

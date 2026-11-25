@@ -45,10 +45,14 @@ struct SettingsPageView: View {
             .padding(20)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        // Each opening shows what is saved now; the lines of earlier changes go.
+        // Each opening shows what is saved now. The "Saved." lines of earlier changes go; a refusal stays under its
+        // field, and a refused key file opens Advanced so its sentence is seen (`WorkhorseSettings.opensAdvanced`).
         .onAppear {
             let settings = settings
-            Task { await settings.reload(clearingLines: true) }
+            Task {
+                await settings.reload(clearingLines: true)
+                advanced.formUnion(settings.page.workhorses.filter(\.opensAdvanced).map(\.id))
+            }
         }
     }
 
@@ -212,9 +216,11 @@ struct ChoiceGroup: View {
 }
 
 /// A setting's text field: saved, through `SettingsRunner` and its checks, when Return is pressed or the field is
-/// left, and only when its text differs from what is stored. After each save or refusal it shows what is stored:
-/// a refused value is not left in the field as if it were saved. Text typed but neither sent with Return nor left
-/// is not saved by this view when the page goes away; the next opening shows what is stored.
+/// left, and only when its text differs from what it showed (`shown`) and from what is stored. After each save or
+/// refusal it shows what is stored: a refused value is not left in the field as if it were saved. When the page goes
+/// away (another sidebar line, or the window closed), focus leaves the field, so text typed and not yet sent is sent
+/// then, through the same checks; CI saw this on macOS 15 and 26. On a Mac where focus did not leave, nothing would
+/// be saved, and the next opening shows what is stored.
 ///
 /// Apple, View.onSubmit(of:_:) (macOS 12.0, https://developer.apple.com/documentation/swiftui/view/onsubmit(of:_:)):
 /// "A TextField, or SecureField will trigger this action when the user hits the hardware or software return key."
@@ -229,6 +235,8 @@ struct SettingTextField: View {
     let title: String
     let stored: String
     @State private var draft: String
+    /// What the field showed before the person typed: text equal to it is sent as no change.
+    @State private var base: String
     @FocusState private var focused: Bool
 
     init(settings: SettingsRunner, id: String, field: SettingField, title: String, stored: String) {
@@ -238,6 +246,7 @@ struct SettingTextField: View {
         self.title = title
         self.stored = stored
         _draft = State(initialValue: stored)
+        _base = State(initialValue: stored)
     }
 
     var body: some View {
@@ -250,16 +259,20 @@ struct SettingTextField: View {
                 if !now { send() }
             }
             .onChange(of: stored) { _, now in
-                if !focused { draft = now }
+                if !focused {
+                    draft = now
+                    base = now
+                }
             }
             .accessibilityIdentifier(SettingsMarks.field(id, field))
     }
 
     private func send() {
-        let settings = settings, id = id, field = field, typed = draft
+        let settings = settings, id = id, field = field, typed = draft, shown = base
         Task {
-            await settings.save(field, of: id, typed: typed)
+            await settings.save(field, of: id, typed: typed, shown: shown)
             draft = settings.stored(field, of: id)
+            base = draft
         }
     }
 }

@@ -44,7 +44,18 @@ struct MainWindow: View {
                 case .addMac:
                     AddMacPageView(page: .standard, notice: screen.notice, run: run)
                 case .settings:
+                    // The page follows the saved files at each check, as the sidebar does: a workhorse removed (by
+                    // its own Remove button, say) or a value set with `macmosh set` shows without leaving the page.
+                    // Lines are kept, and a field being typed in keeps its text. Apple, onReceive(_:perform:)
+                    // (macOS 10.15, https://developer.apple.com/documentation/swiftui/view/onreceive(_:perform:)):
+                    // "Adds an action to perform when this view detects data emitted by the given publisher." Apple,
+                    // Publisher filter(_:) (https://developer.apple.com/documentation/combine/publisher/filter(_:)):
+                    // "Republishes all elements that match a provided closure."
                     SettingsPageView(settings: settings, run: run)
+                        .onReceive(screen.refresher.$isRefreshing.filter { $0 }) { _ in
+                            let settings = settings
+                            Task { await settings.reload() }
+                        }
                 case .unreadableList:
                     // The menu's own sentence, in place of an invitation to add a Mac.
                     Text(verbatim: screen.listProblem ?? "")

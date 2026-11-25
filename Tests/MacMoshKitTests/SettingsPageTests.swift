@@ -83,7 +83,8 @@ import Testing
         let last = "Only Mosh uses this."
         #expect(line(.adaptive) == "\(first) Adaptive shows it on slow links and through network glitches. \(last)")
         #expect(line(.always) == "\(first) Always shows it on fast links too, once mosh is confident. \(last)")
-        #expect(line(.never) == "\(first) Never waits for the workhorse every time. \(last)")
+        // Read at a glance, it must not say the opposite: with Never you wait for the workhorse every time.
+        #expect(line(.never) == "\(first) With Never, you see what you type only after the workhorse answers. \(last)")
         #expect(line(.experimental) == "\(first) Experimental shows it even when it may be wrong. \(last)")
     }
 
@@ -247,6 +248,30 @@ import Testing
         #expect(SettingsRules.expandedForCheck("~", home: "/Users/alex") == "/Users/alex")
         #expect(SettingsRules.expandedForCheck("~/k", home: "/Users/alex") == "/Users/alex/k")
         #expect(SettingsRules.expandedForCheck("/k", home: "/Users/alex") == "/k")
+    }
+
+    /// `~user/…` is expanded the way ssh's key path is (`KeyManager.identityURL`), so a file that is there is not
+    /// refused with an untrue sentence; a user who doesn't exist stays as typed and is refused.
+    @Test func aTildeWithAUserNameIsThatUsersHomeFolder() throws {
+        let me = NSUserName()
+        let home = try #require(NSHomeDirectoryForUser(me))
+        #expect(SettingsRules.expandedForCheck("~\(me)/k", home: "/elsewhere") == home + "/k")
+        #expect(plan(.keyFile, "~\(me)/k", exists: { $0 == home + "/k" }) == .set(key: "identity", value: "~\(me)/k"))
+        // Not expanded, so the check looks at a path that is not a full one, where no file is.
+        #expect(SettingsRules.expandedForCheck("~nosuchuser-w6/k", home: "/elsewhere") == "~nosuchuser-w6/k")
+        #expect(plan(.keyFile, "~nosuchuser-w6/k", exists: { $0.hasPrefix("/") })
+                == .refused("There is no file at ~nosuchuser-w6/k on this Mac, so it was not saved."))
+    }
+
+    /// A key file refused when the page was left is still explained when it opens again, so Advanced opens for it.
+    @Test func aRefusedKeyFileOpensAdvanced() {
+        let refused = SettingLine(field: .keyFile, words: SettingsWords.noKeyFile("~/.ssh/id_typo"), isProblem: true)
+        let saved = SettingLine(field: .keyFile, words: SettingsWords.saved(.keyFile, attic), isProblem: false)
+        let name = SettingLine(field: .name, words: "The name can't be empty.", isProblem: true)
+        #expect(page([attic], lines: ["attic": refused]).workhorses[0].opensAdvanced)
+        #expect(!page([attic], lines: ["attic": saved]).workhorses[0].opensAdvanced)
+        #expect(!page([attic], lines: ["attic": name]).workhorses[0].opensAdvanced)
+        #expect(!page([attic]).workhorses[0].opensAdvanced)
     }
 
     // MARK: The grey line after a save

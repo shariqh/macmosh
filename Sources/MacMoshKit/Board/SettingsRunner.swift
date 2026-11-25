@@ -90,9 +90,11 @@ public struct SettingsWriter: Sendable {
 /// `SettingsWriter` save off the main thread, then one fixed-words log line (`window action: setting ok` or
 /// `failed`; nothing for a value left as it was), the section's line, a fresh read of the saved list and settings,
 /// and, after a save, `saved`, which the app uses to have the window's board read the list again, so the sidebar
-/// shows a new name at once. No ssh call and no check is started here: the menu takes a new name from the list its
-/// next check loads. It belongs to the app, like `WindowActionRunner`, so a save started just before the window
-/// closes still ends.
+/// shows a new name at once. After a save of the connection or the terminal, which decide whether a desk shows one
+/// line per window (`WindowLinesGate`, from the last check), it also calls `check`, which asks for one ordinary check
+/// and returns at once: nothing here waits for a check, and nothing here uses ssh. The menu takes a new name from the
+/// list its next check loads. It belongs to the app, like `WindowActionRunner`, so a save started just before the
+/// window closes still ends.
 @MainActor
 public final class SettingsRunner: ObservableObject {
     /// The saved list as last read; empty when it can't be read (`listProblem`).
@@ -113,18 +115,27 @@ public final class SettingsRunner: ObservableObject {
     private let pick: @Sendable () -> TerminalApp
     private let log: @Sendable (String) -> Void
     private let saved: @MainActor @Sendable () async -> Void
+    private let check: @MainActor @Sendable () -> Void
+    /// Tests only: runs after a read of the files and before it is shown, with the read's number.
+    var holdRead: (@MainActor @Sendable (Int) async -> Void)?
+    /// The reads started, and the newest one shown: a read that started before one already shown changes nothing,
+    /// as in `BoardOnScreen.reloadList`.
+    private var reads = 0
+    private var shownRead = 0
 
     /// `store` is the saved list and settings (the real ones, or a sample's stand-in); `home` and `keyFileExists`
     /// check a key file's path; `pickForMe` is `TabOpener.terminal` with no setting; `log` takes `MenuLog`'s lines;
-    /// `saved` runs after each save.
+    /// `saved` runs after each save; `check` asks for one check without waiting for it (`SettingField.asksForCheck`).
     public init(store: WorkhorseStore, home: String, keyFileExists: @escaping @Sendable (String) -> Bool,
                 pickForMe: @escaping @Sendable () -> TerminalApp,
                 log: @escaping @Sendable (String) -> Void = { MenuLog.write($0) },
-                saved: @escaping @MainActor @Sendable () async -> Void = {}) {
+                saved: @escaping @MainActor @Sendable () async -> Void = {},
+                check: @escaping @MainActor @Sendable () -> Void = {}) {
         writer = SettingsWriter(store: store, home: home, keyFileExists: keyFileExists)
         pick = pickForMe
         self.log = log
         self.saved = saved
+        self.check = check
     }
 
     /// The page, from what was last read and the last change of each section.
@@ -138,9 +149,13 @@ public final class SettingsRunner: ObservableObject {
         list.first { $0.id == id }.map { SettingsRules.shown(field, $0) } ?? ""
     }
 
-    /// Reads the saved list and settings again, off the main thread. `clearingLines` forgets the last changes'
-    /// lines, as when the page comes on screen again.
+    /// Reads the saved list and settings again, off the main thread. `clearingLines`, as when the page comes on
+    /// screen again, forgets the "Saved." lines but keeps a refusal under its field, so a value refused as the page
+    /// was left is still explained (a line about a workhorse no longer listed goes too). A read that started before
+    /// one already shown changes nothing.
     public func reload(clearingLines: Bool = false) async {
+        reads &+= 1
+        let mine = reads
         let store = writer.store, pick = self.pick
         let read = await Task.detached { () -> (Result<[Workhorse], ReadProblem>, Result<AppSettings, ReadProblem>, TerminalApp) in
             let list: Result<[Workhorse], ReadProblem>
@@ -151,6 +166,9 @@ public final class SettingsRunner: ObservableObject {
             }
             return (list, settings, pick())
         }.value
+        if let holdRead { await holdRead(mine) }
+        guard mine > shownRead else { return }
+        shownRead = mine
         switch read.0 {
         case .success(let list):
             self.list = list
@@ -168,13 +186,19 @@ public final class SettingsRunner: ObservableObject {
             settingsProblem = problem.words
         }
         if pickForMe != read.2 { pickForMe = read.2 }
-        if clearingLines { lines = [:] }
+        if clearingLines {
+            let listed = Set(list.map(\.id))
+            lines = lines.filter { $0.value.isProblem && ($0.key == SettingsPage.thisMacID || listed.contains($0.key)) }
+        }
     }
 
     /// Saves one field of one workhorse: a choice when it is clicked, a text field when it is left or Return is
-    /// pressed. A value equal to the stored one does nothing.
+    /// pressed. A value equal to the stored one does nothing. `shown` is what a text field showed before the person
+    /// typed: text equal to it is no change, whatever the file holds now, so a field passed through without typing
+    /// never writes back a value another writer (`macmosh set`) has changed since.
     @discardableResult
-    public func save(_ field: SettingField, of id: String, typed: String) async -> SettingOutcome {
+    public func save(_ field: SettingField, of id: String, typed: String, shown: String? = nil) async -> SettingOutcome {
+        if let shown, SettingsRules.sameAsShown(field, typed: typed, shown: shown) { return .unchanged }
         let key = "\(id).\(field.rawValue)"
         guard !saving.contains(key) else { return .unchanged }
         saving.insert(key)
@@ -182,7 +206,7 @@ public final class SettingsRunner: ObservableObject {
         let name = list.first { $0.id == id }?.name ?? id
         let writer = self.writer
         let outcome = await Task.detached { writer.save(field, of: id, name: name, typed: typed) }.value
-        await finish(outcome, section: id)
+        await finish(outcome, section: id, field: field)
         return outcome
     }
 
@@ -195,11 +219,11 @@ public final class SettingsRunner: ObservableObject {
         defer { saving.remove(key) }
         let writer = self.writer
         let outcome = await Task.detached { writer.saveTerminal(value) }.value
-        await finish(outcome, section: SettingsPage.thisMacID)
+        await finish(outcome, section: SettingsPage.thisMacID, field: .terminal)
         return outcome
     }
 
-    private func finish(_ outcome: SettingOutcome, section: String) async {
+    private func finish(_ outcome: SettingOutcome, section: String, field: SettingField) async {
         switch outcome {
         case .unchanged:
             return
@@ -211,7 +235,10 @@ public final class SettingsRunner: ObservableObject {
             lines[section] = line
         }
         await reload()
-        if case .saved = outcome { await saved() }
+        if case .saved = outcome {
+            await saved()
+            if field.asksForCheck { check() }
+        }
     }
 }
 
