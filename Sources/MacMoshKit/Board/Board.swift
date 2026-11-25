@@ -48,11 +48,14 @@ public struct BoardWorkhorse: Sendable, Equatable, Identifiable {
     public var buttons: [BoardButton]
     /// What the last action on it said, if any.
     public var result: String?
+    /// The workhorse script's version in its last report; nil without one. The window hides a control that
+    /// needs a newer script (main window design, section 7.2).
+    public var scriptVersion: String?
 
     public init(id: String, name: String, state: WorkhorseState?, symbol: String, headline: String, hint: String?,
                 checkedAt: Date?, isChecking: Bool, isWaitingForDeskServer: Bool, summary: String?,
                 homeReachable: Bool?, desks: [BoardDesk], ended: [EndedDesk], lastReadyDesks: [BoardDesk]?,
-                lastReadyAt: Date?, buttons: [BoardButton], result: String?) {
+                lastReadyAt: Date?, buttons: [BoardButton], result: String?, scriptVersion: String? = nil) {
         self.id = id
         self.name = name
         self.state = state
@@ -70,6 +73,7 @@ public struct BoardWorkhorse: Sendable, Equatable, Identifiable {
         self.lastReadyAt = lastReadyAt
         self.buttons = buttons
         self.result = result
+        self.scriptVersion = scriptVersion
     }
 }
 
@@ -180,11 +184,14 @@ public struct BoardButton: Sendable, Equatable {
     public var title: String
     public var note: String?
     public var action: BoardAction
+    /// Off while an action on its desk runs, or while a New desk is being made (main window design, 7.2).
+    public var isEnabled: Bool
 
-    public init(title: String, note: String? = nil, action: BoardAction) {
+    public init(title: String, note: String? = nil, action: BoardAction, isEnabled: Bool = true) {
         self.title = title
         self.note = note
         self.action = action
+        self.isEnabled = isEnabled
     }
 
     /// A button of the menu's (`ButtonRules`), with its title and its action as the window takes it.
@@ -216,8 +223,8 @@ public enum BoardAction: Sendable, Equatable {
     }
 }
 
-/// The window's own actions (main window design, section 7.2). Nothing runs them yet: the forms come
-/// in step 4, the ended desks in step 5.
+/// The window's own actions (main window design, section 7.2). New desk, Rename and Remove open the window's
+/// forms (step 4); the ended desks' come in step 5.
 public enum WindowAction: Sendable, Equatable {
     /// The New desk form.
     case newDesk(workhorse: String)

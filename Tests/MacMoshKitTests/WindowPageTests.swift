@@ -390,4 +390,63 @@ private func titles(_ buttons: [BoardButton]) -> [String] { buttons.map(\.title)
         #expect(p.button == BoardButton(title: "Add a Mac…", action: .menu(.tab(["pair"]))))
         #expect(p.button.title == ButtonRules.addAMac.title)
     }
+
+    // MARK: While a window action runs (step 4)
+
+    private func activePage(_ activity: WindowActivity, version: String = "0.8.0") throws -> WorkhorsePage {
+        let status = try report { $0.replacingOccurrences(of: "macmosh-host\t1\t0.8.0", with: "macmosh-host\t1\t\(version)") }
+        return WorkhorsePage(try boardWorkhorse(result(.ready(signIns: true), status: status)), now: formatNow,
+                             timeZone: formatZone, activity: activity)
+    }
+
+    @Test func aDeskWithAnActionRunningSaysSoAndItsButtonsAreOff() throws {
+        let p = try activePage(WindowActivity(busy: ["api": .rename]))
+        let api = try #require(p.desks.first { $0.name == "api" })
+        #expect(api.status == "Renaming…")
+        #expect(api.detailButtons.map(\.title) == ["New window", "Renaming…", "Remove…"])
+        #expect(api.detailButtons.allSatisfy { !$0.isEnabled })
+        #expect(api.open?.isEnabled == false)
+        // Another desk stays usable.
+        let website = try #require(p.desks.first { $0.name == "website" })
+        #expect(website.status == nil && website.detailButtons.allSatisfy(\.isEnabled) && website.open?.isEnabled == true)
+        let removing = try activePage(WindowActivity(busy: ["website": .remove]))
+        #expect(removing.desks.first { $0.name == "website" }?.detailButtons.last?.title == "Removing…")
+    }
+
+    @Test func newDeskIsOffWhileOneIsBeingMade() throws {
+        let p = try activePage(WindowActivity(making: true))
+        let newDesk = try #require(p.deskButtons.first { $0.action == .window(.newDesk(workhorse: "attic")) })
+        #expect(newDesk.title == "Making…" && !newDesk.isEnabled)
+        #expect(try activePage(WindowActivity()).deskButtons.allSatisfy(\.isEnabled))
+    }
+
+    @Test func aRowSaysUpdatingUntilTheCheckLands() throws {
+        let p = try activePage(WindowActivity(updating: ["website", "garden-planner"]))
+        #expect(p.desks.first { $0.name == "website" }?.status == "Updating…")
+        // A new desk the check has not brought yet has a row of its own, in name order.
+        let names = p.desks.map(\.name)
+        #expect(names == ["api", "blog", "garden", "garden-planner", "notes", "recipes", "website"])
+        let placeholder = try #require(p.desks.first { $0.name == "garden-planner" })
+        #expect(placeholder.status == "Updating…" && placeholder.open == nil && placeholder.detailButtons.isEmpty)
+        #expect(placeholder.second == "" && placeholder.detail.isEmpty)
+    }
+
+    /// Section 7.2: Rename needs script 0.6.0, so with an older one its button is hidden.
+    @Test func renameIsHiddenForAScriptOlderThan060() throws {
+        let old = try activePage(WindowActivity(), version: "0.5.2")
+        #expect(old.desks.first { $0.name == "website" }?.detailButtons.map(\.title) == ["New window", "Remove…"])
+        #expect(old.canKeepClosed)
+        let older = try activePage(WindowActivity(), version: "0.4.0")
+        #expect(!older.canKeepClosed)
+        let now = try activePage(WindowActivity(), version: "0.6.0")
+        #expect(now.desks.first { $0.name == "website" }?.detailButtons.map(\.title) == ["New window", "Rename…", "Remove…"])
+    }
+
+    @Test func theResultLineIsTheWorkhorses() throws {
+        let board = BoardModel.build(latest: ["attic": result(.ready(signIns: true), status: try report())], lastReady: [:],
+                                     checking: [], order: [attic], waitingForDeskServer: [],
+                                     results: ["attic": "Created the desk garden-planner on Attic."], now: formatNow, timeZone: formatZone)
+        let p = WorkhorsePage(try #require(board.workhorses.first), now: formatNow, timeZone: formatZone)
+        #expect(p.result == "Created the desk garden-planner on Attic.")
+    }
 }

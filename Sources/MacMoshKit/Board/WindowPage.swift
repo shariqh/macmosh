@@ -94,8 +94,11 @@ public struct WorkhorsePage: Sendable, Equatable {
     public var home: String?
     /// What the last action on it said (set from step 4 on).
     public var result: String?
+    /// "Keep it, closed" can be offered in its New desk form: script 0.5.0 or newer (section 7.2).
+    public var canKeepClosed: Bool
 
-    public init(_ w: BoardWorkhorse, now: Date, timeZone: TimeZone) {
+    /// `activity` is what the window's actions are doing on it now (`WindowActionRunner.activity`).
+    public init(_ w: BoardWorkhorse, now: Date, timeZone: TimeZone, activity: WindowActivity = WindowActivity()) {
         id = w.id
         headline = w.headline
         hint = w.hint
@@ -110,7 +113,10 @@ public struct WorkhorsePage: Sendable, Equatable {
             default: return false
             }
         }
-        let buttons = w.buttons
+        let buttons = w.buttons.map { b -> BoardButton in
+            guard activity.making, case .window(.newDesk) = b.action else { return b }
+            return BoardButton(title: WindowActionKind.newDesk.progress, note: b.note, action: b.action, isEnabled: false)
+        }
         if let first = buttons.firstIndex(where: isDeskButton) {
             let last = buttons.lastIndex(where: isDeskButton) ?? first
             underHint = Array(buttons[..<first])
@@ -125,12 +131,23 @@ public struct WorkhorsePage: Sendable, Equatable {
         var isReady = false
         if case .ready? = w.state { isReady = true }
         desksHeading = isReady ? WindowWords.desks : nil
-        desks = w.desks.map { DeskRow($0) }
+        let version = w.scriptVersion ?? ""
+        let canRename = HostInstaller.isAtLeast(version, Self.renameNeeds)
+        canKeepClosed = HostInstaller.isAtLeast(version, Self.keepClosedNeeds)
+        var rows = w.desks.map { DeskRow($0, activity: activity, canRename: canRename) }
+        // A desk just made has a row of its own, "Updating…", until the check that brings it lands.
+        let shown = Set(rows.map(\.name))
+        rows += activity.updating.subtracting(shown).map(DeskRow.updating)
+        desks = rows.sorted { BoardModel.inNameOrder($0.name, $1.name) }
         noDesks = isReady && w.desks.isEmpty ? WindowWords.noDesks : nil
         stale = StaleDesks(w, now: now, timeZone: timeZone)
         home = w.homeReachable.map(WorkhorseBlock.homeLine)
         result = w.result
     }
+
+    /// Rename needs script 0.6.0 (`desk-rename`, section 5.2); "Keep it, closed" needs 0.5.0 (`--permanent`).
+    static let renameNeeds = "0.6.0"
+    static let keepClosedNeeds = "0.5.0"
 }
 
 /// One line of a desk's detail strip: "Folder" and "~/Development/website".
@@ -182,8 +199,13 @@ public struct DeskRow: Sendable, Equatable, Identifiable {
     public var facts: [String]
     /// New window (when open), Rename…, Remove…, with the strip's short titles.
     public var detailButtons: [BoardButton]
+    /// "Renaming…" or "Removing…" while one of the window's actions runs on it, "Updating…" until the check
+    /// after it lands; nil otherwise. Shown in place of the tab count.
+    public var status: String?
 
-    public init(_ desk: BoardDesk) {
+    /// `activity` turns the desk's buttons off while an action runs on it, and names that action; without
+    /// `canRename` (a script older than 0.6.0) it has no Rename….
+    public init(_ desk: BoardDesk, activity: WindowActivity = WindowActivity(), canRename: Bool = true) {
         name = desk.name
         if !desk.isOpen {
             windows = WindowWords.closed
@@ -219,7 +241,45 @@ public struct DeskRow: Sendable, Equatable, Identifiable {
             detail = []
             facts = []
         }
-        detailButtons = desk.buttons.map(Self.short)
+        detailButtons = desk.buttons.map(Self.short).filter { b in
+            if case .window(.rename) = b.action { return canRename }
+            return true
+        }
+        let running = activity.busy[desk.name]
+        status = running?.progress ?? (activity.updating.contains(desk.name) ? WindowActivity.updatingWords : nil)
+        if let running {
+            func off(_ b: BoardButton) -> BoardButton {
+                var b = b
+                b.isEnabled = false
+                switch (running, b.action) {
+                case (.rename, .window(.rename)), (.remove, .window(.remove)): b.title = running.progress
+                default: break
+                }
+                return b
+            }
+            open = open.map(off)
+            detailButtons = detailButtons.map(off)
+            windowLines = windowLines.map { WindowLine(id: $0.id, words: $0.words, button: off($0.button)) }
+        }
+    }
+
+    /// A desk the window has just made, before the check that brings it lands: its name and "Updating…".
+    static func updating(_ name: String) -> DeskRow {
+        DeskRow(name: name)
+    }
+
+    private init(name: String) {
+        self.name = name
+        windows = WindowActivity.updatingWords
+        tabs = nil
+        open = nil
+        openWords = nil
+        windowLines = []
+        second = ""
+        detail = []
+        facts = []
+        detailButtons = []
+        status = WindowActivity.updatingWords
     }
 
     /// The strip sits under the desk's own row, so its buttons need not name it: "Rename…" for

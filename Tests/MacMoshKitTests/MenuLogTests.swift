@@ -37,6 +37,13 @@ private final class Lines: @unchecked Sendable {
         #expect(MenuLog.windowOpened == "window opened")
     }
 
+    /// Step 4: one line when a window action ends, the kind and ok or failed, never a desk or a command.
+    @Test func theWindowActionLinesAreFixedWords() {
+        #expect(MenuLog.windowAction(.newDesk, ok: true) == "window action: newDesk ok")
+        #expect(MenuLog.windowAction(.rename, ok: false) == "window action: rename failed")
+        #expect(MenuLog.windowAction(.remove, ok: true) == "window action: remove ok")
+    }
+
     /// How the app comes to quit: the icon removed, and the quit itself.
     @Test func theQuitLinesAreFixedWords() {
         #expect(MenuLog.iconRemoved == "menu-bar icon removed: quitting")

@@ -316,4 +316,14 @@ private func locked(_ w: Workhorse = attic) -> Gathered {
         a.cancel()
         b.cancel()
     }
+
+    /// A window action's result line reaches the board, and the menu's notice is the same sentence.
+    @Test func aWindowActionsResultLineIsOnTheBoard() async {
+        let (refresher, screen) = make(Script([[ready()]]), saved: SavedList([attic]))
+        await screen.reloadList()
+        await refresher.refresh()
+        refresher.finishWindowAction(id: "attic", result: "Removed the desk website from Attic.")
+        #expect(screen.board.workhorses.first?.result == "Removed the desk website from Attic.")
+        #expect(screen.notice == "Removed the desk website from Attic.")
+    }
 }

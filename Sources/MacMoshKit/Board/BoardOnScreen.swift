@@ -34,6 +34,7 @@ public final class BoardOnScreen: ObservableObject {
         var checking: Set<String>
         var waitingForDeskServer: Set<String>
         var tabs: TabsSeen?
+        var results: [String: String] = [:]
     }
 
     private let load: @Sendable () throws -> [Workhorse]
@@ -78,10 +79,19 @@ public final class BoardOnScreen: ObservableObject {
             .sink { [weak self] four, tabs in
                 let (latest, lastReady, checking, waiting) = four
                 MainActor.assumeIsolated {
-                    self?.take(Inputs(latest: latest, lastReady: lastReady, checking: checking,
-                                      waitingForDeskServer: waiting, tabs: tabs))
+                    guard let self else { return }
+                    self.take(Inputs(latest: latest, lastReady: lastReady, checking: checking,
+                                     waitingForDeskServer: waiting, tabs: tabs, results: self.inputs.results))
                 }
             })
+        // The result line of the window's last action on each workhorse (step 4).
+        watches.append(refresher.$results.sink { [weak self] results in
+            MainActor.assumeIsolated {
+                guard let self, self.inputs.results != results else { return }
+                self.inputs.results = results
+                self.rebuild()
+            }
+        })
         watches.append(refresher.$notice.sink { [weak self] next in
             MainActor.assumeIsolated {
                 guard let self, self.notice != next else { return }
@@ -97,8 +107,8 @@ public final class BoardOnScreen: ObservableObject {
 
     /// The page for the workhorse with that id, laid out with the time and time zone passed in; nil when
     /// it is not on the board.
-    public func page(_ id: String) -> WorkhorsePage? {
-        board.workhorses.first { $0.id == id }.map { WorkhorsePage($0, now: now(), timeZone: timeZone) }
+    public func page(_ id: String, activity: WindowActivity = WindowActivity()) -> WorkhorsePage? {
+        board.workhorses.first { $0.id == id }.map { WorkhorsePage($0, now: now(), timeZone: timeZone, activity: activity) }
     }
 
     /// The window came on screen: says so in the log, reads the saved list, and asks for one check.
@@ -142,7 +152,7 @@ public final class BoardOnScreen: ObservableObject {
     private func rebuild() {
         let next = BoardModel.build(latest: inputs.latest, lastReady: inputs.lastReady, checking: inputs.checking,
                                     order: order, waitingForDeskServer: inputs.waitingForDeskServer, tabs: inputs.tabs,
-                                    now: now(), timeZone: timeZone)
+                                    results: inputs.results, now: now(), timeZone: timeZone)
         if next != board { board = next }
     }
 }
