@@ -78,6 +78,9 @@ struct MainWindow: View {
         .onAppear {
             let screen = screen
             Task { await screen.opened() }
+            #if DEBUG
+            WindowKeysMenu.logMainMenu()   // what the main menu holds, for CI (issue #147); nothing otherwise
+            #endif
         }
     }
 

@@ -7,7 +7,8 @@ name: Menu pictures
 # runs the wrong button, closing the window ends the app, or, in the "windows" sample (issue #134), a
 # desk's details do not list its windows or a desk whose tab can be found opens a tab, or, in the
 # "window-forms" sample (issue #143), a form does not open, refuse a taken name, send its exact arguments to
-# the stand-in ssh or say what happened; whether Command-V pastes is reported, never failed). It fails only
+# the stand-in ssh or say what happened, or (issue #147) Command-V, A, C, X, Z, Shift-Command-Z or Command-W
+# does not do its job in the window or sets off the menu-open signal). It fails only
 # when the app does not start, the menu does not open, a click runs the wrong row or none, an open
 # submenu closes under the pointer, or a held change is shown before the clicked row ran (and, in the
 # "changing" sample, when the hold could not be tested), and in the "windows" sample when a window

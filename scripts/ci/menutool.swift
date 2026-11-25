@@ -12,7 +12,8 @@
 //   menutool keys <code> <count> <gap ms>   posts that key <count> times (CGEvent key down and up)
 //   menutool type <text>           types the text, one key per character, each found in this Mac's keyboard
 //                                  layout (UCKeyTranslate), with Shift where the layout needs it
-//   menutool chord <character> cmd   that character's key with Command held (Command-V, Command-A)
+//   menutool chord <character> cmd|shiftcmd   that character's key with Command held (Command-V, Command-A),
+//                                  or with Shift and Command (Shift-Command-Z)
 //   menutool count                 how many MacMosh menu windows are on screen (the menu and its submenus)
 //   menutool windows <label>       those windows' bounds
 //   menutool watch <seconds> <label>   samples the menu windows (a 50 ms rest plus one window list
@@ -187,18 +188,34 @@ case "type":
     }
     out("type: \(args[2].count) characters, \(missing) not in the keyboard layout (sent as text only), layout keys=\(map.count)")
 case "chord":
-    guard args.count >= 4, let c = args[2].first, args[3] == "cmd" else {
-        out("usage: menutool chord <character> cmd")
+    guard args.count >= 4, let c = args[2].first, args[3] == "cmd" || args[3] == "shiftcmd" else {
+        out("usage: menutool chord <character> cmd|shiftcmd")
         exit(2)
     }
+    let shifted = args[3] == "shiftcmd"
     guard let key = keyMap()[c] else {
         out("chord: no key for \(c) in the keyboard layout")
         exit(1)
     }
     // Apple, CGEventFlags.maskCommand: "Indicates that the Command key is down for a keyboard, mouse, or
     // flag-changed event." (https://developer.apple.com/documentation/coregraphics/cgeventflags/maskcommand)
-    press(key.code, flags: .maskCommand, text: String(c))
-    out("chord: Command-\(c) (key \(key.code))")
+    // Apple, CGEventFlags.maskShift: "Indicates that the Shift key is down for a keyboard, mouse, or flag-changed
+    // event." (https://developer.apple.com/documentation/coregraphics/cgeventflags/maskshift)
+    // The modifier keys go down first and come up last, as on a keyboard (kVK_Command and kVK_Shift, Carbon's
+    // virtual key codes), each carrying the flags held at that moment.
+    let flags: CGEventFlags = shifted ? [.maskCommand, .maskShift] : .maskCommand
+    func modifier(_ code: Int, down: Bool, flags: CGEventFlags) {
+        guard let event = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(code), keyDown: down) else { return }
+        event.flags = flags
+        event.post(tap: .cghidEventTap)
+        usleep(30_000)
+    }
+    modifier(kVK_Command, down: true, flags: .maskCommand)
+    if shifted { modifier(kVK_Shift, down: true, flags: flags) }
+    press(key.code, flags: flags, text: shifted ? String(c).uppercased() : String(c))
+    if shifted { modifier(kVK_Shift, down: false, flags: .maskCommand) }
+    modifier(kVK_Command, down: false, flags: [])
+    out("chord: \(shifted ? "Shift-" : "")Command-\(c) (key \(key.code))")
 case "count":
     print(menuWindows().count)
 case "windows":

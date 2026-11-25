@@ -22,8 +22,10 @@
 # button does not run the menu's action for that window, or a desk whose tab can be found opens a tab
 # instead of going to it. In the "window-forms" sample (step 4) it fails when New desk…, Rename… or Remove… does
 # not open its form, a form does not refuse a taken name, a form's button does not send its exact arguments to
-# the stand-in ssh, or the page does not say what happened. Whether Command-V pastes into a text field is
-# reported, never failed. How a picture looks never fails it.
+# the stand-in ssh, or the page does not say what happened. It fails when Command-V, Command-A and Command-C,
+# Command-X, Command-Z or Shift-Command-Z does not do its job in a form's text field, when Command-W closes
+# anything with a form open, does not close the window without one, ends the app or stops the menu from opening,
+# or when one of these keys sets off the menu-open signal (issue #147). How a picture looks never fails it.
 set -uo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -654,12 +656,15 @@ expect_value() {
 # "window-forms" is Attic, Ready, with no projects folder saved, whose desks a stand-in ssh changes. It writes
 # each call's exact remote command to the log (`sample ssh: ... run=<command>`) and answers as the script would.
 forms_sample() {
-    local since start v x y paste want typed deadline clip
+    local since start v x y paste want typed deadline clip keys_since n
     start=$(moment)
     start_app window-forms || return
     if ! open_window; then stop_app; return; fi
     sleep 2
     snap page
+    # What the app's main menu holds when the window opens (debug builds log it; issue #147). A finding.
+    v=$(applog "$start" | grep -F "main menu: " | sed 's/.*main menu: /main menu: /' | tr '\n' '|')
+    result "$([ -n "$v" ] && echo PASS || echo NOT-SHOWN)" "the app logs its main menu when the window opens" "${v:-no 'main menu:' line}"
 
     # New desk… opens the form, which asks for a projects folder first.
     if ! click_id "button.newDesk" || ! wait_id "form.newDesk" 6; then
@@ -728,16 +733,18 @@ forms_sample() {
     tool type "claude --continue" > /dev/null
     expect_value "a typed command reaches the field" "form.command" "claude --continue" 3
 
-    # Paste with Command-V in an app that has no menu bar of its own (design, section 11). A finding only.
+    # The window's editing keys in an app with no menu bar of its own (issue #147): Command-V, then Command-A and
+    # Command-C, Command-X, Command-Z and Shift-Command-Z in the command field, and Command-W with the form open.
+    # Each fails the job. None of these key presses may set off the menu-open signal.
     # shellcheck disable=SC2016 # the text as typed, $HOME and all
     paste='claude --continue "fix it" $HOME; ls'
+    keys_since=$(moment)
     printf '%s' "$paste" | pbcopy
     # The clipboard is read back first, so an empty field after Command-V means the paste did not land, not that
     # there was nothing to paste.
     clip=$(pbpaste)
     if [ "$clip" != "$paste" ]; then
-        result DIFFERS "Command-V pastes into the command field" "not tried: the clipboard was not set (pbpaste reads: ${clip:-nothing})"
-        v=""
+        result NOT-SHOWN "Command-V pastes into the command field" "the clipboard was not set (pbpaste reads: ${clip:-nothing})"
     else
         say "pbpaste reads back the text pbcopy was given"
         clear_field "form.command"
@@ -747,10 +754,84 @@ forms_sample() {
         if [ "$v" = "$paste" ]; then
             result PASS "Command-V pastes into the command field" "the clipboard held the text, and the field reads back: $v"
         else
-            result DIFFERS "Command-V pastes into the command field" "the clipboard held the text (pbpaste), and after Command-V the field reads: ${v:-nothing}"
+            result FAIL "Command-V pastes into the command field" "the clipboard held the text (pbpaste), and after Command-V the field reads: ${v:-nothing}"
         fi
     fi
-    if [ "$v" != "$paste" ]; then
+    # The whole screen with the window in front: no Dock icon and no menu bar of the app's.
+    snap_screen keys-screen
+    if [ "$(val "form.command")" != "$paste" ]; then
+        clear_field "form.command"
+        tool type "$paste" > /dev/null
+        sleep 0.5
+    fi
+
+    # Command-A then Command-C puts the field's text on the clipboard.
+    printf '%s' "not the field" | pbcopy
+    click_id "form.command" > /dev/null
+    sleep 0.4
+    tool chord a cmd > /dev/null
+    sleep 0.3
+    tool chord c cmd > /dev/null
+    sleep 0.6
+    clip=$(pbpaste)
+    if [ "$clip" = "$paste" ]; then
+        result PASS "Command-A then Command-C copies the field's text" "pbpaste reads: $clip"
+    else
+        result FAIL "Command-A then Command-C copies the field's text" "pbpaste reads: ${clip:-nothing} (the field: $(val "form.command"))"
+    fi
+
+    # Command-X empties the field and fills the clipboard.
+    printf '%s' "not the field" | pbcopy
+    tool chord a cmd > /dev/null
+    sleep 0.3
+    tool chord x cmd > /dev/null
+    sleep 0.6
+    v=$(val "form.command")
+    clip=$(pbpaste)
+    if [ -z "$v" ] && [ "$clip" = "$paste" ]; then
+        result PASS "Command-X cuts the field's text" "the field is empty, pbpaste reads: $clip"
+    else
+        result FAIL "Command-X cuts the field's text" "the field reads: ${v:-nothing}; pbpaste reads: ${clip:-nothing}"
+    fi
+    snap after-cut
+
+    # Command-Z brings the text back, and Shift-Command-Z cuts it again.
+    tool chord z cmd > /dev/null
+    sleep 0.6
+    v=$(val "form.command")
+    if [ "$v" = "$paste" ]; then
+        result PASS "Command-Z undoes the cut" "the field reads: $v"
+    else
+        result FAIL "Command-Z undoes the cut" "the field reads: ${v:-nothing}"
+    fi
+    tool chord z shiftcmd > /dev/null
+    sleep 0.6
+    v=$(val "form.command")
+    if [ -z "$v" ]; then
+        result PASS "Shift-Command-Z redoes the cut" "the field is empty"
+    else
+        result FAIL "Shift-Command-Z redoes the cut" "the field reads: $v"
+    fi
+
+    # Command-W with the form open closes nothing: neither the form nor the window (issue #147).
+    tool chord w cmd > /dev/null
+    sleep 1.5
+    n=$(windows)
+    if [ "${n:-0}" -eq 1 ] && wax find "form.newDesk" | grep -q '^found'; then
+        result PASS "Command-W with the form open closes nothing" "windows=1, form.newDesk still there"
+    else
+        result FAIL "Command-W with the form open closes nothing" "windows=${n:-?}; form.newDesk: $(wax find "form.newDesk" | head -n 1)"
+    fi
+
+    # The key presses set off no menu-open signal: no "menu opened" and no "menu tracking" line since the first.
+    v=$(applog "$keys_since" | grep -cE "menu opened|menu tracking")
+    if [ "$v" -eq 0 ]; then
+        result PASS "the editing keys set off no menu-open signal" "no 'menu opened' or 'menu tracking' line"
+    else
+        result FAIL "the editing keys set off no menu-open signal" "$v line(s): $(applog "$keys_since" | grep -E "menu opened|menu tracking" | sed 's/.*menu/menu/' | tr '\n' '|')"
+    fi
+
+    if [ "$(val "form.command")" != "$paste" ]; then
         clear_field "form.command"
         tool type "$paste" > /dev/null
         sleep 0.5
@@ -872,12 +953,89 @@ forms_sample() {
     stop_app
 }
 
+# Command-W and Command-Q with the window in front, and Command-W with the menu-bar menu open (issue #147).
+# Command-W closes the window and the app keeps running with its menu; with the menu open it closes nothing.
+# Command-Q comes last: what it does is reported, and the app is stopped after it either way.
+window_keys() {
+    local since n v
+    start_app six-desks || return
+    if ! open_window; then stop_app; return; fi
+    sleep 1
+    snap_screen window-in-front
+
+    # Command-W with the menu-bar menu open closes nothing; Escape then closes the menu.
+    if open_menu; then
+        tool chord w cmd > /dev/null
+        sleep 1
+        close_menu
+        sleep 1
+        n=$(windows)
+        if [ "${n:-0}" -eq 1 ]; then
+            result PASS "Command-W with the menu open closes nothing" "windows=1"
+        else
+            result FAIL "Command-W with the menu open closes nothing" "windows=${n:-?}"
+        fi
+    else
+        result NOT-SHOWN "Command-W with the menu open closes nothing" "the menu did not open"
+    fi
+
+    # Command-W in the window closes it: the window comes to the front first, with a click on its title bar.
+    local frame fx fy fw
+    frame=$(wax frame | grep '^frame' | tail -n 1)
+    read -r _ fx fy fw _ <<< "$frame"
+    [ -n "${fw:-}" ] && tool click "$((fx + fw / 2))" "$((fy + 12))" > /dev/null
+    sleep 0.5
+    since=$(moment)
+    tool chord w cmd > /dev/null
+    n=$(wait_windows 0 5)
+    if [ "$n" -eq 0 ]; then
+        result PASS "Command-W closes the window" "windows=0"
+    else
+        result FAIL "Command-W closes the window" "windows=$n after Command-W"
+    fi
+    v=$(applog "$since" | grep -cE "menu opened|menu tracking")
+    if [ "$v" -eq 0 ]; then
+        result PASS "Command-W sets off no menu-open signal" "no 'menu opened' or 'menu tracking' line"
+    else
+        result FAIL "Command-W sets off no menu-open signal" "$v line(s)"
+    fi
+    sleep 1.5
+    if kill -0 "$app_pid" 2>/dev/null; then
+        result PASS "after Command-W the app keeps running" "pid $app_pid still there"
+    else
+        result FAIL "after Command-W the app keeps running" "the app ended"
+        app_pid=""
+        return
+    fi
+    if open_menu; then
+        result PASS "the menu still opens after Command-W" "menu windows=$(count)"
+        close_menu
+    else
+        result FAIL "the menu still opens after Command-W" "no menu window within 6 s of the click"
+    fi
+
+    # Command-Q with the window in front: reported, never failed.
+    if open_window; then
+        sleep 1
+        tool chord q cmd > /dev/null
+        sleep 3
+        if kill -0 "$app_pid" 2>/dev/null; then
+            result PASS "Command-Q with the window in front leaves the app running" "pid $app_pid still there, windows=$(windows)"
+        else
+            result DIFFERS "Command-Q with the window in front leaves the app running" "the app quit"
+            app_pid=""
+        fi
+    fi
+    stop_app
+}
+
 ############################################################ the run
 say "driving the window of $APP on $os ($(sw_vers -productVersion))"
 tool preflight > /dev/null
 lim 10 "$TOOL" move 600 500 > /dev/null
 
 forms_sample
+window_keys
 six_desks
 windows_sample
 ready_then_locked
