@@ -116,10 +116,12 @@ struct DeskRowView: View {
                 // style that doesn't style or decorate its content while idle". The chevron says it opens;
                 // Image(systemName:) "Creates a system symbol image." (macOS 11.0,
                 // https://developer.apple.com/documentation/swiftui/image/init(systemname:)).
-                Button(action: toggle) {
+                Button(action: { if row.hasStrip { toggle() } }) {
                     HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        // No chevron on a row with nothing to open, such as a new desk before its check.
                         Image(systemName: isOpen ? "chevron.down" : "chevron.right")
                             .font(.caption).foregroundStyle(.secondary).frame(width: 10)
+                            .opacity(row.hasStrip ? 1 : 0)
                         VStack(alignment: .leading, spacing: 2) {
                             HStack(spacing: 12) {
                                 Text(verbatim: row.name).fontWeight(.semibold)

@@ -144,11 +144,18 @@ public struct NewDeskForm: Sendable, Equatable {
         nameFollowsFolder = text.isEmpty || text == folderPath.map(Self.name(fromFolder:))
     }
 
-    /// The projects folder was saved: the list is read from it next.
+    /// The projects folder was saved: the list is read from it next. Trimmed as `projectsFolderToSave` is.
     public mutating func projectsFolderSaved(_ folder: String) {
-        projectsFolder = folder.isEmpty ? nil : folder
+        let saved = folder.trimmingCharacters(in: .whitespaces)
+        projectsFolder = saved.isEmpty ? nil : saved
         folders = projectsFolder == nil ? .noProjectsFolder : .reading
     }
+
+    /// What Save sends: the field without spaces at either end.
+    public var projectsFolderToSave: String { projectsFolderDraft.trimmingCharacters(in: .whitespaces) }
+
+    /// Save is off while the field is empty: saving nothing would only bring the same line back.
+    public var canSaveProjectsFolder: Bool { !projectsFolderToSave.isEmpty }
 
     private mutating func followFolder() {
         if nameFollowsFolder { name = folderPath.map(Self.name(fromFolder:)) ?? "" }
@@ -181,6 +188,12 @@ public struct NewDeskForm: Sendable, Equatable {
             return "A path is full, starting with /, or starts with ~."
         }
         return nil
+    }
+
+    /// The line under the path field: nothing while the field is empty (Make desk waits for a folder, section
+    /// 7.5), else why the typed path can't be used, or nothing when it can.
+    public var pathLine: String? {
+        typedPath.trimmingCharacters(in: .whitespaces).isEmpty ? nil : folderProblem
     }
 
     /// Checked as he types: `DeskName`, and the script's own rule for a taken name.

@@ -17,56 +17,36 @@ struct NewDeskSheet: View {
     @State private var failure: String?
     /// Why the projects folder wasn't saved.
     @State private var saveProblem: String?
+    /// A Save is running.
+    @State private var saving = false
 
     private var making: Bool { forms.making.contains(form.workhorseID) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(verbatim: form.title).font(.headline)
-            folders
-            HStack {
-                Text(verbatim: NewDeskForm.Words.orAPath)
-                TextField(NewDeskForm.Words.orAPath, text: Binding(get: { form.typedPath }, set: { form.setTypedPath($0) }))
-                    .labelsHidden()
-                    .accessibilityIdentifier(FormMarks.path)
-            }
-            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 8) {
-                GridRow {
-                    Text(verbatim: NewDeskForm.Words.name)
-                    field(NewDeskForm.Words.name, text: Binding(get: { form.name }, set: { form.setName($0) }),
-                          help: form.nameLine, isProblem: form.nameLineIsProblem,
-                          mark: FormMarks.name)
-                }
-                GridRow {
-                    Text(verbatim: NewDeskForm.Words.command)
-                    field(NewDeskForm.Words.command, text: $form.command,
-                          help: form.commandLine, isProblem: form.commandLineIsProblem,
-                          mark: FormMarks.command)
-                }
-                GridRow {
-                    Text(verbatim: NewDeskForm.Words.afterARestart)
-                    Toggle(isOn: $form.comesBack) { Text(verbatim: NewDeskForm.Words.comesBack) }
-                        .toggleStyle(.checkbox)
-                        .accessibilityIdentifier(FormMarks.comesBack)
-                }
-                // Hidden for a script older than 0.5.0 (section 7.2).
-                if form.canKeepClosed {
-                    GridRow {
-                        Text(verbatim: NewDeskForm.Words.whenItsLastShellExits)
-                        Picker(selection: $form.keepClosed) {
-                            Text(verbatim: NewDeskForm.Words.removeTheDesk).tag(false)
-                            Text(verbatim: NewDeskForm.Words.keepItClosed).tag(true)
-                        } label: {
-                            Text(verbatim: NewDeskForm.Words.whenItsLastShellExits)
-                        }
-                        .pickerStyle(.radioGroup)
-                        .labelsHidden()
-                        .accessibilityIdentifier(FormMarks.whenItExits)
+            Group {
+                folders
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack {
+                        Text(verbatim: NewDeskForm.Words.orAPath)
+                        plainField(NewDeskForm.Words.orAPath,
+                                   text: Binding(get: { form.typedPath }, set: { form.setTypedPath($0) }))
+                            .accessibilityIdentifier(FormMarks.path)
+                    }
+                    // Why a typed path can't be used; nothing while the field is empty.
+                    if let line = form.pathLine {
+                        Text(verbatim: line).font(.caption).foregroundStyle(.red)
+                            .accessibilityIdentifier(FormMarks.path + ".help")
                     }
                 }
+                fields
             }
+            // Nothing changes under a desk being made: what he sees is what was sent.
+            .disabled(making)
             Toggle(isOn: $form.openInTab) { Text(verbatim: NewDeskForm.Words.openInATabNow) }
                 .toggleStyle(.checkbox)
+                .disabled(making)
                 .accessibilityIdentifier(FormMarks.openInTab)
             HStack {
                 Spacer()
@@ -103,17 +83,60 @@ struct NewDeskSheet: View {
         .task { await readFolders() }
     }
 
+    /// Name, Command to start, After a restart, and When its last shell exits.
+    private var fields: some View {
+            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 8) {
+                GridRow {
+                    Text(verbatim: NewDeskForm.Words.name)
+                    field(NewDeskForm.Words.name, text: Binding(get: { form.name }, set: { form.setName($0) }),
+                          help: form.nameLine, isProblem: form.nameLineIsProblem,
+                          mark: FormMarks.name)
+                }
+                GridRow {
+                    Text(verbatim: NewDeskForm.Words.command)
+                    field(NewDeskForm.Words.command, text: $form.command,
+                          help: form.commandLine, isProblem: form.commandLineIsProblem,
+                          mark: FormMarks.command)
+                }
+                GridRow {
+                    Text(verbatim: NewDeskForm.Words.afterARestart)
+                    Toggle(isOn: $form.comesBack) { Text(verbatim: NewDeskForm.Words.comesBack) }
+                        .toggleStyle(.checkbox)
+                        .accessibilityIdentifier(FormMarks.comesBack)
+                }
+                // Hidden for a script older than 0.5.0 (section 7.2).
+                if form.canKeepClosed {
+                    GridRow {
+                        Text(verbatim: NewDeskForm.Words.whenItsLastShellExits)
+                        Picker(selection: $form.keepClosed) {
+                            Text(verbatim: NewDeskForm.Words.removeTheDesk).tag(false)
+                            Text(verbatim: NewDeskForm.Words.keepItClosed).tag(true)
+                        } label: {
+                            Text(verbatim: NewDeskForm.Words.whenItsLastShellExits)
+                        }
+                        .pickerStyle(.radioGroup)
+                        .labelsHidden()
+                        .accessibilityIdentifier(FormMarks.whenItExits)
+                    }
+                }
+            }
+    }
+
     /// The folder list with its filter, the one line that saves a projects folder, or why the list can't be read.
     @ViewBuilder private var folders: some View {
         switch form.folders {
         case .noProjectsFolder:
             HStack {
                 Text(verbatim: form.projectsFolderLine)
-                TextField(form.projectsFolderLine, text: $form.projectsFolderDraft)
-                    .labelsHidden()
+                plainField(form.projectsFolderLine, text: $form.projectsFolderDraft)
                     .frame(width: 220)
+                    // Return in this field saves, since Make desk (the default button) is off here. Apple,
+                    // TextField.init(text:prompt:label:) (https://developer.apple.com/documentation/swiftui/textfield/init(text:prompt:label:)):
+                    // "Use the onSubmit(of:_:) modifier to invoke an action whenever the user submits this text field."
+                    .onSubmit { save() }
                     .accessibilityIdentifier(FormMarks.projectsFolder)
                 Button { save() } label: { Text(verbatim: NewDeskForm.Words.save) }
+                    .disabled(!form.canSaveProjectsFolder || saving)
                     .accessibilityIdentifier(FormMarks.saveProjectsFolder)
             }
             if let saveProblem {
@@ -149,8 +172,7 @@ struct NewDeskSheet: View {
 
     private func field(_ title: String, text: Binding<String>, help: String, isProblem: Bool, mark: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            TextField(title, text: text)
-                .labelsHidden()
+            plainField(title, text: text)
                 .accessibilityIdentifier(mark)
             Text(verbatim: help).font(.caption).foregroundStyle(isProblem ? Color.red : Color.secondary)
                 .accessibilityIdentifier(mark + ".help")
@@ -164,14 +186,17 @@ struct NewDeskSheet: View {
     }
 
     private func save() {
-        let draft = form.projectsFolderDraft
+        guard form.canSaveProjectsFolder, !saving else { return }
+        let draft = form.projectsFolderToSave
+        saving = true
         Task {
+            defer { saving = false }
             if let problem = await forms.saveProjectsFolder(form.workhorseID, draft) {
                 saveProblem = problem
                 return
             }
             saveProblem = nil
-            form.projectsFolderSaved(draft.trimmingCharacters(in: .whitespaces))
+            form.projectsFolderSaved(draft)
             await readFolders()
         }
     }
@@ -204,8 +229,7 @@ struct RenameSheet: View {
         VStack(alignment: .leading, spacing: 10) {
             Text(verbatim: form.title).font(.headline)
             Text(verbatim: form.label)
-            TextField(form.label, text: $form.name)
-                .labelsHidden()
+            plainField(form.label, text: $form.name)
                 .frame(width: 320)
                 .accessibilityIdentifier(FormMarks.newName)
             if let problem = form.problem {
@@ -245,6 +269,16 @@ struct RenameSheet: View {
             }
         }
     }
+}
+
+/// A text field with its label beside it already, so it shows no placeholder of its own (the design draws
+/// empty fields); the label stays for accessibility. Apple, TextField.init(text:prompt:label:) (macOS 12.0,
+/// https://developer.apple.com/documentation/swiftui/textfield/init(text:prompt:label:)): "prompt: A Text
+/// representing the prompt of the text field which provides users with guidance on what to type into the
+/// text field." "label: A view that describes the purpose of the text field."
+fileprivate func plainField(_ title: String, text: Binding<String>) -> some View {
+    TextField(text: text, prompt: Text(verbatim: "")) { Text(verbatim: title) }
+        .labelsHidden()
 }
 
 /// Accessibility identifiers of the forms, for CI's driver only (scripts/ci/drive-window.sh).

@@ -152,6 +152,39 @@ private func form(version: String = "0.8.0", saved: Workhorse = attic()) throws 
         #expect(f.folderProblem == nil)
     }
 
+    /// Under the path field: nothing while it is empty (Make desk just waits for a folder, section 7.5), then
+    /// why a typed path can't be used.
+    @Test func theLineUnderThePathSaysWhyATypedPathIsRefused() throws {
+        var f = try form()
+        #expect(f.pathLine == nil)
+        f.choose("garden-planner")
+        #expect(f.pathLine == nil)
+        f.setTypedPath("Development/garden")
+        #expect(f.pathLine == "A path is full, starting with /, or starts with ~.")
+        #expect(!f.canMake)
+        f.setTypedPath("~/x\ty")
+        #expect(f.pathLine == "A path can't contain a tab or a new line.")
+        f.setTypedPath("~/x")
+        #expect(f.pathLine == nil)
+        f.setTypedPath("/x")
+        #expect(f.pathLine == nil)
+        f.setTypedPath("")
+        #expect(f.pathLine == nil)
+    }
+
+    /// Save is off while the projects folder field is empty, and the saved value is the trimmed one.
+    @Test func anEmptyProjectsFolderCantBeSaved() throws {
+        var f = try form(saved: attic(projects: nil))
+        #expect(f.canSaveProjectsFolder)
+        f.projectsFolderDraft = "  "
+        #expect(!f.canSaveProjectsFolder)
+        f.projectsFolderDraft = " ~/Code "
+        #expect(f.projectsFolderToSave == "~/Code")
+        f.projectsFolderSaved(" ~/Code ")
+        #expect(f.projectsFolder == "~/Code")
+        #expect(f.folders == .reading)
+    }
+
     // MARK: the name rules
 
     @Test func theNameIsCheckedAsTyped() throws {
