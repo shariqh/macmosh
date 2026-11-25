@@ -22,6 +22,10 @@ public struct Workhorse: Codable, Sendable, Identifiable, Equatable {
     public var lastSeen: Date?
     public var lastKeyAccepted: Date?
     public var powerChanges: [String]     // pmset commands run through MacMosh, for "Remove"
+    /// The startup command the window's New desk form last sent for this workhorse, the next form's
+    /// default; nil the first time, or after a desk with a plain shell (main window design, section 7.3).
+    /// A setting, never written to a log.
+    public var lastDeskCommand: String?
 
     public init(id: String, name: String, user: String, mainAddress: String,
                 homeAddress: String? = nil, homePrefix: Int? = nil, localName: String? = nil,
@@ -30,7 +34,7 @@ public struct Workhorse: Codable, Sendable, Identifiable, Equatable {
                 projectsFolder: String? = nil, identityFile: String? = nil,
                 osVersion: String? = nil, arch: String? = nil,
                 lastSeen: Date? = nil, lastKeyAccepted: Date? = nil,
-                powerChanges: [String] = []) {
+                powerChanges: [String] = [], lastDeskCommand: String? = nil) {
         self.id = id
         self.name = name
         self.user = user
@@ -49,6 +53,7 @@ public struct Workhorse: Codable, Sendable, Identifiable, Equatable {
         self.lastSeen = lastSeen
         self.lastKeyAccepted = lastKeyAccepted
         self.powerChanges = powerChanges
+        self.lastDeskCommand = lastDeskCommand
     }
 
     // Only the five fields a record can't do without are required when decoding. The optional
@@ -74,6 +79,7 @@ public struct Workhorse: Codable, Sendable, Identifiable, Equatable {
         lastSeen = try c.decodeIfPresent(Date.self, forKey: .lastSeen)
         lastKeyAccepted = try c.decodeIfPresent(Date.self, forKey: .lastKeyAccepted)
         powerChanges = try c.decodeIfPresent([String].self, forKey: .powerChanges) ?? []
+        lastDeskCommand = try c.decodeIfPresent(String.self, forKey: .lastDeskCommand)
     }
 }
 

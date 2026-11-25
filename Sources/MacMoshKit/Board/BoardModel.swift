@@ -58,7 +58,8 @@ public enum BoardModel {
                 summary: block.summary, homeReachable: block.homeReachable, desks: desks,
                 ended: (ended[id] ?? []).map { onBoard($0, workhorse: id, user: user) },
                 lastReadyDesks: lastReadyDesks, lastReadyAt: lastReadyAt,
-                buttons: buttons(block, desks: lines, workhorse: id), result: results[id]))
+                buttons: buttons(block, desks: lines, workhorse: id), result: results[id],
+                scriptVersion: r?.status?.scriptVersion))
         }
         return Board(workhorses: workhorses, symbol: MenuModel.symbol(forAll: states))
     }
@@ -150,7 +151,7 @@ public enum BoardModel {
     }
 
     /// Rows are in name order (section 7.1 A), letter case aside, closed desks among them.
-    private static func inNameOrder(_ a: String, _ b: String) -> Bool {
+    static func inNameOrder(_ a: String, _ b: String) -> Bool {
         let (x, y) = (a.lowercased(), b.lowercased())
         return x == y ? a < b : x < y
     }

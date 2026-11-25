@@ -713,4 +713,30 @@ private final class Saved: @unchecked Sendable {
             c?.resume(returning: gathered)
         }
     }
+
+    /// Each check that ends is counted, a list that can't be read included, so the window can wait for the
+    /// check after its action (step 4).
+    @Test func everyCheckThatEndsIsCounted() async {
+        let broken = BrokenFlag()
+        let r = MenuRefresher(load: { if broken.on { throw StoreError.unreadable("x") }; return [.sample()] },
+                              gather: { list in list.map { .checked(.sampleReady(id: $0.id, name: $0.name)) } },
+                              save: { _ in })
+        #expect(r.checksDone == 0)
+        await r.refresh()
+        await r.refresh()
+        #expect(r.checksDone == 2)
+        broken.on = true
+        await r.refresh()
+        #expect(r.checksDone == 3)
+    }
+}
+
+/// Whether a test's saved list reads as damaged now.
+private final class BrokenFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = false
+    var on: Bool {
+        get { lock.withLock { value } }
+        set { lock.withLock { value = newValue } }
+    }
 }

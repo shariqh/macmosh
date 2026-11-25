@@ -54,7 +54,8 @@ struct WorkhorsePageView: View {
                 Text(verbatim: summary).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             if let result = page.result {
-                Text(verbatim: result).foregroundStyle(.secondary)
+                Text(verbatim: result).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier(WindowMarks.result)
             }
             NoticeLine(notice: notice)
         }
@@ -115,10 +116,12 @@ struct DeskRowView: View {
                 // style that doesn't style or decorate its content while idle". The chevron says it opens;
                 // Image(systemName:) "Creates a system symbol image." (macOS 11.0,
                 // https://developer.apple.com/documentation/swiftui/image/init(systemname:)).
-                Button(action: toggle) {
+                Button(action: { if row.hasStrip { toggle() } }) {
                     HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        // No chevron on a row with nothing to open, such as a new desk before its check.
                         Image(systemName: isOpen ? "chevron.down" : "chevron.right")
                             .font(.caption).foregroundStyle(.secondary).frame(width: 10)
+                            .opacity(row.hasStrip ? 1 : 0)
                         VStack(alignment: .leading, spacing: 2) {
                             HStack(spacing: 12) {
                                 Text(verbatim: row.name).fontWeight(.semibold)
@@ -138,8 +141,10 @@ struct DeskRowView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier(WindowMarks.desk(row.name))
-                if let tabs = row.tabs {
-                    Text(verbatim: tabs).foregroundStyle(.secondary)
+                // "Renaming…", "Removing…" or "Updating…" while the window's action on it runs, else its tabs.
+                if let shown = row.status ?? row.tabs {
+                    Text(verbatim: shown).foregroundStyle(.secondary)
+                        .accessibilityIdentifier(WindowMarks.status(row.name))
                 }
                 if let open = row.open {
                     // "Go to" or "Open"; the menu's own words for the click ("Go to website", "Open the 1 window
@@ -147,11 +152,12 @@ struct DeskRowView: View {
                     // https://developer.apple.com/documentation/swiftui/view/help(_:)-9lm7l): "Adding help to a
                     // view configures the view's accessibility hint and its help tag (also called a tooltip) in macOS".
                     Button { run(open) } label: { Text(verbatim: open.title) }
+                        .disabled(!open.isEnabled)
                         .help(Text(verbatim: row.openWords ?? ""))
                         .accessibilityIdentifier(WindowMarks.open(row.name))
                 }
             }
-            if isOpen {
+            if isOpen && row.hasStrip {
                 DeskDetail(row: row, run: run)
             }
             Divider()
@@ -180,6 +186,7 @@ struct DeskDetail: View {
                             // its window (help(_:), quoted above).
                             Button { run(line.button) } label: { Text(verbatim: line.button.title) }
                                 .controlSize(.small)
+                                .disabled(!line.button.isEnabled)
                                 .help(Text(verbatim: line.words))
                                 .accessibilityIdentifier(WindowMarks.window(row.name, line.id))
                         }

@@ -95,6 +95,10 @@ public struct HostCommands: Sendable {
         throw Self.error(for: outcome)
     }
 
+    /// Why a call failed when it passed `timeLimit`: ssh here was stopped, which may be after the script there
+    /// did its work (`DeskFormat.windowUnsure`).
+    public static let noAnswer = "The workhorse didn't answer within \(Int(timeLimit.components.seconds)) seconds."
+
     private static func error(for outcome: ProbeOutcome) -> HostCommandError {
         func failed(_ message: String) -> HostCommandError { .failed(exitCode: 255, message: message) }
         switch outcome {
@@ -116,7 +120,7 @@ public struct HostCommands: Sendable {
         case .hostKeyUnknown:
             return failed("MacMosh has no saved host key for this workhorse. Pair it again with: macmosh pair")
         case .timedOut:
-            return failed("The workhorse didn't answer within \(Int(timeLimit.components.seconds)) seconds.")
+            return failed(noAnswer)
         case .refused:
             return failed("The workhorse refused the connection. Is Remote Login on?")
         case .unresolved:

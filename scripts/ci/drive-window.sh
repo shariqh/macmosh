@@ -20,7 +20,10 @@
 # menu, a click runs the wrong button or none, closing the window ends the app or stops the menu from
 # opening, or, in the "windows" sample (issue #134), a desk's details do not list its windows, a window's
 # button does not run the menu's action for that window, or a desk whose tab can be found opens a tab
-# instead of going to it. How a picture looks never fails it.
+# instead of going to it. In the "window-forms" sample (step 4) it fails when New desk…, Rename… or Remove… does
+# not open its form, a form does not refuse a taken name, a form's button does not send its exact arguments to
+# the stand-in ssh, or the page does not say what happened. Whether Command-V pastes into a text field is
+# reported, never failed. How a picture looks never fails it.
 set -uo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -593,11 +596,288 @@ no_workhorses() {
     stop_app
 }
 
+############################################################ the forms (step 4)
+# wait_id <identifier> <seconds>: until the window (or a sheet or dialog of it) has that element.
+wait_id() {
+    local deadline=$((SECONDS + $2))
+    while [ "$SECONDS" -lt "$deadline" ]; do
+        wax find "$1" | grep -q '^found' && return 0
+        sleep 0.5
+    done
+    return 1
+}
+
+# gone_id <identifier> <seconds>: until it has no such element.
+gone_id() {
+    local deadline=$((SECONDS + $2))
+    while [ "$SECONDS" -lt "$deadline" ]; do
+        wax find "$1" | grep -q '^found' || return 0
+        sleep 0.5
+    done
+    return 1
+}
+
+# val <identifier>: that element's text, or nothing.
+val() { wax value "$1" | grep '^value' | tail -n 1 | sed 's/^value //'; }
+
+# clear_field <identifier>: a click in the field, then the caret to its end and every character deleted, with
+# keys a text field handles itself (arrows and Delete), not the edit menu's shortcuts.
+clear_field() {
+    click_id "$1" || return 1
+    sleep 0.4
+    tool keys 124 70 5 > /dev/null
+    tool keys 51 70 5 > /dev/null
+}
+
+# expect_log <check> <moment> <text>: the app's log since then has that text, exactly.
+expect_log() {
+    if wait_log "$2" "$3" 10 > /dev/null; then
+        result PASS "$1" "the log has: $3"
+    else
+        result FAIL "$1" "the log has no: $3; sample ssh lines: $(applog "$2" | grep -F "sample ssh:" | sed 's/.*sample ssh: //' | tr '\n' '|')"
+    fi
+}
+
+# expect_value <check> <identifier> <want> <seconds>: the element reads exactly that within the time.
+expect_value() {
+    local deadline=$((SECONDS + $4)) v=""
+    while [ "$SECONDS" -lt "$deadline" ]; do
+        v=$(val "$2")
+        [ "$v" = "$3" ] && { result PASS "$1" "$2 reads: $v"; return 0; }
+        sleep 0.5
+    done
+    result FAIL "$1" "$2 reads: ${v:-nothing} (expected: $3)"
+    return 1
+}
+
+# The New desk form, Rename and Remove in the window (main window design, section 8, step 4): the sample
+# "window-forms" is Attic, Ready, with no projects folder saved, whose desks a stand-in ssh changes. It writes
+# each call's exact remote command to the log (`sample ssh: ... run=<command>`) and answers as the script would.
+forms_sample() {
+    local since start v x y paste want typed deadline clip
+    start=$(moment)
+    start_app window-forms || return
+    if ! open_window; then stop_app; return; fi
+    sleep 2
+    snap page
+
+    # New desk… opens the form, which asks for a projects folder first.
+    if ! click_id "button.newDesk" || ! wait_id "form.newDesk" 6; then
+        result FAIL "New desk… opens the form" "no New desk sheet"
+        snap no-form
+        stop_app
+        return
+    fi
+    result PASS "New desk… opens the form" "form.newDesk found"
+    sleep 0.5
+    # shellcheck disable=SC2088 # the field's own text, a tilde and all
+    expect_value "with no projects folder the form offers one" "form.projectsFolder" "~/Development" 3
+    snap new-desk-projects-folder
+
+    # Save fills the list from the workhorse.
+    since=$(moment)
+    click_id "form.saveProjectsFolder"
+    expect_log "Save lists the folders of the saved projects folder" "$since" \
+        "run=~/.macmosh/macmosh-host folders '~/Development'"
+    if wait_id "form.folder.garden-planner" 8; then
+        result PASS "the folder list fills after Save" "form.folder.garden-planner found"
+    else
+        result FAIL "the folder list fills after Save" "no row for garden-planner"
+        snap no-list
+        stop_app
+        return
+    fi
+    sleep 0.5
+    snap new-desk-form
+
+    # A click on a folder names the desk after it.
+    click_id "form.folder.garden-planner"
+    expect_value "a chosen folder names the desk" "form.name" "garden-planner" 3
+
+    # A taken name is refused as it is typed, and Make desk is off.
+    clear_field "form.name"
+    tool type "api" > /dev/null
+    sleep 0.5
+    expect_value "a taken name is refused as typed" "form.name.help" "Attic already has a desk called api." 3
+    v=$(wax enabled "form.make" | grep '^enabled' | tail -n 1)
+    if [ "$v" = "enabled false" ]; then
+        result PASS "Make desk is off while the name is taken" "$v"
+    else
+        result FAIL "Make desk is off while the name is taken" "${v:-no answer}"
+    fi
+    snap taken-name
+
+    # A typed path that is neither full nor starts with ~ says why under the field, and Make desk stays off.
+    click_id "form.path" > /dev/null
+    sleep 0.4
+    tool type "Development/garden" > /dev/null
+    expect_value "a refused path says why under the field" "form.path.help" "A path is full, starting with /, or starts with ~." 3
+    snap bad-path
+    clear_field "form.path"
+    if gone_id "form.path.help" 3; then
+        result PASS "the path's line goes once the field is empty" "form.path.help gone"
+    else
+        result FAIL "the path's line goes once the field is empty" "form.path.help is still there"
+    fi
+
+    # The name and a command typed with posted keys.
+    clear_field "form.name"
+    tool type "garden-planner" > /dev/null
+    expect_value "a typed name reaches the field" "form.name" "garden-planner" 3
+    clear_field "form.command"
+    tool type "claude --continue" > /dev/null
+    expect_value "a typed command reaches the field" "form.command" "claude --continue" 3
+
+    # Paste with Command-V in an app that has no menu bar of its own (design, section 11). A finding only.
+    # shellcheck disable=SC2016 # the text as typed, $HOME and all
+    paste='claude --continue "fix it" $HOME; ls'
+    printf '%s' "$paste" | pbcopy
+    # The clipboard is read back first, so an empty field after Command-V means the paste did not land, not that
+    # there was nothing to paste.
+    clip=$(pbpaste)
+    if [ "$clip" != "$paste" ]; then
+        result DIFFERS "Command-V pastes into the command field" "not tried: the clipboard was not set (pbpaste reads: ${clip:-nothing})"
+        v=""
+    else
+        say "pbpaste reads back the text pbcopy was given"
+        clear_field "form.command"
+        tool chord v cmd > /dev/null
+        sleep 0.8
+        v=$(val "form.command")
+        if [ "$v" = "$paste" ]; then
+            result PASS "Command-V pastes into the command field" "the clipboard held the text, and the field reads back: $v"
+        else
+            result DIFFERS "Command-V pastes into the command field" "the clipboard held the text (pbpaste), and after Command-V the field reads: ${v:-nothing}"
+        fi
+    fi
+    if [ "$v" != "$paste" ]; then
+        clear_field "form.command"
+        tool type "$paste" > /dev/null
+        sleep 0.5
+    fi
+    typed=$(val "form.command")
+    [ "$typed" = "$paste" ] || result DIFFERS "the command with quotes, \$ and ; is in the field" "it reads: ${typed:-nothing}"
+    snap new-desk-filled
+
+    # Return presses Make desk: one ssh call with the command as one argument, exactly as typed.
+    since=$(moment)
+    tool keys 36 1 100 > /dev/null
+    sleep 0.6
+    v=$(val "form.make")
+    if [ "$v" = "Making…" ]; then
+        result PASS "the button says Making… while the desk is made" "form.make reads: $v"
+    else
+        result DIFFERS "the button says Making… while the desk is made" "form.make reads: ${v:-nothing}"
+    fi
+    snap making
+    want="sample ssh: to=alex@192.168.1.20 batch=yes stdin=closed limit=15s run=~/.macmosh/macmosh-host desk-new garden-planner '~/Development/garden-planner' --reopen --command '$paste'"
+    expect_log "Make desk sends the exact arguments" "$since" "$want"
+    expect_log "Make desk writes its log line" "$since" "window action: newDesk ok"
+    if gone_id "form.newDesk" 6; then
+        result PASS "the form closes once the desk is made" "form.newDesk gone"
+    else
+        result FAIL "the form closes once the desk is made" "the sheet is still there"
+    fi
+    v=$(val "desk.garden-planner.status")
+    result "$([ "$v" = "Updating…" ] && echo PASS || echo DIFFERS)" "the new desk's row says Updating… until the check lands" "it reads: ${v:-nothing}"
+    snap updating
+    expect_value "the page says what happened" "page.result" "Created the desk garden-planner on Attic." 10
+    v=$(val "desk.garden-planner.status")
+    deadline=$((SECONDS + 8))
+    while [ "$v" = "Updating…" ] && [ "$SECONDS" -lt "$deadline" ]; do sleep 0.5; v=$(val "desk.garden-planner.status"); done
+    if [ "$v" = "No tab" ]; then
+        result PASS "once the check lands the new desk's row is the check's" "desk.garden-planner.status reads: $v"
+    else
+        result FAIL "once the check lands the new desk's row is the check's" "desk.garden-planner.status reads: ${v:-nothing}"
+    fi
+    expect_log "Open it in a tab now runs the menu's open for the new desk" "$since" "menu action: tab connect (window)"
+    sleep 2
+    snap after-new-desk
+
+    # Rename… on api: the field holds the old name; a new one is sent as typed.
+    click_id "desk.api" > /dev/null
+    sleep 1
+    if click_id "button.rename" && wait_id "form.rename" 6; then
+        expect_value "Rename's field holds the old name" "form.newName" "api" 3
+        snap rename
+        clear_field "form.newName"
+        tool type "api-v2" > /dev/null
+        sleep 0.5
+        snap rename-filled
+        since=$(moment)
+        tool keys 36 1 100 > /dev/null
+        expect_log "Rename sends the exact arguments" "$since" \
+            "sample ssh: to=alex@192.168.1.20 batch=yes stdin=closed limit=15s run=~/.macmosh/macmosh-host desk-rename api api-v2"
+        expect_log "Rename writes its log line" "$since" "window action: rename ok"
+        if gone_id "form.rename" 6; then
+            result PASS "the Rename form closes once renamed" "form.rename gone"
+        else
+            result FAIL "the Rename form closes once renamed" "the sheet is still there"
+        fi
+        expect_value "the page says what Rename did" "page.result" "Renamed api to api-v2 on Attic." 10
+        if gone_id "desk.api" 8 && wait_id "desk.api-v2" 2; then
+            result PASS "after the check the row has the new name only" "desk.api gone, desk.api-v2 there"
+        else
+            result FAIL "after the check the row has the new name only" "desk.api still there, or no desk.api-v2"
+        fi
+        sleep 2
+        snap after-rename
+    else
+        result FAIL "Rename… opens its form" "no Rename button or form for api"
+    fi
+
+    # Remove… on website: the terminal's sentence, a destructive Remove website and Cancel.
+    click_id "desk.website" > /dev/null
+    sleep 1
+    if click_id "button.remove"; then
+        sleep 1.5
+        v=$(wax text "This removes the desk website" | grep '^text' | tail -n 1 | sed 's/^text //')
+        if [ "$v" = "This removes the desk website and closes its 3 windows (claude, zsh, vim), with whatever is running in them." ]; then
+            result PASS "Remove asks with the terminal's sentence" "$v"
+        else
+            result FAIL "Remove asks with the terminal's sentence" "the dialog reads: ${v:-nothing}"
+        fi
+        snap remove
+        snap_screen remove-screen
+        read -r _ x y _ <<< "$(wax button "Remove website" | grep '^found' | tail -n 1)"
+        if [ -n "${y:-}" ]; then
+            since=$(moment)
+            say "click on [Remove website] at $x,$y"
+            tool click "$x" "$y" > /dev/null
+            expect_log "Remove sends the exact arguments" "$since" \
+                "sample ssh: to=alex@192.168.1.20 batch=yes stdin=closed limit=15s run=~/.macmosh/macmosh-host desk-remove website --kill"
+            expect_log "Remove writes its log line" "$since" "window action: remove ok"
+            expect_value "the page says what Remove did" "page.result" "Removed the desk website from Attic." 10
+            if gone_id "desk.website" 8; then
+                result PASS "after the check the removed desk's row is gone" "desk.website gone"
+            else
+                result FAIL "after the check the removed desk's row is gone" "desk.website still there"
+            fi
+            sleep 2
+            snap after-remove
+        else
+            result FAIL "Remove asks with the terminal's sentence" "no Remove website button"
+        fi
+    else
+        result FAIL "Remove… opens its confirmation" "no Remove button for website"
+    fi
+
+    # The sheets and the dialog are no menu: the menu-open signal never came (design, section 7.2). A finding.
+    v=$(applog "$start" | grep -cF "menu opened")
+    if [ "$v" -eq 1 ]; then
+        result PASS "the forms set off no menu-open signal" "one 'menu opened': the menu's own, for Open MacMosh"
+    else
+        result DIFFERS "the forms set off no menu-open signal" "'menu opened' lines: $v (one is the menu's own)"
+    fi
+    stop_app
+}
+
 ############################################################ the run
 say "driving the window of $APP on $os ($(sw_vers -productVersion))"
 tool preflight > /dev/null
 lim 10 "$TOOL" move 600 500 > /dev/null
 
+forms_sample
 six_desks
 windows_sample
 ready_then_locked

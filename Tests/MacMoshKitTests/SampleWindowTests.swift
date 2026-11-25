@@ -68,7 +68,51 @@ import Testing
         #expect(SampleRun.named("unreadable-list")?.workhorses.isEmpty == true)
         #expect((try? SampleRun.named("six-desks")?.load())?.map(\.id) == ["workhorse"])
         #expect(throws: StoreError.unreadable("workhorses.json: not JSON")) { try SampleRun.named("unreadable-list")?.load() }
+        #expect(SampleRun.named("window-forms")?.workhorses.map(\.id) == ["attic"])
         #expect(SampleRun.named("nope") == nil)
+    }
+
+    // MARK: the forms sample (step 4)
+
+    /// The stand-in reads the remote command back as the workhorse's shell would.
+    @Test func theStandInSplitsWhatShellQuoteJoins() {
+        let args = ["desk-new", "garden_planner", "~/Development/garden planner", "--command",
+                    #"claude --continue "fix it" $HOME; echo 'done'"#, ""]
+        #expect(SampleSSH.split(ShellQuote.join(args)) == args)
+    }
+
+    /// It answers as the script would: a taken name is refused with exit 7, and a desk made, renamed or removed
+    /// shows in the next report.
+    @Test func theStandInAnswersAsTheScriptWould() throws {
+        let desks = SampleDesks()
+        #expect(desks.run(["desk-new", "api", "~/Development/api", "--reopen"]).0 == 7)
+        #expect(desks.run(["desk-new", "notes", "~/notes", "--reopen"]).0 == 7)
+        #expect(desks.run(["desk-new", "garden-planner", "~/Development/garden-planner", "--reopen", "--command", "claude --continue"]).0 == 0)
+        var status = try HostStatus.parse(desks.report())
+        #expect(status.desks.map(\.name.value) == ["api", "blog", "website", "garden-planner"])
+        #expect(status.definitions.first { $0.name.value == "garden-planner" }?.folder == "/Users/alex/Development/garden-planner")
+        #expect(status.definitions.first { $0.name.value == "garden-planner" }?.command == "claude --continue")
+        #expect(desks.run(["desk-rename", "api", "blog"]).0 == 7)
+        #expect(desks.run(["desk-rename", "api", "api-v2"]).0 == 0)
+        #expect(desks.run(["desk-remove", "website", "--kill"]).0 == 0)
+        #expect(desks.run(["desk-remove", "website", "--kill"]).0 == 4)
+        status = try HostStatus.parse(desks.report())
+        #expect(status.desks.map(\.name.value) == ["api-v2", "blog", "garden-planner"])
+    }
+
+    @Test func theStandInsLineHasTheExactRemoteCommand() {
+        let line = SampleSSH.line(argv: ["ssh", "-o", "BatchMode=yes", "--", "alex@192.168.1.20", "~/.macmosh/macmosh-host desk-remove website --kill"],
+                                  to: "alex@192.168.1.20", stdin: nil, timeout: .seconds(15),
+                                  remote: "~/.macmosh/macmosh-host desk-remove website --kill")
+        #expect(line == "sample ssh: to=alex@192.168.1.20 batch=yes stdin=closed limit=15s run=~/.macmosh/macmosh-host desk-remove website --kill")
+    }
+
+    /// Attic has no projects folder saved, so the form starts with the line that saves one.
+    @Test func theFormsSampleStartsWithNoProjectsFolder() {
+        let check = SampleForms.result(SampleForms.attic)
+        #expect(check.workhorse.projectsFolder == nil && check.answeredAt == "192.168.1.20")
+        let form = NewDeskForm(check: check, saved: SampleForms.attic)
+        #expect(form.folders == .noProjectsFolder && form.canKeepClosed)
     }
 
     /// The line CI reads to see which button of the window ran: the action's kind and its words.
