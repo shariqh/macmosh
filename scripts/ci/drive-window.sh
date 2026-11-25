@@ -30,6 +30,7 @@
 # Naming a window (issue 144) fails when a desk's details lack their Name… buttons or Name its window…, the
 # sheet does not open, refuse a name or name its window, Name or Use its program's name does not send its exact
 # arguments, or the row does not show the name after the check.
+# The Settings page (issue 157, the "window-settings" sample) fails as settings_sample says.
 set -uo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -48,6 +49,7 @@ failures=0
 sample=""
 shotn=0
 app_pid=""
+settings_since=""
 run_since=$(date '+%Y-%m-%d %H:%M:%S')
 
 now() { perl -MTime::HiRes=time -e 'printf "%.3f", time'; }
@@ -587,6 +589,13 @@ unreadable_list() {
         result DIFFERS "an unreadable list shows the menu's sentence, not Add a Mac" "page.listProblem not found, or page.addMac found"
     fi
     snap unreadable-list
+    # Settings with a list that can't be read: This Mac's terminal and the store's sentence (issue 157).
+    if click_id "sidebar.settings" && wait_id "settings.none" 5; then
+        result PASS "Settings with an unreadable list shows the store's sentence" "settings.none reads: $(val settings.none)"
+    else
+        result FAIL "Settings with an unreadable list shows the store's sentence" "no settings.none"
+    fi
+    snap unreadable-settings
     stop_app
 }
 
@@ -599,6 +608,13 @@ no_workhorses() {
         result DIFFERS "with no workhorse the Add a Mac page is shown" "page.addMac not found"
     fi
     snap add-a-mac
+    # Settings with no workhorse: This Mac's terminal and "No workhorses yet…" (issue 157).
+    if click_id "sidebar.settings" && wait_id "settings.none" 5; then
+        result PASS "Settings with no workhorse says so" "settings.none reads: $(val settings.none)"
+    else
+        result FAIL "Settings with no workhorse says so" "no settings.none"
+    fi
+    snap no-workhorse-settings
     stop_app
 }
 
@@ -1402,6 +1418,376 @@ ended_sample() {
     stop_app
 }
 
+############################################################ the Settings page (issue 157)
+# settings_file <name>: the window-settings sample's own saved file (workhorses.json or settings.json), in the
+# temporary folder named after the app's process (SampleSettings.paths); nothing, and false, when it is not there.
+settings_file() {
+    local d
+    for d in "$(getconf DARWIN_USER_TEMP_DIR 2>/dev/null)" "${TMPDIR:-}"; do
+        [ -n "$d" ] || continue
+        if [ -d "${d%/}/macmosh-sample-settings-$app_pid/support" ]; then
+            echo "${d%/}/macmosh-sample-settings-$app_pid/support/$1"
+            return 0
+        fi
+    done
+    return 1
+}
+
+# json_changes <before> <after>: every field that differs between the two saved files, as "attic.mode=tabs" (or
+# "attic.projectsFolder=(gone)"), joined with |; for settings.json, "terminal=iterm2". A missing file reads as empty.
+json_changes() {
+    python3 -I - "$1" "$2" <<'PY'
+import json, sys
+def read(path):
+    try:
+        with open(path) as f:
+            d = json.load(f)
+    except Exception:
+        return {}
+    if isinstance(d, dict) and "workhorses" in d:
+        return {w.get("id", "?") + "." + k: v for w in d["workhorses"] for k, v in w.items()}
+    return d if isinstance(d, dict) else {}
+a, b = read(sys.argv[1]), read(sys.argv[2])
+out = []
+for k in sorted(set(a) | set(b)):
+    if a.get(k) != b.get(k):
+        v = b.get(k, "(gone)")
+        out.append(k + "=" + (v if isinstance(v, str) else json.dumps(v)))
+print("|".join(out))
+PY
+}
+
+# setting_lines <since>: the Settings page's log lines since then, one per line.
+setting_lines() { applog "$1" | grep -F "window action: setting" | sed 's/.*window action: /window action: /'; }
+
+# settings_step <check> <file> <want changes> <want log: ok, failed or none> <command...>: keeps a copy of the
+# sample's file, runs the command (a click or keys), waits for the page's log line, and checks that the file
+# changed in exactly those fields (none for "") and that exactly that one line was logged. The lines are counted
+# from the start of the page ($settings_since), so a line of the step before is never taken for this one's.
+settings_step() {
+    local check=$1 name=$2 want=$3 line=$4 file before got lines n0 deadline want_lines=""
+    shift 4
+    if ! file=$(settings_file "$name"); then
+        result NOT-SHOWN "$check" "the sample's $name was not found"
+        return 1
+    fi
+    before=$(mktemp)
+    cp "$file" "$before" 2>/dev/null || : > "$before"
+    n0=$(setting_lines "$settings_since" | wc -l | tr -d ' ')
+    "$@"
+    if [ "$line" = none ]; then
+        sleep 2.5
+    else
+        deadline=$((SECONDS + 10))
+        while [ "$(setting_lines "$settings_since" | wc -l | tr -d ' ')" -le "$n0" ] && [ "$SECONDS" -lt "$deadline" ]; do
+            sleep 0.5
+        done
+    fi
+    sleep 0.5
+    got=$(json_changes "$before" "$file")
+    lines=$(setting_lines "$settings_since" | tail -n +"$((n0 + 1))" | tr '\n' '|' | sed 's/|$//')
+    [ "$line" != none ] && want_lines="window action: setting $line"
+    if [ "$got" = "$want" ] && [ "$lines" = "$want_lines" ]; then
+        result PASS "$check" "changed: ${got:-nothing}; log: ${lines:-nothing}"
+    else
+        result FAIL "$check" "changed: ${got:-nothing} (expected: ${want:-nothing}); log: ${lines:-nothing} (expected: ${want_lines:-nothing})"
+    fi
+    mv "$before" "$OUT/ax/.settings-before-$shotn.json" 2>/dev/null || true
+}
+
+# click_radio <group identifier> <title>: a posted click on that choice of a radio group.
+click_radio() {
+    local found x y
+    found=$(wax radio "$1" "$2" | grep '^found' | tail -n 1)
+    read -r _ x y _ <<< "$found"
+    if [ -z "${y:-}" ]; then
+        say "no radio [$2] in [$1]"
+        return 1
+    fi
+    say "click on radio [$2] of [$1] at $x,$y"
+    tool click "$x" "$y" > /dev/null
+}
+
+# chosen <group identifier>: the title of its chosen radio button, or "none".
+chosen() { wax chosen "$1" | grep '^chosen' | tail -n 1 | sed 's/^chosen //'; }
+
+# type_and <identifier> <text> <tab|return>: empties the field, types the text, then leaves it with Tab or Return.
+type_and() {
+    clear_field "$1" || return 1
+    [ -n "$2" ] && tool type "$2" > /dev/null
+    sleep 0.3
+    if [ "$3" = tab ]; then tool keys 48 1 100 > /dev/null; else tool keys 36 1 100 > /dev/null; fi
+}
+
+# The "window-settings" sample: Attic (Mosh, Adaptive, ~/Development) and Spare (Tabs, Never), Ready, whose
+# settings the page saves into the sample's own saved list in a temporary folder. It fails when the page does not
+# open from the sidebar, a click on a choice or an edit of a field does not save exactly that field with its log
+# line, a bad value is not refused with its sentence or saves anything, the name does not show in the sidebar and
+# the workhorse's page at once, a button does not send its exact tab command, Command-V does not paste into the
+# Name field, a click or key press on the page sets off the menu-open signal, or the window opened again does not
+# show the saved values. How a picture looks never fails it.
+settings_sample() {
+    local page_since v want file
+    start_app window-settings || return
+    if ! open_window; then stop_app; return; fi
+    sleep 1
+    if file=$(settings_file workhorses.json); then
+        result PASS "the sample's saved list is in its own temporary folder" "$(basename "$(dirname "$(dirname "$file")")")/support/workhorses.json"
+    else
+        result FAIL "the sample's saved list is in its own temporary folder" "no macmosh-sample-settings-$app_pid folder"
+        stop_app
+        return
+    fi
+    page_since=$(moment)
+    settings_since=$page_since
+    if ! click_id "sidebar.settings" || ! wait_id "settings.heading" 6; then
+        result FAIL "Settings in the sidebar opens the page" "no settings.heading"
+        snap no-settings
+        stop_app
+        return
+    fi
+    sleep 1
+    result PASS "Settings in the sidebar opens the page" "settings.heading found"
+    snap page
+    v="$(val settings.attic.heading)|$(val settings.spare.heading)"
+    result "$([ "$v" = "Attic|Spare" ] && echo PASS || echo FAIL)" "one section per workhorse, in saved order" "headings: $v"
+    v="$(chosen settings.thisMac.terminal)|$(chosen settings.attic.connection)|$(chosen settings.attic.prediction)|$(chosen settings.spare.connection)|$(chosen settings.spare.prediction)"
+    result "$([ "$v" = "Pick for me|Mosh|Adaptive|Tabs|Never" ] && echo PASS || echo FAIL)" "the choices show what is saved" "$v"
+    expect_value "an empty projects folder says what New desk does then" "settings.spare.projectsFolder.line" \
+        "Not set. New desk has no folders to list until it is." 3
+    v=$(val settings.thisMac.pickForMe)
+    result "$([[ "$v" == "Pick for me opens tabs in iTerm2 when it is in the Applications folder, and in Terminal when it isn't. On this Mac that is "* ]] && echo PASS || echo FAIL)" "the line says what Pick for me picks" "${v:-nothing}"
+
+    # The terminal: each choice saves settings.json's one field and nothing in the saved list.
+    settings_step "Terminal: iTerm2 is saved" settings.json "terminal=iterm2" ok click_radio settings.thisMac.terminal "iTerm2"
+    settings_step "Terminal: Terminal is saved" settings.json "terminal=appleTerminal" ok click_radio settings.thisMac.terminal "Terminal"
+    settings_step "Terminal: Pick for me is saved" settings.json "terminal=(gone)" ok click_radio settings.thisMac.terminal "Pick for me"
+    expect_value "the terminal's line says what uses it next" "settings.thisMac.terminal.line" "Saved. Used by the next tab MacMosh opens." 3
+
+    # Attic's connection and typing prediction: each click saves that one field of Attic.
+    settings_step "Connection: Tabs is saved" workhorses.json "attic.mode=tabs" ok click_radio settings.attic.connection "Tabs"
+    expect_value "the line under Connection is the chosen one's" "settings.attic.connection.about" \
+        "Every window of a desk as a real iTerm2 tab. When the Wi-Fi drops or the lid closes, the tabs close; your work keeps running, and reconnecting brings the tabs back. Needs iTerm2." 3
+    settings_step "Connection: Plain ssh is saved" workhorses.json "attic.mode=ssh" ok click_radio settings.attic.connection "Plain ssh"
+    snap after-connection
+    settings_step "Connection: Mosh is saved" workhorses.json "attic.mode=mosh" ok click_radio settings.attic.connection "Mosh"
+    for v in Always Never Experimental Adaptive; do
+        want=$(tr '[:upper:]' '[:lower:]' <<< "$v")
+        settings_step "Typing prediction: $v is saved" workhorses.json "attic.prediction=$want" ok \
+            click_radio settings.attic.prediction "$v"
+    done
+    expect_value "the saved line says what uses it next" "settings.attic.prediction.line" "Saved. Used by the next Mosh tab you open." 3
+    # A click on the choice already saved writes nothing and logs nothing.
+    settings_step "a click on the saved choice saves nothing" workhorses.json "" none click_radio settings.attic.connection "Mosh"
+
+    # The name: typed, then the field left with Tab. The sidebar and the page's heading show it at once.
+    settings_step "a new name is saved when the field is left" workhorses.json "attic.name=Loft" ok type_and settings.attic.name "Loft" tab
+    expect_value "the name's line says what uses it next" "settings.attic.name.line" "Saved. The menu shows it at its next check." 3
+    expect_value "the section's heading shows the new name" "settings.attic.heading" "Loft" 3
+    v=$(val sidebar.attic)
+    result "$([[ "$v" == *Loft* ]] && echo PASS || echo DIFFERS)" "the sidebar shows the new name at once" "sidebar.attic reads: ${v:-nothing}"
+    snap after-name
+
+    # An empty name: its sentence, nothing saved, and the field back to the saved name.
+    settings_step "an empty name is refused and saves nothing" workhorses.json "" failed type_and settings.attic.name "" return
+    expect_value "an empty name says what is wrong" "settings.attic.name.line" "The name can't be empty." 3
+    expect_value "the refused field goes back to the saved name" "settings.attic.name" "Loft" 3
+    snap refused-name
+
+    # Command-V pastes into the Name field, and Return saves it.
+    printf '%s' "Attic" | pbcopy
+    if [ "$(pbpaste)" = "Attic" ]; then
+        clear_field "settings.attic.name"
+        tool chord v cmd > /dev/null
+        sleep 0.8
+        v=$(val settings.attic.name)
+        result "$([ "$v" = "Attic" ] && echo PASS || echo FAIL)" "Command-V pastes into the Name field" "the field reads: ${v:-nothing}"
+        settings_step "the pasted name is saved with Return" workhorses.json "attic.name=Attic" ok tool keys 36 1 100
+    else
+        result NOT-SHOWN "Command-V pastes into the Name field" "the clipboard was not set"
+    fi
+
+    # The projects folder, saved and then emptied.
+    # shellcheck disable=SC2088 # the text typed, a tilde and all
+    settings_step "a projects folder is saved with Return" workhorses.json "attic.projectsFolder=~/Projects" ok \
+        type_and settings.attic.projectsFolder "~/Projects" return
+    expect_value "the folder's line says what uses it next" "settings.attic.projectsFolder.line" "Saved. Used by the next New desk." 3
+    settings_step "an emptied projects folder is saved as not set" workhorses.json "attic.projectsFolder=(gone)" ok \
+        type_and settings.attic.projectsFolder "" return
+    expect_value "the emptied folder's line says so" "settings.attic.projectsFolder.line" \
+        "Saved. New desk has no folders to list until it is set." 3
+
+    # Advanced, closed at first, holds the ssh key file.
+    if wax find "settings.attic.keyFile" | grep -q '^found'; then
+        result FAIL "Advanced is closed at first" "settings.attic.keyFile is there"
+    else
+        result PASS "Advanced is closed at first" "no settings.attic.keyFile"
+    fi
+    if click_id "settings.attic.advanced" && wait_id "settings.attic.keyFile" 4; then
+        result PASS "Advanced opens with a click" "settings.attic.keyFile found"
+        v=$(val settings.attic.keyFile)
+        result "$([ -z "$v" ] && echo PASS || echo FAIL)" "the key file is empty for MacMosh's own key" "it reads: ${v:-nothing}"
+        snap advanced-open
+        # shellcheck disable=SC2088 # the text typed, a tilde and all
+        settings_step "a key file with no file there is refused" workhorses.json "" failed \
+            type_and settings.attic.keyFile "~/.ssh/no_such_key" return
+        expect_value "a missing key file says what is wrong" "settings.attic.keyFile.line" \
+            "There is no file at ~/.ssh/no_such_key on this Mac, so it was not saved." 3
+        snap refused-key
+        settings_step "a key file that is not a full path is refused" workhorses.json "" failed \
+            type_and settings.attic.keyFile "keys/work" return
+        expect_value "a relative key file says what is wrong" "settings.attic.keyFile.line" \
+            "A key file's path is full, starting with /, or starts with ~." 3
+        # An empty file in ~/.ssh, on a GitHub runner only: never in a person's own ~/.ssh.
+        if [ -n "${GITHUB_ACTIONS:-}" ]; then
+            mkdir -p "$HOME/.ssh" && : > "$HOME/.ssh/sample_work_key"
+            # shellcheck disable=SC2088 # the text typed, a tilde and all
+            settings_step "a key file that is there is saved as typed" workhorses.json "attic.identityFile=~/.ssh/sample_work_key" ok \
+                type_and settings.attic.keyFile "~/.ssh/sample_work_key" return
+            settings_step "an emptied key file is MacMosh's own key again" workhorses.json "attic.identityFile=(gone)" ok \
+                type_and settings.attic.keyFile "" return
+            expect_value "the emptied key file's line says so" "settings.attic.keyFile.line" \
+                "Saved. MacMosh's own key is used from the next check on." 3
+        else
+            result NOT-SHOWN "a key file that is there is saved as typed" "not on a GitHub runner, so no file is made in ~/.ssh"
+        fi
+    else
+        result FAIL "Advanced opens with a click" "no settings.attic.keyFile after the click"
+    fi
+
+    # The two buttons open today's tabs through the menu's path.
+    local since
+    since=$(moment)
+    click_id "settings.attic.checklist" > /dev/null
+    expect_ran "Run the checklist… opens the checklist's tab" "$since" "tab prepare attic --pause"
+    sleep 1
+    since=$(moment)
+    click_id "settings.attic.remove" > /dev/null
+    expect_ran "Remove MacMosh from this workhorse… opens remove's tab" "$since" "tab remove attic"
+
+    # No click or key press on the page set off the menu-open signal.
+    v=$(applog "$page_since" | grep -cE "menu opened|menu tracking")
+    if [ "$v" -eq 0 ]; then
+        result PASS "the page sets off no menu-open signal" "no 'menu opened' or 'menu tracking' line"
+    else
+        result FAIL "the page sets off no menu-open signal" "$v line(s): $(applog "$page_since" | grep -E "menu opened|menu tracking" | sed 's/.*menu/menu/' | tr '\n' '|')"
+    fi
+    v=$(applog "$page_since" | grep -F "window action: setting" | grep -vE "window action: setting (ok|failed)$" | head -n 1)
+    result "$([ -z "$v" ] && echo PASS || echo FAIL)" "the page's log lines have fixed words only" "${v:-only 'setting ok' and 'setting failed'}"
+
+    # Text typed and not left, then another sidebar line chosen: what the page shows afterwards is what is saved.
+    local typed_since cx cy rest_since signals
+    typed_since=$(moment)
+    rest_since=$typed_since
+    clear_field "settings.spare.name" && tool type "Typed" > /dev/null
+    sleep 0.5
+    click_id "sidebar.attic" > /dev/null
+    sleep 1.5
+    v=$(val page.headline)
+    result "$([ "$v" = "Attic · Ready" ] && echo PASS || echo FAIL)" "the workhorse's page heading has the saved name" "page.headline reads: ${v:-nothing}"
+    click_id "sidebar.settings" > /dev/null
+    wait_id "settings.spare.name" 5 > /dev/null
+    sleep 1
+    v=$(val settings.spare.name)
+    file=$(settings_file workhorses.json)
+    want=$(python3 -I -c 'import json,sys; print(next(w["name"] for w in json.load(open(sys.argv[1]))["workhorses"] if w["id"] == "spare"))' "$file" 2>/dev/null)
+    result "$([ "$v" = "$want" ] && echo PASS || echo FAIL)" "text not left before another sidebar line shows as saved or not at all" \
+        "the field reads: ${v:-nothing}; saved: ${want:-?}; log: $(setting_lines "$typed_since" | tr '\n' '|' | sed 's/|$//')"
+
+    # Text typed and not left, then the window closed and opened again: the saved values, and the typed text only
+    # if it was saved.
+    typed_since=$(moment)
+    # shellcheck disable=SC2088 # the text typed, a tilde and all
+    clear_field "settings.spare.projectsFolder" && tool type "~/Typed" > /dev/null
+    sleep 0.5
+    # The menu-open signal, counted up to the close: opening the window again goes through the menu.
+    signals=$(applog "$rest_since" | grep -cE "menu opened|menu tracking")
+    read -r _ cx cy <<< "$(wax close | grep '^close' | tail -n 1)"
+    if [ -z "${cy:-}" ]; then
+        result NOT-SHOWN "the window opened again shows the saved values" "no close button found"
+        stop_app
+        return
+    fi
+    say "click on the close button at $cx,$cy"
+    tool click "$cx" "$cy" > /dev/null
+    if [ "$(wait_windows 0 5)" -ne 0 ]; then
+        result NOT-SHOWN "the window opened again shows the saved values" "the window did not close"
+        stop_app
+        return
+    fi
+    sleep 2
+    # What the file and the log hold while the window is closed: told, never failed, as either is sound.
+    want=$(python3 -I -c 'import json,sys; print(next(w.get("projectsFolder", "") for w in json.load(open(sys.argv[1]))["workhorses"] if w["id"] == "spare"))' "$file" 2>/dev/null)
+    result PASS "while the window is closed, text typed and not sent is saved or not" \
+        "saved folder: ${want:-nothing}; log: $(setting_lines "$typed_since" | tr '\n' '|' | sed 's/|$//')"
+    if ! open_window || ! click_id "sidebar.settings" || ! wait_id "settings.heading" 6; then
+        result FAIL "the window opened again shows the saved values" "the Settings page did not open again"
+        stop_app
+        return
+    fi
+    rest_since=$(moment)
+    sleep 1.5
+    want=$(python3 -I -c 'import json,sys; print(next(w.get("projectsFolder", "") for w in json.load(open(sys.argv[1]))["workhorses"] if w["id"] == "spare"))' "$file" 2>/dev/null)
+    v=$(val settings.spare.projectsFolder)
+    result "$([ "$v" = "$want" ] && echo PASS || echo FAIL)" "text not left before the window closed shows as saved or not at all" \
+        "the field reads: ${v:-nothing}; saved: ${want:-nothing}; log: $(setting_lines "$typed_since" | tr '\n' '|' | sed 's/|$//')"
+    v="$(val settings.attic.name)|$(chosen settings.attic.connection)|$(chosen settings.attic.prediction)|$(val settings.attic.projectsFolder)|$(chosen settings.thisMac.terminal)"
+    result "$([ "$v" = "Attic|Mosh|Adaptive||Pick for me" ] && echo PASS || echo FAIL)" "the window opened again shows the saved values" "$v"
+    snap reopened
+
+    # A change made outside the page (as `macmosh set` would make it) shows at the next check, without leaving it.
+    local outside_since
+    outside_since=$(moment)
+    python3 -I - "$file" <<'PY'
+import json, os, sys
+path = sys.argv[1]
+with open(path) as f:
+    d = json.load(f)
+for w in d["workhorses"]:
+    if w["id"] == "attic":
+        w["projectsFolder"] = "~/Elsewhere"
+with open(path + ".w6", "w") as f:
+    json.dump(d, f)
+os.replace(path + ".w6", path)
+PY
+    # shellcheck disable=SC2088 # the text expected, a tilde and all
+    expect_value "the page follows a change made outside it at the next check" "settings.attic.projectsFolder" "~/Elsewhere" 6
+    v=$(setting_lines "$outside_since" | tr '\n' '|' | sed 's/|$//')
+    result "$([ -z "$v" ] && echo PASS || echo FAIL)" "a change made outside the page logs nothing of the page's" "log: ${v:-nothing}"
+
+    # A key file typed and not sent, then another sidebar line chosen: it is refused as focus leaves, and the page
+    # opened again still says why, under the field, with Advanced open by itself.
+    if click_id "settings.attic.advanced" && wait_id "settings.attic.keyFile" 4; then
+        typed_since=$(moment)
+        # shellcheck disable=SC2088 # the text typed, a tilde and all
+        clear_field "settings.attic.keyFile" && tool type "~/.ssh/still_no_key" > /dev/null
+        sleep 0.5
+        click_id "sidebar.attic" > /dev/null
+        sleep 1.5
+        click_id "sidebar.settings" > /dev/null
+        if wait_id "settings.attic.keyFile.line" 5; then
+            expect_value "a key file refused as the page was left is still explained there" "settings.attic.keyFile.line" \
+                "There is no file at ~/.ssh/still_no_key on this Mac, so it was not saved." 3
+            v=$(val settings.attic.keyFile)
+            result "$([ -z "$v" ] && echo PASS || echo FAIL)" "the refused key file's field shows what is stored" \
+                "it reads: ${v:-nothing}; log: $(setting_lines "$typed_since" | tr '\n' '|' | sed 's/|$//')"
+            snap refusal-kept
+        else
+            result FAIL "a key file refused as the page was left is still explained there" \
+                "no settings.attic.keyFile.line; log: $(setting_lines "$typed_since" | tr '\n' '|' | sed 's/|$//')"
+            snap refusal-lost
+        fi
+    else
+        result FAIL "a key file refused as the page was left is still explained there" "Advanced did not open"
+    fi
+
+    # Again, for the steps after the first count, leaving out the menu that opened the window again.
+    v=$((signals + $(applog "$rest_since" | grep -cE "menu opened|menu tracking")))
+    result "$([ "$v" -eq 0 ] && echo PASS || echo FAIL)" "the page sets off no menu-open signal, to its last step" \
+        "$v 'menu opened' or 'menu tracking' line(s), leaving out the menu that opened the window again"
+    stop_app
+}
+
 ############################################################ the run
 say "driving the window of $APP on $os ($(sw_vers -productVersion))"
 tool preflight > /dev/null
@@ -1418,6 +1804,7 @@ long_folder
 unreadable_list
 no_workhorses
 ended_sample
+settings_sample
 
 applog "$run_since" > "$OUT/app-log.txt"
 # Any crash report of the app from this job, the menu's step included.

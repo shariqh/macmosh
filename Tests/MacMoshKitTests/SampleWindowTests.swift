@@ -69,7 +69,42 @@ import Testing
         #expect((try? SampleRun.named("six-desks")?.load())?.map(\.id) == ["workhorse"])
         #expect(throws: StoreError.unreadable("workhorses.json: not JSON")) { try SampleRun.named("unreadable-list")?.load() }
         #expect(SampleRun.named("window-forms")?.workhorses.map(\.id) == ["attic"])
+        #expect(SampleRun.named("window-settings")?.workhorses.map(\.id) == ["attic", "spare"])
         #expect(SampleRun.named("nope") == nil)
+    }
+
+    // MARK: the settings sample (issue 157)
+
+    /// The Settings page's sample writes a saved list of its own, in a temporary folder named after the app's
+    /// process, never the person's: the Settings page and the board both read it, and CI reads the file.
+    @Test func theSettingsSampleHasAStoreOfItsOwnInATemporaryFolder() throws {
+        let paths = SampleSettings.paths
+        let temporary = FileManager.default.temporaryDirectory.standardizedFileURL.path
+        #expect(paths.supportDir.standardizedFileURL.path.hasPrefix(temporary))
+        #expect(paths.supportDir.path.contains("macmosh-sample-settings-\(ProcessInfo.processInfo.processIdentifier)"))
+        #expect(paths.supportDir.path != Paths.forHome(FileManager.default.homeDirectoryForCurrentUser, environment: [:]).supportDir.path)
+        let run = try #require(SampleRun.named("window-settings"))
+        #expect(run.settingsPaths.supportDir == paths.supportDir)
+        #expect(try run.load().map(\.id) == ["attic", "spare"])
+        let saved = try WorkhorseStore(paths: paths).load()
+        #expect(saved.map(\.name) == ["Attic", "Spare"])
+        #expect(saved.last?.mode == .tabs)
+    }
+
+    /// Any other sample's Settings page reads a stand-in with that sample's workhorses, never the real folder: none
+    /// for no-workhorses, and a list that can't be read for unreadable-list, as the sidebar shows them.
+    @Test func everyOtherSampleHasAStandInForTheSettingsPage() throws {
+        let real = Paths.forHome(FileManager.default.homeDirectoryForCurrentUser, environment: [:]).supportDir.path
+        for name in SampleMenu.allCases.map(\.rawValue) + SampleWindow.allCases.map(\.rawValue) {
+            let run = try #require(SampleRun.named(name))
+            #expect(run.settingsPaths.supportDir.path != real)
+            let store = WorkhorseStore(paths: run.settingsPaths)
+            if name == "unreadable-list" {
+                #expect(throws: StoreError.self) { try store.load() }
+            } else {
+                #expect(try store.load().map(\.id) == run.workhorses.map(\.id), "\(name)")
+            }
+        }
     }
 
     // MARK: the forms sample (step 4)

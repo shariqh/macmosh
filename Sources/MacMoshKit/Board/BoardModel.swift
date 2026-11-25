@@ -28,7 +28,13 @@ public enum BoardModel {
         var states: [WorkhorseState] = []
         for saved in order where seen.insert(saved.id).inserted {
             let id = saved.id
-            let r = latest[id]
+            // The name as saved, which a save on the Settings page changes before any check (issue 157): the check's
+            // own copy of the record was read when it started. Only the name is taken; the rest is the check's.
+            let r = latest[id].map { result -> CheckResult in
+                var result = result
+                result.workhorse.name = saved.name
+                return result
+            }
             var block = r.map { WorkhorseBlock.of($0, waitingForDeskServer: waitingForDeskServer, now: now,
                                                   timeZone: timeZone) }
                 ?? .stillChecking(saved)

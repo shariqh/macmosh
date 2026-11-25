@@ -17,6 +17,8 @@ struct MacMoshApp: App {
     /// The window's New desk, Rename and Remove (step 4). The app's, so an action started just before the
     /// window closes still finishes.
     private let forms: WindowActionRunner
+    /// The Settings page's saves (issue 157), the app's like `forms`.
+    private let settings: SettingsRunner
     /// How the checks wait between two rounds: `PollSchedule`'s delay, or a second for a sample menu.
     private let pause: @Sendable (Duration) async -> Void
 
@@ -32,10 +34,13 @@ struct MacMoshApp: App {
             MenuLog.write(sample.startedLine)
             let refresher = sample.refresher
             _screen = StateObject(wrappedValue: MenuOnScreen(refresher: refresher))
-            board = BoardOnScreen(refresher: refresher, load: sample.load)
+            let sampleBoard = BoardOnScreen(refresher: refresher, load: sample.load)
+            board = sampleBoard
             actions = sample.actions
             forms = WindowActionRunner(refresher: refresher, commands: sample.ssh, paths: sample.paths,
                                        menuActions: sample.actions)
+            // The sample's stand-in store, never the person's saved list or settings.
+            settings = Self.settingsRunner(WorkhorseStore(paths: sample.settingsPaths), board: sampleBoard)
             pause = { _ in try? await Task.sleep(for: SampleMenu.lookEvery) }
             return
         }
@@ -44,7 +49,8 @@ struct MacMoshApp: App {
         // the app once: a second init would give the board a refresher nothing runs.
         let refresher = MenuRefresher.standard()
         _screen = StateObject(wrappedValue: MenuOnScreen(refresher: refresher))
-        board = BoardOnScreen(refresher: refresher, load: { try WorkhorseStore(paths: Paths.standard()).load() })
+        let realBoard = BoardOnScreen(refresher: refresher, load: { try WorkhorseStore(paths: Paths.standard()).load() })
+        board = realBoard
         actions = MenuActionRunner(
             macmoshPath: Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/macmosh").path,
             tabs: AppTabs(),
@@ -52,7 +58,28 @@ struct MacMoshApp: App {
             records: TabRecordStore(paths: Paths.standard()))
         forms = WindowActionRunner(refresher: refresher, commands: ProcessRunner(), paths: Paths.standard(),
                                    menuActions: actions)
+        settings = Self.settingsRunner(WorkhorseStore(paths: Paths.standard()), board: realBoard)
         pause = { try? await Task.sleep(for: $0) }
+    }
+
+    /// The Settings page's runner on that store: a key file is looked for on this Mac, Pick for me is `TabOpener`'s
+    /// rule with no setting, and after each save the window's board reads the saved list again, so the sidebar and
+    /// the page's heading show a new name at once. After a connection or terminal save it asks the refresher for one
+    /// ordinary check, which nothing waits for (`refresh` folds a request made during a check into one more), so a
+    /// desk's window lines follow the new connection.
+    private static func settingsRunner(_ store: WorkhorseStore, board: BoardOnScreen) -> SettingsRunner {
+        SettingsRunner(
+            store: store, home: FileManager.default.homeDirectoryForCurrentUser.path,
+            keyFileExists: { path in
+                var folder: ObjCBool = false
+                return FileManager.default.fileExists(atPath: path, isDirectory: &folder) && !folder.boolValue
+            },
+            pickForMe: { TabOpener.terminal(settings: AppSettings(), fileExists: { FileManager.default.fileExists(atPath: $0) }) },
+            saved: { await board.reloadList() },
+            check: {
+                let refresher = board.refresher
+                Task { await refresher.refresh() }
+            })
     }
 
     /// Apple, MenuBarExtra `init(isInserted:content:label:)` (macOS 13.0,
@@ -112,7 +139,7 @@ struct MacMoshApp: App {
         // window is already open when you call this action, the action brings the open window to the
         // front." (macOS 13.0, https://developer.apple.com/documentation/swiftui/window)
         Window(WindowWords.title, id: WindowWords.windowID) {
-            MainWindow(screen: board, actions: actions, forms: forms)
+            MainWindow(screen: board, actions: actions, forms: forms, settings: settings)
         }
         // "The scene will not present itself in the absence of any previously restored scenes."
         // (SceneLaunchBehavior.suppressed, macOS 15.0,

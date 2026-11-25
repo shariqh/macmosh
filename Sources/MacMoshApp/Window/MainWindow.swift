@@ -6,7 +6,7 @@ import SwiftUI
 /// comes from the board and the page models in MacMoshKit (`WorkhorsePage`, `SidebarItem`,
 /// `WindowSelection`, `AddMacPage`), where they are tested; this only lays them out.
 ///
-/// The controls are only Button, Text and List: no pop-up, context menu, `Menu` or toolbar, because the
+/// The controls are only Button, Text, TextField, List and radio-group Pickers: no pop-up, context menu, `Menu` or toolbar, because the
 /// app can't yet tell the window's menus from the menu-bar menu (design, section 7.2). It is a plain
 /// split of two views, not a `NavigationSplitView`, which brings a sidebar button of its own.
 struct MainWindow: View {
@@ -15,6 +15,8 @@ struct MainWindow: View {
     /// New desk, Rename, Remove, naming a window, Start again and Forget, run in this process (steps 4 and 5, issue
     /// 144). The app's, not the window's, so an action started just before the window closes still finishes.
     @ObservedObject var forms: WindowActionRunner
+    /// The Settings page's saves (issue 157). The app's, like `forms`.
+    let settings: SettingsRunner
     /// What the person chose in the sidebar. A choice that is no longer on the board falls back as
     /// `WindowSelection.resolve` says. Lost when the window closes, which is harmless.
     @State private var chosen: WindowSelection?
@@ -41,6 +43,19 @@ struct MainWindow: View {
                     }
                 case .addMac:
                     AddMacPageView(page: .standard, notice: screen.notice, run: run)
+                case .settings:
+                    // The page follows the saved files at each check, as the sidebar does: a workhorse removed (by
+                    // its own Remove button, say) or a value set with `macmosh set` shows without leaving the page.
+                    // Lines are kept, and a field being typed in keeps its text. Apple, onReceive(_:perform:)
+                    // (macOS 10.15, https://developer.apple.com/documentation/swiftui/view/onreceive(_:perform:)):
+                    // "Adds an action to perform when this view detects data emitted by the given publisher." Apple,
+                    // Publisher filter(_:) (https://developer.apple.com/documentation/combine/publisher/filter(_:)):
+                    // "Republishes all elements that match a provided closure."
+                    SettingsPageView(settings: settings, run: run)
+                        .onReceive(screen.refresher.$isRefreshing.filter { $0 }) { _ in
+                            let settings = settings
+                            Task { await settings.reload() }
+                        }
                 case .unreadableList:
                     // The menu's own sentence, in place of an invitation to add a Mac.
                     Text(verbatim: screen.listProblem ?? "")
@@ -152,6 +167,7 @@ enum WindowMarks {
         case .workhorse(let id): return "sidebar.\(id)"
         case .addMac: return "sidebar.addMac"
         case .unreadableList: return "sidebar.unreadableList"
+        case .settings: return "sidebar.settings"
         }
     }
     static func desk(_ name: String) -> String { "desk.\(name)" }

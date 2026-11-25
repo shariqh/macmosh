@@ -17,7 +17,10 @@ name: Menu pictures
 # line is missing, its click does not reach its action in the app's log, or the workhorse's summary
 # is not one fact per line; never on how a picture looks.
 # For naming a window (issue 144), the window's run also fails when a Name button or the sheet does not
-# work or does not send its exact arguments.
+# work or does not send its exact arguments. In the "window-settings" sample (issue 157) it fails when the
+# Settings page does not save exactly the clicked or edited field into the sample's own saved list, a bad
+# value is saved or not refused with its sentence, a new name does not show at once, a button does not
+# send its exact tab command, or a click or key press on the page sets off the menu-open signal.
 # scripts/ci/drive-menu.sh says what it checks.
 on:
   pull_request:

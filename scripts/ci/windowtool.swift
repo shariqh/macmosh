@@ -13,6 +13,10 @@
 //   windowtool <pid> button <title>     the centre of the first button with that title: "found x y role"
 //   windowtool <pid> enabled <identifier>   whether that element can be used: "enabled true" or "enabled false"
 //   windowtool <pid> selected <identifier>  the text selected in that field: "selected <text>" (issue 144)
+//   windowtool <pid> radio <identifier> <title>  the centre of the radio button with that title in the element with
+//                                       that identifier (a radio-group Picker): "found x y AXRadioButton" (issue 157)
+//   windowtool <pid> chosen <identifier>    the title of the chosen radio button in it: "chosen <title>", or
+//                                       "chosen none" (issue 157)
 //
 // find, value, text, button, enabled and selected look in the MacMosh window first (its sheets are inside it), then in
 // the app's other windows, where a dialog may be.
@@ -26,11 +30,12 @@ import ApplicationServices
 
 let args = CommandLine.arguments
 guard args.count >= 3, let pid = pid_t(args[1]) else {
-    print("usage: windowtool <pid> windows|front|frame|find|value|text|close|button|enabled|selected|dump [argument]")
+    print("usage: windowtool <pid> windows|front|frame|find|value|text|close|button|enabled|selected|radio|chosen|dump [argument]")
     exit(2)
 }
 let command = args[2]
 let argument = args.count > 3 ? args[3] : ""
+let second = args.count > 4 ? args[4] : ""
 
 func attribute(_ e: AXUIElement, _ name: String) -> CFTypeRef? {
     var value: CFTypeRef?
@@ -131,6 +136,21 @@ case "selected":
         print("selected \(text(hit.element, kAXSelectedTextAttribute) ?? "")")
     } else {
         print("notfound")
+    }
+case "radio", "chosen":
+    // The identifier may sit on the radio group or on each of its buttons, so every element with it is searched,
+    // itself and everything under it.
+    let groups = everything().filter { text($0.element, "AXIdentifier") == argument }
+    let radios = groups.flatMap { walk($0.element) }.map(\.element)
+        .filter { text($0, kAXRoleAttribute) == kAXRadioButtonRole }
+    if groups.isEmpty {
+        print("notfound")
+    } else if command == "radio" {
+        let hit = radios.first { text($0, kAXTitleAttribute) == second || label($0) == second }
+        print(hit.map { "found \(centre($0)) \(text($0, kAXRoleAttribute) ?? "?")" } ?? "notfound")
+    } else {
+        let on = radios.first { (attribute($0, kAXValueAttribute) as? NSNumber)?.intValue == 1 }
+        print("chosen \(on.map { text($0, kAXTitleAttribute) ?? label($0) } ?? "none")")
     }
 case "frame":
     guard let f = frame(window) else { print("noframe"); break }
