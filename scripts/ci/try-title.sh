@@ -20,7 +20,8 @@
 #       to show mosh's "[mosh] " prefix.
 #   (c) Tabs (iTerm2 only): the tab runs attach --cc; the script only records what iTerm2 shows for a named
 #       and an unnamed window.
-# The steps for (a) and (b): open (the desk's name), the window named "api" with window-name, the window given
+# The steps for (a) and (b): before (what the app's once-only title shows alone, read while the tab waits 4
+# seconds before it attaches; a NOTE), open (the desk's name), the window named "api" with window-name, the window given
 # back to its program (--auto), the desk renamed to "garden", a second window named "blog" and the tab moved
 # to it. After each, the title is read until it shows the wanted name or 20 seconds pass, and the seconds it
 # took are recorded. What a title is read from: iTerm2, the tab's title (its "title" property); Terminal, the
@@ -130,6 +131,26 @@ end run'
     end tell
     return "no such tab"
 end run'
+    open_plain='tell application "iTerm2"
+    activate
+    set w to (create window with default profile)
+    return tty of current session of w
+end tell'
+    type_in='on run argv
+    tell application "iTerm2"
+        repeat with w in windows
+            repeat with t in tabs of w
+                repeat with s in sessions of t
+                    if (tty of s) is (item 1 of argv) then
+                        tell s to write text (item 2 of argv)
+                        return "typed"
+                    end if
+                end repeat
+            end repeat
+        end repeat
+    end tell
+    return "no such tab"
+end run'
     close_tab='on run argv
     tell application "iTerm2"
         repeat with w in windows
@@ -193,6 +214,8 @@ end run'
     return "no such tab"
 end run'
     everything=''
+    open_plain=''
+    type_in=''
 fi
 
 ############################################################ desks
@@ -235,13 +258,15 @@ new_desk() {
     say "desk-new website: $out"
 }
 
-# The tab's command, written to a file: the app's title bytes first, then the rest.
+# The tab's command, written to a file: the app's title bytes first, then, 4 seconds later (so that what the
+# app's title alone shows can be read), the rest.
 write_tab() {
     local file=$1
     shift
     {
         echo '#!/bin/bash'
         printf 'cat %q\n' "$TITLE_FILE"
+        echo 'sleep 4'
         printf '%s\n' "$*"
     } > "$file"
     say "tab script $file: $(tr '\n' ';' < "$file")"
@@ -257,6 +282,14 @@ read_tab() {
     osa 15 "$read_tab" "$TTY"
     READ=$ANSWER
     SHOWN=${READ%% | *}
+}
+
+# What the tab shows with the app's once-only title (escape 1) alone, before it attaches.
+read_before() {
+    sleep 1
+    read_tab
+    snap "$2-0-before"
+    result NOTE "$1: the app's once-only title alone, before the attach" "$READ"
 }
 
 # wait_title <check> <wanted> <picture>: reads the title until it shows the wanted text or 20 s pass.
@@ -359,6 +392,7 @@ open_tab "$WORK/tab-a.sh"
 if [ -z "$TTY" ]; then
     result FAIL "(a) direct: open a tab" "no tty: $ANSWER $ERR"
 else
+    read_before "(a) direct" "(a) direct"
     steps 1 beef "(a) direct"
 fi
 end_tab 1
@@ -391,15 +425,21 @@ mosh_tab() {
     return 0
 }
 
+# The desk server, mosh-server and the tab's mosh-client end before the window is closed, so that closing it
+# asks nothing (on run 1 a window still running mosh-client stayed open).
 end_mosh() {
-    end_tab "$1"
+    tm "$1" kill-server >> "$LOG" 2>&1
     if [ -n "${MOSH_PID:-}" ] && kill -0 "$MOSH_PID" 2>/dev/null; then kill "$MOSH_PID"; fi
+    [ -n "$TTY" ] && pkill -x -t "${TTY#/dev/}" mosh-client >> "$LOG" 2>&1
+    sleep 2
+    [ -n "$TTY" ] && osa 15 "$close_tab" "$TTY"
 }
 
 if ! command -v mosh-server >/dev/null || ! command -v mosh-client >/dev/null; then
     result SKIPPED "(b) mosh" "mosh-server or mosh-client is not installed"
 else
     if mosh_tab 2 cafe 60001 1; then
+        read_before "(b) mosh" "(b) mosh"
         steps 2 cafe "(b) mosh"
     fi
     end_mosh 2
@@ -427,11 +467,18 @@ if [ "$app" = iterm2 ]; then
     write_tab "$WORK/tab-c.sh" "exec env $(desk_env 4 | tr '\n' ' ') /bin/bash $(printf '%q' "$HOST") attach --cc website"
     osa 20 "$everything"
     say "before: $(printf '%s' "$ANSWER" | tr '\n' ';')"
-    open_tab "$WORK/tab-c.sh"
+    # On run 1, create window ... command with this tab's command did not answer in 30 s (on both macOS
+    # versions), so the window is opened with its shell and the command is typed into it.
+    TTY=""
+    osa 30 "$open_plain"
+    if [ "$STATUS" -eq 0 ] && [[ "$ANSWER" == /dev/ttys* ]]; then TTY=$ANSWER; fi
     if [ -z "$TTY" ]; then
-        result NOTE "(c) Tabs: open a tab" "no tty: $ANSWER $ERR"
+        snap "tabs-no-window"
+        result NOTE "(c) Tabs: open a tab" "no tty: osascript exit $STATUS [$ANSWER] $ERR"
     else
-        sleep 12
+        sleep 2
+        osa 20 "$type_in" "$TTY" "/bin/bash $WORK/tab-c.sh"
+        sleep 14
         snap "tabs"
         osa 20 "$everything"
         result NOTE "(c) Tabs: what iTerm2 shows (window $w1 named api, a second window unnamed)" "$(printf '%s' "$ANSWER" | tr '\n' ';')"
