@@ -1014,9 +1014,16 @@ window_keys() {
         result FAIL "the menu still opens after Command-W" "no menu window within 6 s of the click"
     fi
 
-    # Command-Q with the window in front: reported, never failed.
-    if open_window; then
+    # Command-Q with the window in front: reported, never failed. The window is opened again if Command-W closed
+    # it, and brought to the front with a click on its title bar either way.
+    if [ "$(windows)" = 0 ] && ! open_window; then
+        result NOT-SHOWN "Command-Q with the window in front leaves the app running" "the window did not open again"
+    else
+        frame=$(wax frame | grep '^frame' | tail -n 1)
+        read -r _ fx fy fw _ <<< "$frame"
+        [ -n "${fw:-}" ] && tool click "$((fx + fw / 2))" "$((fy + 12))" > /dev/null
         sleep 1
+        say "$(wax front | grep '^front' | tail -n 1)"
         tool chord q cmd > /dev/null
         sleep 3
         if kill -0 "$app_pid" 2>/dev/null; then
