@@ -298,6 +298,7 @@ notes ▸              blog ▸              shop ▸                           
 - A desk with one window has no window list; its first line does that job.
 - Two tabs on one window read `zsh (in 2 tabs)`.
 - Two windows with the same name read `zsh` and `zsh (window 3)`, where 3 is that window's number. (changed 2026-11-23) The number comes right after the name, before any tab words: `zsh (window 3) (in a tab)`. A window with no name reads `window <number>`.
+- (changed 2026-11-24, issue #144) With workhorse script 0.11.0 or newer, and the report giving the desk's window ids, every open desk's submenu has **`Name a window…`** right after `New window`, in the same group: `New window`, `Name a window…`, then the separator before `Rename <desk>…`. A closed desk has none. A window's line shows the name it was given (`front end (in a tab)`), whole.
 
 With sign-ins off, today's hint and `Fix…` stay at the top level, directly under `Attic · Ready` and above the desks. A problem is never hidden in a submenu.
 
@@ -324,6 +325,8 @@ Attic · Ready                                            ▸   (as in (a))
 (changed 2026-11-23) The workhorse's submenu in shape (b) also draws the summary one fact per line; nothing else in it changes.
 
 In Tabs mode iTerm2 already shows each tmux window as its own tab, so today's `New window` already gives the new window a tab, and a window list is not needed.
+
+(changed 2026-11-24, issue #144) Shape (b) gets `Name a window…` too, on the same rule as (a): script 0.11.0 or newer and window ids in the report, whatever the connection. It sits right after `New window`, before the separator: `Open website`, `New window`, `Name a window…`, ─────, `Rename website…`, `Remove website…`.
 
 #### (c) States that are not Ready: unchanged and flat
 
@@ -402,6 +405,7 @@ Terms used in the table:
 | `<window> (open in another tab)` | `.tab(connect … --window @n)`: a second tab on that window, here. tmux shows the same window in both. |
 | `New window` (0.8.0 or newer, mosh or ssh) | `.tab(["connect", id, desk, "--new-window"])`. Tabs that are already open keep what they show. |
 | `New window` (older script or Tabs mode) | Today's `.run(["desk", "window", id, desk])` |
+| `Name a window…` (changed 2026-11-24, issue #144: script 0.11.0 or newer, window ids in the report, an open desk; both shapes) | `.tab(["desk", "name-window", id, desk])`: a tab whose form lists the desk's windows numbered, asks which (not when it has one; an empty answer changes nothing) and asks the name (an empty answer lets the window follow its program's name again), like `Rename…`. The click is a tab line like the others, logged `menu action: tab desk (line)`. The window's board has a button per window instead (main-window design, section 7.1 A). |
 | `Open <desk>` (older script or Tabs mode) | Today's `.tab(["connect", id, desk])` |
 | (changed 2026-11-23) The window's board | Keeps its buttons as they were: `Open <desk>` with today's `connect`, and `New window` with today's `desk window`. Only the menu has the first-line forms, the window lines, `New window` in a tab of its own and the flags line; the test that compares the two faces names these as the menu's own. |
 | Rename… and Remove… (Remove still with `--ask`), New desk…, Restart…, the lid-closed line, Run the checklist…, Fix…, Unlock disk…, Log in…, Pair…, Finish setting up…, Share screen, Add a Mac…, Check now | Unchanged |
@@ -424,7 +428,7 @@ Terms used in the table:
 - **Desk row** (0.8.0 or newer, mosh or ssh): `<desk> · 1 window` or `<desk> · N windows`, followed by nothing, `, in a tab` (one window), `, all in tabs`, `, 1 in a tab` or `, K in tabs`. A window counts as in a tab when any tab shows it, findable or not. `<desk> (closed)` stays. With an older script or in Tabs mode, the row keeps today's title.
 - **First line of a desk's submenu**: `Open <desk>`, `Open <desk> in K tabs`, `Open the 1 window not in a tab`, `Open the K windows not in a tab`, `Go to <desk>` or `Open <desk> in a new tab`.
 - **Window line**: `<name>`, `<name> (in a tab)`, `<name> (in N tabs)` or `<name> (open in another tab)`. A repeated name gets ` (window <number>)`.
-- **Other desk lines**: `New window`, `Rename <desk>…`, `Remove <desk>…` (today they read `New window in <desk>` and the same two).
+- **Other desk lines**: `New window`, `Rename <desk>…`, `Remove <desk>…` (today they read `New window in <desk>` and the same two). (changed 2026-11-24, issue #144) And `Name a window…`, right after `New window`.
 - **Flags line**: `kept running`, `permanent`, or `kept running, permanent` (today these sit inside the desk's title).
 - **Summary** (changed 2026-11-23): one grey line per fact in the workhorse's submenu, for example `Sign-ins working`, `Awake on power`, `Lid-closed mode on`, `On power, 100%`; the words are today's.
 - **Notices**: `That tab has closed, so MacMosh opened a new one.` and `Couldn't bring that tab forward. <reason>`.
