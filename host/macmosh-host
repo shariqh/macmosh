@@ -1166,16 +1166,18 @@ mm_view_bar() {
 # (seen with tmux 3.8). So a name is shown only when it is made of characters that are not controls,
 # tested inside the format with a regular expression; otherwise the title is the desk's name, and with a
 # desk's name that fails the same test (only possible after a rename by hand) it is empty. Before
-# anything is set, the server is asked to tell a C1 control from text with that test; a server that
-# can't gets no title.
+# anything is set, the server is asked to tell a C1 control from text with that test, and to work the
+# other operators the string uses (&&, ! and !=); a server that can't gets no title.
 # Like the bar, the title is only for show: it is read back and taken off when it did not come through
 # as written, and nothing here makes the tab fail. A person who turned set-titles on in his own tmux
-# settings keeps his own title, and MacMosh sets nothing. A tab opened by a script before 0.13.0 keeps
+# settings keeps his own title: MacMosh sets nothing, and takes off a title an earlier attach gave the
+# desk's own session. A tab opened by a script before 0.13.0 keeps
 # the title its terminal had.
 MM_TITLE_TEXT='^[^[:cntrl:]]+$'
 
 mm_title_string() {
-    local desk='#{?#{@macmosh-desk},#{@macmosh-desk},#{session_name}}' title
+    # Chosen by being empty or not, not by being true: a conditional takes a desk named "0" as false.
+    local desk='#{?#{!=:#{@macmosh-desk},},#{@macmosh-desk},#{session_name}}' title
     title="#{?#{&&:#{!:#{automatic-rename}},#{m/r:$MM_TITLE_TEXT,#{window_name}}},#{window_name},#{?#{m/r:$MM_TITLE_TEXT,$desk},$desk,}}"
     printf '%s' "$title"
 }
@@ -1185,9 +1187,13 @@ mm_title_string() {
 # (seen on macOS's /bin/bash), which would cut a format into pieces.
 mm_view_title() {
     local id="$1" title probe
-    [ "$(mm_tmux show-options -gv set-titles 2>/dev/null)" = off ] || return 0
-    probe="#{m/r:$MM_TITLE_TEXT,x$(printf '\302\233')y}#{m/r:$MM_TITLE_TEXT,x y}"
-    [ "$(mm_tmux display-message -p -t "$id" "$probe" 2>/dev/null)" = 01 ] || return 0
+    if [ "$(mm_tmux show-options -gv set-titles 2>/dev/null)" != off ]; then
+        # The person's own title wins, also over one an earlier attach gave the desk's own session.
+        mm_tmux set-option -u -t "$id" set-titles \; set-option -u -t "$id" set-titles-string >/dev/null 2>&1
+        return 0
+    fi
+    probe="#{m/r:$MM_TITLE_TEXT,x$(printf '\302\233')y}#{m/r:$MM_TITLE_TEXT,x y}#{&&:1,#{!:0}}#{!=:0,}"
+    [ "$(mm_tmux display-message -p -t "$id" "$probe" 2>/dev/null)" = 0111 ] || return 0
     title=$(mm_title_string)
     mm_tmux set-option -t "$id" set-titles-string "$title" \; set-option -t "$id" set-titles on >/dev/null 2>&1
     if [ "$(mm_tmux show-options -t "$id" -v set-titles-string 2>/dev/null)" != "$title" ] ||

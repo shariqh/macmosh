@@ -311,6 +311,22 @@ extension HostScriptTests {
         try expectTitle(h, web, record, "garden")
     }
 
+    /// A desk named "0". A conditional in a format takes "0" as false (man tmux, FORMATS: "if the
+    /// variable in the first of the pair exists and is not zero, the second of the pair is chosen"), so
+    /// the desk's name is chosen by being empty or not, and a view shows "0", not its own session's name.
+    @Test func aDeskNamedZeroShowsItsName() throws {
+        let h = try harness(); defer { h.cleanUp() }
+        _ = h.run(["start"])
+        let (zero, ids) = try deskWithWindows(h, "0", 1)
+        let record = try openTab(h, "one", ["--label", "beef", "0"])
+        try wait(h) { views(h, of: zero).count == 1 && h.clients().count == 1 }
+        let v = try view(h, of: zero, showing: ids[0])
+        try expectTitle(h, v, record, "0")
+        let plain = try openTab(h, "plain", ["0"])
+        try wait(h) { h.clients().count == 2 }
+        try expectTitle(h, zero, plain, "0")
+    }
+
     // MARK: - When MacMosh sets nothing
 
     /// A person who turned set-titles on in his own tmux settings keeps his own title.
@@ -328,6 +344,21 @@ extension HostScriptTests {
             #expect(own(h, session, "set-titles-string") == "", "\(session)")
         }
         try wait(h) { lastTitle(h, record)?.hasPrefix("mine website+") == true }
+    }
+
+    /// A person who turns set-titles on later (his settings reloaded, the server kept) gets his own title
+    /// on the desk's own session too, although an earlier plain attach gave it MacMosh's.
+    @Test func aPersonsLaterSetTitlesTakesOffAnEarlierTitle() throws {
+        let h = try harness(); defer { h.cleanUp() }
+        _ = h.run(["start"])
+        let (web, _) = try deskWithWindows(h, "website", 1)
+        _ = try openTab(h, "plain", ["website"])
+        try wait(h) { h.clients().count == 1 }
+        #expect(own(h, web, "set-titles") == "on\n")
+        _ = h.tmux(["set-option", "-g", "set-titles", "on"])
+        _ = try openTab(h, "again", ["website"])
+        try wait(h) { h.clients().count == 2 }
+        try wait(h) { own(h, web, "set-titles") == "" && own(h, web, "set-titles-string") == "" }
     }
 
     /// tmux stand-ins that make the title fail on its way in: one changes the string set-option is given,
