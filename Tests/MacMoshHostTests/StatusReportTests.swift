@@ -391,6 +391,7 @@ extension HostScriptTests {
         #expect(usage.stderr.contains("window-name <desk> <window id> <name> | --auto"))
         #expect(usage.stderr.contains("Without --cc, the tab's title is the"))
         #expect(usage.stderr.contains("name of the window it shows, or the desk's name when the window has no name"))
+        #expect(usage.stderr.contains("[--window-name <name>]"))
         #expect(h.run(["nonsense"]).exitCode == 2)
     }
 

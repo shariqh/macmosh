@@ -5,7 +5,8 @@ import Foundation
 /// A new desk comes back after a restart unless asked not to (`reopen`), and is removed for good when
 /// its last shell exits unless it is `permanent`. The form that asks questions asks about neither, so
 /// a desk made from the menu's `New desk…` comes back and is not permanent. It does ask for a command
-/// to start, after the name and the folder, unless `command` was given.
+/// to start, after the name and the folder, unless `command` was given. With script 0.12.0 or newer it also asks,
+/// right after the desk's name, what the first window is called, unless `firstWindow` was given (issue 163).
 public struct NewDeskRequest: Sendable, Equatable {
     public var name: String?
     public var folder: String?
@@ -13,24 +14,27 @@ public struct NewDeskRequest: Sendable, Equatable {
     public var keep: Bool
     public var permanent: Bool
     public var command: String?
+    /// What the first window is called; nil when not given, and then nothing is sent unless the form asks.
+    public var firstWindow: FirstWindow?
 
     public init(name: String? = nil, folder: String? = nil, reopen: Bool = true, keep: Bool = false,
-                permanent: Bool = false, command: String? = nil) {
+                permanent: Bool = false, command: String? = nil, firstWindow: FirstWindow? = nil) {
         self.name = name
         self.folder = folder
         self.reopen = reopen
         self.keep = keep
         self.permanent = permanent
         self.command = command
+        self.firstWindow = firstWindow
     }
 
     /// Reads `macmosh desk new`'s flags. `--no-reopen` turns reopening off; `--reopen` is still accepted
-    /// and means the same as leaving both out. Giving both is a mistake.
+    /// and means the same as leaving both out. Giving both is a mistake. `--window-name` names the first window.
     public static func fromFlags(name: String?, folder: String?, reopen: Bool, noReopen: Bool, keep: Bool,
-                                 permanent: Bool, command: String?) throws -> NewDeskRequest {
+                                 permanent: Bool, command: String?, windowName: String? = nil) throws -> NewDeskRequest {
         if reopen && noReopen { throw DeskUsageError.reopenAndNoReopen }
         return NewDeskRequest(name: name, folder: folder, reopen: !noReopen, keep: keep, permanent: permanent,
-                              command: command)
+                              command: command, firstWindow: windowName.map { .named($0) })
     }
 
     /// The form that asks questions. Everything given in the arguments is taken as it is; it never asks.
@@ -104,6 +108,23 @@ public struct DeskFlow: Sendable {
             do { name = try askName(ui) } catch { return error as? DeskResult ?? .failure("\(error)") }
         }
 
+        // The first window's name (issue 163): checked before anything is sent, and asked right after the desk's
+        // name by the form that asks questions, only when the script can take it.
+        let version = check.status?.scriptVersion ?? ""
+        let canNameFirstWindow = HostInstaller.isAtLeast(version, Self.firstWindowNameNeeds)
+        var firstWindow = request.firstWindow
+        if let given = firstWindow, given != .afterItsProgram {
+            guard canNameFirstWindow else {
+                return .failure(DeskFormat.firstWindowNeedsNewerScript(w, version: version, for: wording))
+            }
+            if case .named(let text) = given, let problem = FirstWindow.problem(text, desk: name.value) {
+                return .failure(problem)
+            }
+        }
+        if firstWindow == nil && request.isInteractive && canNameFirstWindow {
+            do { firstWindow = try askFirstWindow(name, ui) } catch { return error as? DeskResult ?? .failure("\(error)") }
+        }
+
         let folder: String
         if let given = request.folder {
             folder = given
@@ -121,7 +142,7 @@ public struct DeskFlow: Sendable {
         do {
             try await commands.newDesk(on: w, address: address, name: name, folder: folder,
                                        reopen: request.reopen, keep: request.keep, permanent: request.permanent,
-                                       command: command)
+                                       command: command, windowName: firstWindow?.name(for: name))
         } catch {
             return .failure(DeskFormat.message(error, workhorse: w, for: wording))
         }
@@ -335,6 +356,33 @@ public struct DeskFlow: Sendable {
     /// Three answers that weren't a desk name: the stop names the rule the last one broke.
     private static func gaveUp(_ problem: String) -> DeskResult {
         .failure("That wasn't a desk name three times, so MacMosh stopped. \(problem)")
+    }
+
+    /// `desk-new --window-name` is in the workhorse script from this version on (issue 163).
+    public static let firstWindowNameNeeds = "0.12.0"
+
+    static func firstWindowQuestion(_ desk: DeskName) -> String {
+        "Name for its first window (Enter for \(desk.value), - to name it after its program): "
+    }
+
+    static let noDeskMade = "No desk was made."
+
+    /// The first window's name, up to three tries: Enter alone (or only spaces) is the desk's own name, `-` leaves it
+    /// to tmux, which names it after its program, and anything else is a name as typed, checked by
+    /// `FirstWindow.problem`. End of input (Ctrl-D, stdin closed) makes nothing.
+    private func askFirstWindow(_ desk: DeskName, _ ui: Interaction) throws -> FirstWindow {
+        for _ in 0..<Self.tries {
+            guard let answer = ui.askOrEnd(Self.firstWindowQuestion(desk)) else { throw DeskResult.failure(Self.noDeskMade) }
+            let trimmed = answer.trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty { return .deskName }
+            if trimmed == "-" { return .afterItsProgram }
+            if let problem = FirstWindow.problem(answer, desk: desk.value) {
+                ui.say(problem)
+                continue
+            }
+            return answer == desk.value ? .deskName : .named(answer)
+        }
+        throw DeskResult.failure("That wasn't a window name three times, so MacMosh stopped. \(WindowName.rule)")
     }
 
     static let commandQuestion = "Command to start in it (Enter for none): "

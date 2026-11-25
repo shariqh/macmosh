@@ -43,21 +43,24 @@ public enum SampleForms {
     }()
 
     static let desks = SampleDesks()
+    /// The same desks with a workhorse script older than 0.12.0, for the `window-forms-0.11` sample (issue 163): the
+    /// New desk form shows no first-window line there.
+    static let olderDesks = SampleDesks(version: "0.11.0")
 
     /// The real refresher, reading the sample's saved list (so a saved projects folder shows), with checks that
     /// find Attic Ready with the desks as they are now.
-    @MainActor static func refresher() -> MenuRefresher {
+    @MainActor static func refresher(desks: SampleDesks = desks) -> MenuRefresher {
         let store = WorkhorseStore(paths: paths)
         return MenuRefresher(
             load: { try store.load() },
             gather: { list in
                 try? await Task.sleep(for: checkTakes)
-                return list.map { .checked(result($0)) }
+                return list.map { .checked(result($0, desks: desks)) }
             },
             save: { _ in })
     }
 
-    static func result(_ w: Workhorse) -> CheckResult {
+    static func result(_ w: Workhorse, desks: SampleDesks = desks) -> CheckResult {
         CheckResult(workhorse: w, state: .ready(signIns: true), status: try? HostStatus.parse(desks.report()),
                     probes: ProbeSet(), answeredAt: answeredAt, homeReachable: true, checkedAt: Date())
     }
@@ -90,11 +93,14 @@ final class SampleDesks: @unchecked Sendable {
     private let lock = NSLock()
     private var nextWindow: Int
     private var all: [Desk]
+    /// The script version the report gives: 0.12.0 names a new desk's first window (issue 163).
+    private let version: String
 
-    /// The `window-forms` desks, or `desks` with new windows numbered from `nextWindow`.
-    init(_ desks: [Desk]? = nil, nextWindow: Int = 7) {
+    /// The `window-forms` desks, or `desks` with new windows numbered from `nextWindow`, from a script of `version`.
+    init(_ desks: [Desk]? = nil, nextWindow: Int = 7, version: String = "0.12.0") {
         all = desks ?? Self.forms
         self.nextWindow = nextWindow
+        self.version = version
     }
 
     private static let forms: [Desk] = [
@@ -107,12 +113,12 @@ final class SampleDesks: @unchecked Sendable {
         Desk(name: "notes", windows: [], folder: "/Users/alex/notes", command: "", permanent: true, isOpen: false),
     ]
 
-    /// A workhorse script 0.11.0 report of the desks as they are now, with each window's id (`windowinfo`: the
-    /// desk, the window's number, its id, 1 for the one the desk shows, and its tabs). The `def` fields are the
-    /// name, reopen, keep, permanent, the folder and the command.
+    /// A workhorse script report (0.12.0 unless made with another version) of the desks as they are now, with each
+    /// window's id (`windowinfo`: the desk, the window's number, its id, 1 for the one the desk shows, and its tabs).
+    /// The `def` fields are the name, reopen, keep, permanent, the folder and the command.
     func report() -> String {
         lock.withLock {
-            var lines = ["macmosh-host\t1\t0.11.0", "os\t26.1\tarm64", "console\talex", "server\tup", "signins\tok",
+            var lines = ["macmosh-host\t1\t\(version)", "os\t26.1\tarm64", "console\talex", "server\tup", "signins\tok",
                          "agent\tinstalled", "power\tsleep=0\twomp=1", "battery\tpresent\tac\t82"]
             for d in all where d.isOpen {
                 lines.append("desk\t\(d.name)\t\(d.windows.count)\t0")
@@ -155,20 +161,29 @@ final class SampleDesks: @unchecked Sendable {
         all.contains { $0.name == name && ($0.isOpen || $0.permanent) }
     }
 
-    /// What the script's `desk-new`, `desk-rename`, `desk-remove` and `window-name` do, by exit code (0, 2, 4 or 7).
+    /// What the script's `desk-new`, `desk-rename`, `desk-remove` and `window-name` do, by exit code (0, 2, 4, 6 or 7).
+    /// `desk-new --window-name` (0.12.0) names the first window: the desk's own name, or a name that keeps the rule.
     func run(_ args: [String]) -> (Int32, String) {
         lock.withLock {
             guard let command = args.first else { return (2, "") }
             switch command {
             case "desk-new" where args.count >= 3:
                 let name = args[1]
+                let named = args.firstIndex(of: "--window-name").flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil }
+                // An older script doesn't know the option, and says so as its usage error.
+                if args.contains("--window-name"), !HostInstaller.isAtLeast(version, DeskFlow.firstWindowNameNeeds) {
+                    return (2, "macmosh-host: unknown option --window-name\n")
+                }
+                if let named, named != name, !WindowName.keepsScriptRule(named) {
+                    return (6, "macmosh-host: a window name is 1 to 32 characters, each a letter, a digit, a space, -, _ or a full stop, and it can't start or end with a space\n")
+                }
                 if taken(name) { return (7, "macmosh-host: the desk \(name) already exists\n") }
                 all.removeAll { $0.name == name }
                 let started = args.firstIndex(of: "--command").flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil } ?? ""
-                let first = started.split(separator: " ").first.map(String.init) ?? "zsh"
+                let program = started.split(separator: " ").first.map(String.init) ?? "zsh"
                 let home = "/Users/alex"
                 let folder = args[2].hasPrefix("~/") ? home + args[2].dropFirst(1) : args[2]
-                all.append(Desk(name: name, windows: [Window(id: "@\(nextWindow)", name: first, program: first)], folder: folder,
+                all.append(Desk(name: name, windows: [Window(id: "@\(nextWindow)", name: named ?? program, program: program)], folder: folder,
                                 command: started, permanent: args.contains("--permanent"), isOpen: true,
                                 reopen: !args.contains("--no-reopen"), keep: args.contains("--keep")))
                 nextWindow += 1

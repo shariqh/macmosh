@@ -42,7 +42,7 @@ struct DeskCommand: AsyncParsableCommand {
     struct New: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
             commandName: "new",
-            abstract: "Make a desk. With no desk name or folder it asks for them, and for a command to start.",
+            abstract: "Make a desk. With no desk name or folder it asks for them, its first window's name and a command to start.",
             discussion: """
                 A new desk opens again by itself after the workhorse restarts, unless you say --no-reopen. \
                 When you close its last window (typing exit, for example), the desk is removed and its name \
@@ -75,11 +75,16 @@ struct DeskCommand: AsyncParsableCommand {
         @Option(help: "A command to type into the desk when it starts. Given here, it isn't asked for.")
         var command: String?
 
+        @Option(name: .customLong("window-name"),
+                help: "A name for the desk's first window, or the desk's own name. A window name is 1 to 32 letters, digits, spaces, -, _ and full stops. It can't start with a space or -, or end with a space. Left out with the desk's name and folder given, the window is named after the program running in it; when the questions run, they ask for it. Needs the workhorse script 0.12.0 or newer.")
+        var windowName: String?
+
         func run() async throws {
             let request: NewDeskRequest
             do {
                 request = try NewDeskRequest.fromFlags(name: desk, folder: folder, reopen: reopen, noReopen: noReopen,
-                                                       keep: keep, permanent: permanent, command: command)
+                                                       keep: keep, permanent: permanent, command: command,
+                                                       windowName: windowName)
             } catch let mistake as DeskUsageError {
                 throw ValidationError(mistake.description)
             }
