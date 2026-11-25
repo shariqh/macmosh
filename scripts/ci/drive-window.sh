@@ -1676,8 +1676,9 @@ settings_sample() {
     result "$([ -z "$v" ] && echo PASS || echo FAIL)" "the page's log lines have fixed words only" "${v:-only 'setting ok' and 'setting failed'}"
 
     # Text typed and not left, then another sidebar line chosen: what the page shows afterwards is what is saved.
-    local typed_since cx cy
+    local typed_since cx cy rest_since signals
     typed_since=$(moment)
+    rest_since=$typed_since
     clear_field "settings.spare.name" && tool type "Typed" > /dev/null
     sleep 0.5
     click_id "sidebar.attic" > /dev/null
@@ -1699,6 +1700,8 @@ settings_sample() {
     # shellcheck disable=SC2088 # the text typed, a tilde and all
     clear_field "settings.spare.projectsFolder" && tool type "~/Typed" > /dev/null
     sleep 0.5
+    # The menu-open signal, counted up to the close: opening the window again goes through the menu.
+    signals=$(applog "$rest_since" | grep -cE "menu opened|menu tracking")
     read -r _ cx cy <<< "$(wax close | grep '^close' | tail -n 1)"
     if [ -z "${cy:-}" ]; then
         result NOT-SHOWN "the window opened again shows the saved values" "no close button found"
@@ -1713,11 +1716,16 @@ settings_sample() {
         return
     fi
     sleep 2
+    # What the file and the log hold while the window is closed: told, never failed, as either is sound.
+    want=$(python3 -I -c 'import json,sys; print(next(w.get("projectsFolder", "") for w in json.load(open(sys.argv[1]))["workhorses"] if w["id"] == "spare"))' "$file" 2>/dev/null)
+    result PASS "while the window is closed, text typed and not sent is saved or not" \
+        "saved folder: ${want:-nothing}; log: $(setting_lines "$typed_since" | tr '\n' '|' | sed 's/|$//')"
     if ! open_window || ! click_id "sidebar.settings" || ! wait_id "settings.heading" 6; then
         result FAIL "the window opened again shows the saved values" "the Settings page did not open again"
         stop_app
         return
     fi
+    rest_since=$(moment)
     sleep 1.5
     want=$(python3 -I -c 'import json,sys; print(next(w.get("projectsFolder", "") for w in json.load(open(sys.argv[1]))["workhorses"] if w["id"] == "spare"))' "$file" 2>/dev/null)
     v=$(val settings.spare.projectsFolder)
@@ -1773,10 +1781,10 @@ PY
         result FAIL "a key file refused as the page was left is still explained there" "Advanced did not open"
     fi
 
-    # Again, to the end of the page's steps: no click or key press set off the menu-open signal.
-    v=$(applog "$page_since" | grep -cE "menu opened|menu tracking")
+    # Again, for the steps after the first count, leaving out the menu that opened the window again.
+    v=$((signals + $(applog "$rest_since" | grep -cE "menu opened|menu tracking")))
     result "$([ "$v" -eq 0 ] && echo PASS || echo FAIL)" "the page sets off no menu-open signal, to its last step" \
-        "$v 'menu opened' or 'menu tracking' line(s)"
+        "$v 'menu opened' or 'menu tracking' line(s), leaving out the menu that opened the window again"
     stop_app
 }
 

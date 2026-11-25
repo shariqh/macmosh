@@ -217,10 +217,10 @@ struct ChoiceGroup: View {
 
 /// A setting's text field: saved, through `SettingsRunner` and its checks, when Return is pressed or the field is
 /// left, and only when its text differs from what it showed (`shown`) and from what is stored. After each save or
-/// refusal it shows what is stored: a refused value is not left in the field as if it were saved. When the page goes
-/// away (another sidebar line, or the window closed), focus leaves the field, so text typed and not yet sent is sent
-/// then, through the same checks; CI saw this on macOS 15 and 26. On a Mac where focus did not leave, nothing would
-/// be saved, and the next opening shows what is stored.
+/// refusal it shows what is stored: a refused value is not left in the field as if it were saved. When another
+/// sidebar line is chosen, focus leaves the field, so text typed and not yet sent is sent then, through the same
+/// checks. When the window is closed it is not sent at once: on the CI runners (macOS 15 and 26) it was sent when
+/// the window was opened again and the field lost focus, and it is not saved while the window stays closed.
 ///
 /// Apple, View.onSubmit(of:_:) (macOS 12.0, https://developer.apple.com/documentation/swiftui/view/onsubmit(of:_:)):
 /// "A TextField, or SecureField will trigger this action when the user hits the hardware or software return key."
