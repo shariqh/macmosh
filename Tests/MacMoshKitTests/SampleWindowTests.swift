@@ -60,12 +60,17 @@ import Testing
     }
 
     /// Look step 3: the sidebar's second line in each kind of state, for CI's pictures.
-    @Test func theSidebarSampleHasAMacInEachKindOfState() async {
+    /// The first check's answers are read as the refresher keeps them, without running it: Den can't be reached, so the
+    /// sample's refresher, the app's, would wait its real five seconds before a second look (tests pass a pause that
+    /// doesn't wait). On CI's macOS 26 runner (Xcode 26.6) that wait inside this test ended the test process with
+    /// "freed pointer was not the last allocation" (pull request 179); the app running the same sample there did not.
+    @Test func theSidebarSampleHasAMacInEachKindOfState() {
         let s = SampleWindow.sidebar
         #expect(s.rawValue == "window-sidebar" && s.workhorses.map(\.id) == ["workhorse", "attic", "spare", "den", "loft"])
-        let r = s.refresher()
-        await r.refresh()
-        let board = BoardModel.build(latest: r.latest, lastReady: r.lastReady, checking: [], order: s.workhorses,
+        var latest: [String: CheckResult] = [:]
+        for case .checked(let result) in s.gathered(check: 0) { latest[result.workhorse.id] = result }
+        #expect(latest["loft"] == nil)
+        let board = BoardModel.build(latest: latest, lastReady: [:], checking: [], order: s.workhorses,
                                      waitingForDeskServer: [], now: Date(), timeZone: .current)
         #expect(SidebarItem.list(board).map(\.spokenLabel) == ["Workhorse, Ready · 6 desks", "Attic, Ready · 1 desk",
             "Spare, Locked after a restart", "Den, Can't reach it", "Loft, Checking…", "Add a Mac…", "Settings"])
