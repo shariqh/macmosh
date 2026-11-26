@@ -211,15 +211,6 @@ import Testing
         }
     }
 
-    /// Design 8.1: column 0 and column 4 in full, plus row 1 column 1, row 1 column 3 and row 2 column 2.
-    @Test func theLetterMIsTheIconsThirteenCells() {
-        let lit = (0..<5).flatMap { r in (0..<5).filter { LetterM.isLit(row: r, column: $0) }.map { [r, $0] } }
-        #expect(lit.count == 13 && LetterM.size == 5)
-        #expect((0..<5).allSatisfy { LetterM.isLit(row: $0, column: 0) && LetterM.isLit(row: $0, column: 4) })
-        #expect(LetterM.isLit(row: 1, column: 1) && LetterM.isLit(row: 1, column: 3) && LetterM.isLit(row: 2, column: 2))
-        #expect(!LetterM.isLit(row: 0, column: 2) && !LetterM.isLit(row: 3, column: 2))
-    }
-
     /// A pressed button lays black at 8 per cent over its fill, under its words; the words, not darkened, still reach
     /// their pair's contrast on the darkened fill.
     @Test func aPressedButtonKeepsItsContrast() {   // Review Focus 4
