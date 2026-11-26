@@ -211,7 +211,7 @@ import Testing
                                                 isProblem: true)))
         #expect(try Data(contentsOf: r.paths.workhorsesFile) == bytes)
         let relative = await r.runner.save(.keyFile, of: "attic", typed: "keys/work")
-        #expect(relative == .refused(SettingLine(field: .keyFile, words: "A key file's path is full, starting with /, or starts with ~.",
+        #expect(relative == .refused(SettingLine(field: .keyFile, words: "Type a full path, starting with / or with ~.",
                                                  isProblem: true)))
         #expect(try Data(contentsOf: r.paths.workhorsesFile) == bytes)
     }
