@@ -332,7 +332,7 @@ Apple: "Both interface icons and symbols use black and clear colors to define th
 | Still checking, or waiting for the desk server | `ellipsis.circle` | Faint cells with the middle row solid |
 | No workhorses yet | `plus.circle` | Faint cells, and a plus badge |
 
-**Faint cells** are black at reduced opacity, about a third (agent's call), which a template image allows: the same Apple page goes on "You can use the alpha channel in the image to adjust the opacity of black content, however." [18] (this sentence was added in the revision and is to be re-read against the page before step 6). Every state still differs in shape, so faintness is never the only difference.
+**Faint cells** are black at reduced opacity, about a third (agent's call), which a template image allows: the same Apple page goes on "You can use the alpha channel in the image to adjust the opacity of black content, however." [18]. Every state still differs in shape, so faintness is never the only difference.
 
 **The log keeps today's symbol names.** The model goes on naming each state by today's symbol name; CI's `menu refreshed: symbol=plus.circle workhorses=0 lines=2` (`ci.yml`), the driver's `symbol=lock.circle` and the stored menus read them. Only the label's drawing changes: it maps the name to the drawn mark.
 
