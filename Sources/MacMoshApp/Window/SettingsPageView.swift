@@ -56,6 +56,8 @@ struct SettingsPageView: View {
                     WorkhorseSettingsView(settings: settings, section: section, advancedOpen: advanced.contains(section.id),
                                           toggleAdvanced: { toggle(section.id) }, run: run)
                 }
+                // Last on the page, also with no workhorse or an unreadable list (look step 5b).
+                AboutPanel(about: page.about)
             }
             .font(.system(size: LookSize.bodyFont))
             .padding(LookSize.pagePadding)
@@ -391,4 +393,11 @@ enum SettingsMarks {
     static func inTerminal(_ id: String) -> String { "settings.\(id).connection.inTerminal" }
     /// The grey line under Remove MacMosh from this workhorse…: `settings.attic.remove.about` (look step 4).
     static func removeAbout(_ id: String) -> String { "settings.\(id).remove.about" }
+    /// The About panel at the end of the page (look step 5b).
+    static let aboutHeading = "settings.about.heading"
+    static let aboutName = "settings.about.name"
+    static let aboutVersion = "settings.about.version"
+    static let aboutLicence = "settings.about.licence"
+    /// A credit line: `settings.about.credit.0`, `settings.about.credit.1`.
+    static func aboutCredit(_ index: Int) -> String { "settings.about.credit.\(index)" }
 }
