@@ -57,7 +57,7 @@ struct MainWindow: View {
                             Task { await settings.reload() }
                         }
                 case .unreadableList:
-                    UnreadableListPageView(problem: screen.listProblem ?? "")
+                    UnreadableListPageView(page: ListProblemPage(problem: screen.listProblem ?? ""))
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -206,6 +206,9 @@ enum WindowMarks {
     static let headline = "page.headline"
     static let addMac = "page.addMac"
     static let listProblem = "page.listProblem"
+    /// The unreadable-list page's heading and next step (look step 2).
+    static let listProblemHeading = "page.listProblemHeading"
+    static let listProblemNext = "page.listProblemNext"
 }
 
 /// Each workhorse with its state's symbol, then Add a Mac….
