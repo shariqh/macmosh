@@ -20,6 +20,11 @@ public enum WindowWords {
     public static let doesntComeBack = "Doesn't come back after a restart"
     public static let notMadeWithMacMosh = "Not made with MacMosh: folder and restart not known"
     public static let keepsItsCommandRunning = "Keeps its command running"
+    /// The tag on the second line of a desk with no saved definition (look design 6.5); today's sentence
+    /// (`notMadeWithMacMosh`) is its help tag.
+    public static let madeByHand = "Made by hand"
+    /// A closed desk's state cell (look design 6.5). Today's windows column says `closed`, "(closed)".
+    public static let closedState = "Closed"
 
     // The detail strip's labels and values.
     public static let folder = "Folder"
@@ -249,6 +254,17 @@ public struct DeskRow: Sendable, Equatable, Identifiable {
     public var status: String?
     /// The cells on the desk's tile (look design 6.5); none for a desk just made, before its check.
     public var cells: DeskCells
+    /// Its window names ("claude, zsh, vim"), or "1 window" when they have none; "" for a closed desk and for a desk
+    /// just made (look design 6.5).
+    public var windowWords: String
+    /// The state cell: the running action's words first ("Renaming…", "Updating…"); else "In 2 tabs", "No tab" or
+    /// "Closed".
+    public var state: DeskStateCell
+    /// The folder and the unusual facts, or the tag "Made by hand".
+    public var secondLine: SecondLine
+    /// What VoiceOver says for the row, and what CI reads: the name, the window words, the second line, then the
+    /// state's word, the empty ones left out, joined with ", ".
+    public var spokenLabel: String
     /// A click on the row opens a detail strip with something in it; a new desk's row before its check has none.
     public var hasStrip: Bool { !(detail.isEmpty && facts.isEmpty && windowLines.isEmpty && detailButtons.isEmpty) }
 
@@ -300,6 +316,29 @@ public struct DeskRow: Sendable, Equatable, Identifiable {
         let marked = activity.updating.contains(desk.name) || activity.arriving.contains(desk.name)
         status = running?.progress ?? (marked ? WindowActivity.updatingWords : nil)
         cells = DeskCells(desk)
+        if !desk.isOpen {
+            windowWords = ""
+        } else if desk.windowNames.isEmpty {
+            windowWords = WindowWords.windows(desk.windowCount)
+        } else {
+            windowWords = desk.windowNames.joined(separator: ", ")
+        }
+        if let status {
+            state = DeskStateCell(word: status, kind: .busy)
+        } else if !desk.isOpen {
+            state = DeskStateCell(word: WindowWords.closedState, kind: .closed)
+        } else {
+            state = DeskStateCell(word: WindowWords.tabs(desk.tabsOpen), kind: desk.tabsOpen > 0 ? .inTabs : .noTab)
+        }
+        if desk.madeByMacMosh {
+            var facts: [String] = []
+            if desk.permanent == true { facts.append(WindowWords.keptWhenItExits) }
+            if desk.reopen == false { facts.append(WindowWords.doesntComeBack) }
+            secondLine = SecondLine(folder: desk.folder.flatMap { $0.isEmpty ? nil : $0 }, facts: facts, tag: nil)
+        } else {
+            secondLine = SecondLine(folder: nil, facts: [], tag: WindowWords.madeByHand)
+        }
+        spokenLabel = Self.spoken(name: name, windowWords: windowWords, second: secondLine, state: state)
         if let running {
             func off(_ b: BoardButton) -> BoardButton {
                 var b = b
@@ -334,6 +373,14 @@ public struct DeskRow: Sendable, Equatable, Identifiable {
         detailButtons = []
         status = WindowActivity.updatingWords
         cells = DeskCells(cells: [], more: false)
+        windowWords = ""
+        state = DeskStateCell(word: WindowActivity.updatingWords, kind: .busy)
+        secondLine = SecondLine(folder: nil, facts: [], tag: nil)
+        spokenLabel = Self.spoken(name: name, windowWords: windowWords, second: secondLine, state: state)
+    }
+
+    private static func spoken(name: String, windowWords: String, second: SecondLine, state: DeskStateCell) -> String {
+        [name, windowWords, second.whole, state.word].filter { !$0.isEmpty }.joined(separator: ", ")
     }
 
     /// The strip sits under the desk's own row, so its buttons need not name it: "Rename…" for
