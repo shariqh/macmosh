@@ -12,6 +12,7 @@
 # exactly one digit after the point, an r without exactly two, an opacity not of the form 0.dd, or no circle at all.
 # Each dot is one line of the table, "x, y, r, s,": x and y in tenths of a point (112.5 is 1125) and r in hundredths
 # (1.35 is 135), made by joining the digits around the point, never by multiplying; s is its group, 0, 1 or 2.
+# A group's fill colour is not kept and not checked: the app colours every dot with the clayArt token.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."

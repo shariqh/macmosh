@@ -62,8 +62,9 @@ import Testing
     /// Look step 3: the sidebar's second line in each kind of state, for CI's pictures.
     /// The first check's answers are read as the refresher keeps them, without running it: Den can't be reached, so the
     /// sample's refresher, the app's, would wait its real five seconds before a second look (tests pass a pause that
-    /// doesn't wait). On CI's macOS 26 runner (Xcode 26.6) that wait inside this test ended the test process with
-    /// "freed pointer was not the last allocation" (pull request 179); the app running the same sample there did not.
+    /// doesn't wait). On one run on CI's macOS 26 runner (Xcode 26.6) the test process aborted with "freed pointer was
+    /// not the last allocation" while this test ran the refresher (pull request 179). Other tests were running too, and
+    /// the cause was not proven; the app running the same sample there did not abort. Issue 180 tracks it.
     @Test func theSidebarSampleHasAMacInEachKindOfState() {
         let s = SampleWindow.sidebar
         #expect(s.rawValue == "window-sidebar" && s.workhorses.map(\.id) == ["workhorse", "attic", "spare", "den", "loft"])
