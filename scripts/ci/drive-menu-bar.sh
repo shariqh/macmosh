@@ -25,13 +25,33 @@
 #   the system recolours the mark     PASS: our item and the system's items to its right each have at least 8 ink
 #                                     pixels, the farthest ink of each lies on the same side of its bar (both darker
 #                                     or both lighter), and ours is at least 0.3 from its bar in luminance. FAIL when
-#                                     both have ink and the sides differ (a black mark the system left black on a
-#                                     dark bar); NOT-SHOWN otherwise. The detail gives both readings.
+#                                     the system's items have ink and ours has under 8 ink pixels: on the runners'
+#                                     dark bar (0.024) a mark the system left black is within bartool's 0.1 of the
+#                                     bar and reads so. FAIL too when both have ink and the sides differ (only a bar
+#                                     mid-way in brightness can show that). NOT-SHOWN otherwise. The light job cannot
+#                                     tell a recoloured mark from one left black: both are dark on a light bar. The
+#                                     dark job is the guard. The detail gives both readings.
 #   the mark shows on the open item   six-desks only. PASS: ours is at least 0.3 from the open item's own ground;
 #                                     else DIFFERS
-# The job fails only on a FAIL. The pictures are 1 pixel per point on the runners, so hollow and faint cells both
-# read as grey there: no check here tells them apart, and a person reads the -zoom pictures.
+# The job fails only on a FAIL. The pictures are 1 pixel per point on the runners: a hollow cell fills as an even
+# mid-grey 2 by 2 square and a faint cell as a lighter one, so the hollow outline never shows. No check here tells
+# the shapes apart, and a person reads the -zoom pictures.
 set -uo pipefail
+
+# recolour_verdict <our ink pixels> <their ink pixels> <our far-bar> <their far-bar>: PASS, FAIL or NOT-SHOWN for
+# "the system recolours the mark". MenuBarPicturesTests runs it as: drive-menu-bar.sh --verdict oi ti od td.
+recolour_verdict() {
+    awk -v oi="$1" -v ti="$2" -v od="$3" -v td="$4" 'BEGIN {
+        if (ti >= 8 && oi < 8) { print "FAIL"; exit }
+        if (ti < 8) { print "NOT-SHOWN"; exit }
+        if ((od < 0) != (td < 0)) { print "FAIL"; exit }
+        if (od < 0 ? -od >= 0.3 : od >= 0.3) { print "PASS"; exit }
+        print "NOT-SHOWN" }'
+}
+if [ "${1:-}" = --verdict ]; then
+    recolour_verdict "$2" "$3" "$4" "$5"
+    exit 0
+fi
 
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
@@ -137,11 +157,8 @@ recolour_check() {
     fi
     od=$(far_from_bar "$ob" "$of")
     td=$(far_from_bar "$tb" "$tf")
-    verdict=$(awk -v oi="$oi" -v ti="$ti" -v od="$od" -v td="$td" 'BEGIN {
-        if (oi < 8 || ti < 8) { print "NOT-SHOWN"; exit }
-        if ((od < 0) != (td < 0)) { print "FAIL"; exit }
-        if (od < 0 ? -od >= 0.3 : od >= 0.3) { print "PASS"; exit }
-        print "NOT-SHOWN" }')
+    verdict=$(recolour_verdict "$oi" "$ti" "$od" "$td")
+    if [ "$verdict" = FAIL ] && [ "$oi" -lt 8 ]; then detail="$detail; our mark has no ink against the bar (left black, or not drawn)"; fi
     result "$verdict" "the system recolours the mark" "$detail; ours far-bar=$od, theirs far-bar=$td"
 }
 

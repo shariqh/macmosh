@@ -57,4 +57,3 @@ import Testing
             #expect(!text.contains("LetterM") && !text.contains("(column == 1 || column == 3)"), "\(url.lastPathComponent)") }
         #expect(MenuBarMark.of(symbol: "checkmark.circle").drawn == Set(IconArt.mCells)) }
 }
-

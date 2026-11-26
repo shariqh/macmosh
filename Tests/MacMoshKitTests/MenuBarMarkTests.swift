@@ -84,7 +84,7 @@ import Testing
         let person = MenuBarMark.badgeFrame(natural: CGSize(width: 6, height: 7))
         #expect(abs(person.width - 36.0 / 7) < 1e-9 && person.height == 6 && person.maxY == 16 && abs(person.midX - 13) < 1e-9) }
 
-    /// Decision 4: the menu-bar item keeps the words it has today. Push 1 (Menu pictures run 45883300450, macOS 15 and
+    /// Decision 4: the menu-bar item keeps the words it has today. Push 2 (Menu pictures run 45883300450, macOS 15 and
     /// 26, light and dark) read them as the item's AXTitle; its AXDescription was empty for every state.
     @Test func theSpokenNamesAreTodays() {
         #expect(MenuBarMark.spokenName(for: "checkmark.circle") == "Selected")
