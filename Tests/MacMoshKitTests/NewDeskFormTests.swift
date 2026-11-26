@@ -147,7 +147,7 @@ private func form(version: String = "0.8.0", saved: Workhorse = attic()) throws 
     @Test func aTypedPathMustBeFullOrStartWithATilde() throws {
         var f = try form()
         f.setTypedPath("Development/x")
-        #expect(f.problems.contains("A path is full, starting with /, or starts with ~."))
+        #expect(f.problems.contains("Type a full path, starting with / or with ~."))
         f.setTypedPath("/opt/x")
         #expect(f.folderProblem == nil)
     }
@@ -160,7 +160,7 @@ private func form(version: String = "0.8.0", saved: Workhorse = attic()) throws 
         f.choose("garden-planner")
         #expect(f.pathLine == nil)
         f.setTypedPath("Development/garden")
-        #expect(f.pathLine == "A path is full, starting with /, or starts with ~.")
+        #expect(f.pathLine == "Type a full path, starting with / or with ~.")
         #expect(!f.canMake)
         f.setTypedPath("~/x\ty")
         #expect(f.pathLine == "A path can't contain a tab or a new line.")
@@ -350,5 +350,41 @@ private func form(version: String = "0.8.0", saved: Workhorse = attic()) throws 
         var reopened = check
         reopened.status?.desks.append(.init(name: DeskName("notes")!, windows: [.init(index: 0, name: "zsh")], windowCount: 1, attached: 0))
         #expect(!notes.stillMatches(reopened))
+    }
+    // MARK: look step 4 (design 6.8 and 7)
+
+    /// Look design 6.8: one line beside Make desk only when it is off for want of a folder.
+    @Test func makeDeskSaysWhyOnlyWhenNoFolderIsChosen() throws {
+        var f = try form()
+        #expect(NewDeskForm.Words.chooseAFolderFirst == "Choose a folder first.")
+        #expect(!f.canMake && f.makeReason == "Choose a folder first.")
+        f.choose("garden-planner")
+        #expect(f.canMake && f.makeReason == nil)
+        f.setName("api")                                   // taken: the refusal under the name is the reason
+        #expect(!f.canMake && f.makeReason == nil && f.nameLineIsProblem)
+        f.setName("garden-planner"); f.setTypedPath("Development/x")   // a bad typed path: its line says why
+        #expect(!f.canMake && f.makeReason == nil && f.pathLine == "Type a full path, starting with / or with ~.")
+        let none = try form(saved: attic(projects: nil))   // no projects folder yet
+        #expect(none.folders == .noProjectsFolder && none.makeReason == "Choose a folder first.")
+    }
+
+    /// Review Focus 4: off for two reasons at once, each says so in its own place.
+    @Test func bothReasonsShowEachInTheirPlace() throws {
+        var f = try form()
+        f.command = "npm\trun"
+        #expect(f.makeReason == "Choose a folder first." && f.commandLineIsProblem)
+        #expect(f.problems == ["Pick a folder, or type a path.", "Give the desk a name.",
+                               "A command to start can't contain a tab or a new line."])   // no folder, so no name yet
+    }
+
+    @Test func aFolderThatGivesNoNameShowsNothingBesideMakeDesk() throws {
+        var f = try form()
+        f.setTypedPath("~")
+        #expect(f.name == "" && !f.canMake && f.makeReason == nil && f.nameLine == NewDeskForm.Words.nameHelp)
+    }
+
+    @Test func eachSheetHasOnePrimaryButton() {
+        #expect(FormButton.allCases.filter { $0.kind == .primary } == [.makeDesk, .rename, .name])
+        for b in FormButton.allCases { #expect(Look.pairs.contains(b.kind.words), "\(b)") }
     }
 }

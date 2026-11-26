@@ -2,12 +2,13 @@ import Foundation
 
 /// The window's sheet that names one window of a desk (issue 144): "Name a window of website", the label "Name for
 /// window 2 (vim)", one field filled with the window's name now, the rule (or why the typed name can't be used)
-/// under it, and three buttons: "Use its program's name", Cancel, and Name, which is off until the name keeps
+/// under it, and three buttons: "Name it after the program running in it", Cancel, and Name, which is off until the name keeps
 /// `WindowName`'s rule and differs from the one it has. The window is the one with this id; its number is only for
 /// reading. `WindowActionRunner.nameWindow` sends it.
 public struct WindowNameForm: Sendable, Equatable, Identifiable {
     public enum Words {
-        public static let useProgramsName = "Use its program's name"
+        /// Issue 166's words, approved with the look's design (section 7).
+        public static let useProgramsName = "Name it after the program running in it"
         public static let cancel = "Cancel"
         public static let name = "Name"
         public static let naming = "Naming…"

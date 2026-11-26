@@ -149,7 +149,7 @@ private func nameButton(_ desk: String, _ window: String) -> BoardButton {
         #expect(f.label == "Name for window 2 (vim)")
         #expect(f.name == "vim")
         #expect(f.windowID == "@3" && f.number == 2 && f.desk == "website" && f.workhorseID == "attic")
-        #expect(WindowNameForm.Words.useProgramsName == "Use its program's name")
+        #expect(WindowNameForm.Words.useProgramsName == "Name it after the program running in it")
         #expect(WindowNameForm.Words.cancel == "Cancel")
         #expect(WindowNameForm.Words.name == "Name")
         #expect(WindowNameForm.Words.naming == "Naming…")

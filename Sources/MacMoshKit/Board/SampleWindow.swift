@@ -31,9 +31,10 @@ public enum SampleWindow: String, CaseIterable, Sendable {
     /// Issue 157: Attic and Spare, Ready, whose settings the Settings page saves into a stand-in store of its own
     /// (`SampleSettings`).
     case settings = "window-settings"
-    /// Look step 3: five Macs in five states, for the sidebar's pictures and checks. Workhorse, Ready with six desks;
+    /// Look step 3: Macs in each kind of state, for the sidebar's pictures and checks. Workhorse, Ready with six desks;
     /// Attic, Ready with one; Spare, Locked after a restart; Den, Can't reach it; Loft, which never answers, so it is
-    /// still checking.
+    /// still checking. Look step 4 adds Workhorse-in-the-attic-by-the-window, a name too long for its row, Ready with
+    /// one desk, and Shed, Ready with sign-ins off.
     case sidebar = "window-sidebar"
 
     var workhorses: [Workhorse] {
@@ -41,7 +42,7 @@ public enum SampleWindow: String, CaseIterable, Sendable {
         case .unreadableList: return []
         case .forms, .formsOlderScript, .ended: return [SampleForms.attic]
         case .settings: return [SampleSettings.attic, SampleSettings.spare]
-        case .sidebar: return [SampleMenu.main, Self.attic, SampleMenu.spare, Self.den, Self.loft]
+        case .sidebar: return [SampleMenu.main, Self.attic, SampleMenu.spare, Self.den, Self.loft, Self.annex, Self.shed]
         default: return [SampleMenu.main]
         }
     }
@@ -83,11 +84,13 @@ public enum SampleWindow: String, CaseIterable, Sendable {
                                                home: true)),
                     .checked(SampleMenu.result(Self.attic, .ready(signIns: true), report: Self.oneDeskReport, home: true)),
                     .checked(SampleMenu.result(SampleMenu.spare, .locked, report: nil, home: nil)),
-                    .checked(SampleMenu.result(Self.den, .cantReach(.nothingAnswers), report: nil, home: nil))]
+                    .checked(SampleMenu.result(Self.den, .cantReach(.nothingAnswers), report: nil, home: nil)),
+                    .checked(SampleMenu.result(Self.annex, .ready(signIns: true), report: Self.oneDeskReport, home: true)),
+                    .checked(SampleMenu.result(Self.shed, .ready(signIns: false), report: Self.oneDeskReport, home: true))]
         }
     }
 
-    /// The `sidebar` sample's other three Macs, made as `SampleMenu.main` is, with the id as the address.
+    /// The `sidebar` sample's other Macs, made as `SampleMenu.main` is, with the id as the address.
     private static func sample(_ id: String, _ name: String) -> Workhorse {
         Workhorse(id: id, name: name, user: "sample", mainAddress: id, hostKey: "ssh-ed25519 SAMPLE-KEY-NOT-REAL",
                   paired: true, osVersion: "26.1", arch: "arm64")
@@ -95,6 +98,8 @@ public enum SampleWindow: String, CaseIterable, Sendable {
     private static let attic = sample("attic", "Attic")
     private static let den = sample("den", "Den")
     private static let loft = sample("loft", "Loft")
+    private static let annex = sample("annex", "Workhorse-in-the-attic-by-the-window")
+    private static let shed = sample("shed", "Shed")
 
     /// The long-named desk of `longFolder`: 45 characters.
     static let longName = "garden-planner-for-the-allotment-by-the-river"

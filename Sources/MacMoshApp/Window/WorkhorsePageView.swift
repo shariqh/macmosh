@@ -168,14 +168,8 @@ struct EndedList: View {
                                 .lineLimit(1).truncationMode(.tail)
                                 .help(Text(verbatim: row.second))
                                 .accessibilityIdentifier(WindowMarks.ended(row.name, "second"))
-                            HStack(spacing: 8) {
-                                ButtonRow(buttons: row.split.left, run: run)
-                                Spacer(minLength: 24)
-                                if let right = row.split.right {
-                                    ButtonRow(buttons: [right], run: run)
-                                }
-                            }
-                            .padding(.top, 2)
+                            buttons(row)
+                                .padding(.top, 2)
                             if let note = row.note {
                                 Text(verbatim: note)
                                     .foregroundStyle(LookColor.text(.secondary, on: .ground))
@@ -193,6 +187,43 @@ struct EndedList: View {
             }
         }
         .padding(.top, 8)
+    }
+
+    /// Start again and Start again and keep it at the left, Forget alone at the right. With keep it, what kept means
+    /// (issue 156 item 2): beside the buttons when the row has room, under them when it does not (look step 4,
+    /// decision 5). Apple, ViewThatFits (macOS 13.0, https://developer.apple.com/documentation/swiftui/viewthatfits):
+    /// "A view that adapts to the available space by providing the first child view that fits."
+    @ViewBuilder private func buttons(_ row: EndedRow) -> some View {
+        if let keepHelp = row.keepHelp {
+            ViewThatFits(in: .horizontal) {
+                buttonLine(row, beside: keepLine(keepHelp, row))
+                VStack(alignment: .leading, spacing: 4) {
+                    buttonLine(row, beside: EmptyView())
+                    keepLine(keepHelp, row)
+                }
+            }
+        } else {
+            buttonLine(row, beside: EmptyView())
+        }
+    }
+
+    private func buttonLine(_ row: EndedRow, beside: some View) -> some View {
+        HStack(spacing: 8) {
+            ButtonRow(buttons: row.split.left, run: run)
+            beside
+            Spacer(minLength: 24)
+            if let right = row.split.right {
+                ButtonRow(buttons: [right], run: run)
+            }
+        }
+    }
+
+    private func keepLine(_ words: String, _ row: EndedRow) -> some View {
+        Text(verbatim: words)
+            .font(.system(size: LookSize.secondFont))
+            .foregroundStyle(LookColor.text(.tertiary, on: .ground))
+            .lineLimit(1)
+            .accessibilityIdentifier(WindowMarks.ended(row.name, "keepHelp"))
     }
 }
 

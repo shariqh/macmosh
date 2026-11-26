@@ -198,8 +198,8 @@ public final class WindowActionRunner: ObservableObject {
         refresher.latest[id].flatMap { WindowNameForm(check: $0, desk: desk, window: window) }
     }
 
-    /// Names the form's window (Name), or lets it follow its program's name again (Use its program's name). The
-    /// window is the form's by its id; its number is only in the words.
+    /// Names the form's window (Name), or lets it follow its program's name again (Name it after the program running
+    /// in it). The window is the form's by its id; its number is only in the words.
     public func nameWindow(_ form: WindowNameForm, to naming: WindowNaming) async -> WindowActionResult {
         let id = form.workhorseID, desk = form.desk
         if let refused = startRefused(id, desk) { return refused }

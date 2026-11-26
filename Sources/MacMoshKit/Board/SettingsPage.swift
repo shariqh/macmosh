@@ -34,6 +34,9 @@ public struct SettingLine: Sendable, Equatable {
         self.words = words
         self.isProblem = isProblem
     }
+
+    /// A small green tick before it (look design 6.9): only a line that says "Saved.", never a refusal.
+    public var showsTick: Bool { !isProblem && words.hasPrefix(SettingsWords.savedWord) }
 }
 
 /// One choice of a radio group: what it says, and the value `macmosh set` (or `settings terminal`) takes for it.
@@ -71,6 +74,15 @@ public enum SettingsWords {
     public static let keyFile = "ssh key file"
     public static let removeMacMosh = "Remove MacMosh from this workhorse…"
     public static let noWorkhorses = "No workhorses yet. Add a Mac… in the sidebar adds one."
+    /// Under the heading (issue 160 item 3, look design 7).
+    public static let howSaved = "Each change is saved as you make it."
+    /// The grey line under Remove MacMosh from this workhorse… (issue 160 item 1, look design 7).
+    public static let removeMacMoshHelp = "Opens a terminal tab that lists what goes and asks first."
+    /// Under Connection while a workhorse is on Tabs and this Mac opens tabs in Terminal (issue 160 item 2): the tab
+    /// itself says "Tabs mode needs iTerm2, and this isn't iTerm2. Opening over mosh instead." (`ConnectRunner`).
+    public static let tabsInTerminal = "This Mac opens tabs in Terminal, so Mosh is used instead."
+    /// The word every line `saved(_:_:)` gives starts with.
+    public static let savedWord = "Saved."
 
     /// In `WorkhorseSetting.applyTerminal`'s words.
     public static let terminalChoices = [SettingChoice(title: "Pick for me", value: "auto"),
@@ -153,7 +165,8 @@ public enum SettingsWords {
 
     /// The window's own checks on an ssh key file, beyond `macmosh set` (the agent's call, for review): a typo there
     /// would leave the workhorse "Not paired" at its next check.
-    public static let keyFileNotAPath = "A key file's path is full, starting with /, or starts with ~."
+    /// The same sentence as New desk's path (issue 160 item 4, look design 7).
+    public static let keyFileNotAPath = NewDeskForm.Words.typeAFullPath
     public static func noKeyFile(_ path: String) -> String {
         "There is no file at \(path) on this Mac, so it was not saved."
     }
@@ -260,6 +273,8 @@ public struct SettingsPage: Sendable, Equatable {
     public static let thisMacID = "thisMac"
 
     public var heading: String
+    /// Under the heading: "Each change is saved as you make it."
+    public var howSaved = SettingsWords.howSaved
     public var thisMac: ThisMacSettings
     public var workhorses: [WorkhorseSettings]
     /// With no workhorse: "No workhorses yet…", or the store's sentence when the list can't be read.
@@ -275,7 +290,9 @@ public struct SettingsPage: Sendable, Equatable {
         heading = SettingsWords.heading
         thisMac = ThisMacSettings(settings: settings, problem: settingsProblem, pickForMe: pickForMe,
                                   line: lines[Self.thisMacID])
-        workhorses = list.map { WorkhorseSettings($0, line: lines[$0.id]) }
+        // Where tabs open: `TabOpener.terminal`'s rule, the setting else Pick for me's; an unreadable file is Pick for me.
+        let tabsOpenIn = settings?.terminal ?? pickForMe
+        workhorses = list.map { WorkhorseSettings($0, line: lines[$0.id], tabsOpenIn: tabsOpenIn) }
         if list.isEmpty {
             none = listProblem ?? SettingsWords.noWorkhorses
         } else {
@@ -322,6 +339,8 @@ public struct WorkhorseSettings: Sendable, Equatable, Identifiable {
     public var connectionChoices = SettingsWords.connectionChoices
     /// The one line under the Connection group, for the chosen one.
     public var connectionLine: String
+    /// Under that line, only while it is on Tabs and this Mac opens tabs in Terminal: Mosh is used instead.
+    public var connectionNote: String?
     public var prediction: String
     public var predictionChoices = SettingsWords.predictionChoices
     public var predictionLine: String
@@ -334,15 +353,18 @@ public struct WorkhorseSettings: Sendable, Equatable, Identifiable {
     public var checklist: BoardButton
     /// Remove MacMosh from this workhorse…: the tab `remove <id>`, which lists what goes and asks first.
     public var remove: BoardButton
+    /// The grey line under Remove: what it opens.
+    public var removeHelp = SettingsWords.removeMacMoshHelp
     /// The line of its last change.
     public var line: SettingLine?
 
-    init(_ w: Workhorse, line: SettingLine?) {
+    init(_ w: Workhorse, line: SettingLine?, tabsOpenIn: TerminalApp) {
         id = w.id
         heading = w.name
         name = w.name
         connection = w.mode.rawValue
         connectionLine = SettingsWords.connectionLine(w.mode)
+        connectionNote = w.mode == .tabs && tabsOpenIn == .appleTerminal ? SettingsWords.tabsInTerminal : nil
         prediction = w.prediction.rawValue
         predictionLine = SettingsWords.predictionLine(w.prediction)
         projectsFolder = w.projectsFolder ?? ""

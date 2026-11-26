@@ -13,6 +13,13 @@ import SwiftUI
 /// https://developer.apple.com/documentation/swiftui/view/horizontalradiogrouplayout()): "Sets the style for radio
 /// group style pickers within this view to be horizontally positioned with the radio buttons inside the layout."
 /// Advanced opens with a plain button, not a menu.
+///
+/// Look step 4 (look design 6.9): on the ground, one soft panel per Mac and one for This Mac, each with its name as
+/// the panel's heading; "Each change is saved as you make it." under the page's heading; a green tick before
+/// "Saved."; Run the checklist… secondary, and Remove MacMosh from this workhorse… last in its panel in red words with
+/// its grey line. Apple, AccessibilityTraits.isHeader (macOS 10.15,
+/// https://developer.apple.com/documentation/swiftui/accessibilitytraits/isheader): "The accessibility element is a
+/// header that divides content into sections, like the title of a navigation bar."
 struct SettingsPageView: View {
     @ObservedObject var settings: SettingsRunner
     /// Runs a tab button the way the menu runs its line (`MainWindow.run`).
@@ -24,27 +31,40 @@ struct SettingsPageView: View {
         let page = settings.page
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                Text(verbatim: page.heading).font(.title2).bold()
-                    .accessibilityIdentifier(SettingsMarks.heading)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(verbatim: page.heading)
+                        .font(.system(size: LookSize.titleFont, weight: .semibold))
+                        .foregroundStyle(LookColor.text(.primary, on: .ground))
+                        .accessibilityIdentifier(SettingsMarks.heading)
+                    Text(verbatim: page.howSaved)
+                        .font(.system(size: LookSize.secondFont))
+                        .foregroundStyle(LookColor.text(.tertiary, on: .ground))
+                        .accessibilityIdentifier(SettingsMarks.howSaved)
+                }
                 ForEach(Array(page.notices.enumerated()), id: \.offset) { _, notice in
-                    Text(verbatim: notice).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
+                    Text(verbatim: notice).foregroundStyle(LookColor.text(.cannot, on: .ground))
+                        .fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier(SettingsMarks.notice)
                 }
                 thisMac(page.thisMac)
                 if let none = page.none {
-                    Divider()
-                    Text(verbatim: none).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    Text(verbatim: none).foregroundStyle(LookColor.text(.secondary, on: .ground))
+                        .fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier(SettingsMarks.none)
                 }
                 ForEach(page.workhorses) { section in
-                    Divider()
                     WorkhorseSettingsView(settings: settings, section: section, advancedOpen: advanced.contains(section.id),
                                           toggleAdvanced: { toggle(section.id) }, run: run)
                 }
             }
-            .padding(20)
+            .font(.system(size: LookSize.bodyFont))
+            .padding(LookSize.pagePadding)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        // The ground behind the page shows through, as on a workhorse's page. Apple, scrollContentBackground(_:) (macOS
+        // 13.0, https://developer.apple.com/documentation/swiftui/view/scrollcontentbackground(_:)): "Specifies the
+        // visibility of the background for scrollable views within this view."
+        .scrollContentBackground(.hidden)
         // Each opening shows what is saved now. The "Saved." lines of earlier changes go; a refusal stays under its
         // field, and a refused key file opens Advanced so its sentence is seen (`WorkhorseSettings.opensAdvanced`).
         .onAppear {
@@ -57,8 +77,7 @@ struct SettingsPageView: View {
     }
 
     private func thisMac(_ section: ThisMacSettings) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(verbatim: section.heading).font(.headline)
+        SettingsPanel(heading: section.heading, mark: nil) {
             Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 12, verticalSpacing: 6) {
                 GridRow {
                     SettingLabel(section.label)
@@ -68,8 +87,7 @@ struct SettingsPageView: View {
                             let settings = settings
                             Task { await settings.chooseTerminal(value) }
                         }
-                        Text(verbatim: section.pickLine).font(.caption).foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
+                        AboutLine(words: section.pickLine)
                             .accessibilityIdentifier(SettingsMarks.pickForMe)
                         LineView(line: section.line, mark: SettingsMarks.line(SettingsPage.thisMacID, .terminal))
                     }
@@ -94,9 +112,7 @@ struct WorkhorseSettingsView: View {
 
     var body: some View {
         let id = section.id
-        VStack(alignment: .leading, spacing: 8) {
-            Text(verbatim: section.heading).font(.headline)
-                .accessibilityIdentifier(SettingsMarks.heading(id))
+        SettingsPanel(heading: section.heading, mark: SettingsMarks.heading(id)) {
             Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 12, verticalSpacing: 10) {
                 GridRow {
                     SettingLabel(SettingsWords.name)
@@ -113,9 +129,13 @@ struct WorkhorseSettingsView: View {
                                     chosen: section.connection, mark: SettingsMarks.field(id, .connection)) { value in
                             save(.connection, value)
                         }
-                        Text(verbatim: section.connectionLine).font(.caption).foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
+                        AboutLine(words: section.connectionLine)
                             .accessibilityIdentifier(SettingsMarks.about(id, .connection))
+                        // Only while it is on Tabs and this Mac opens tabs in Terminal (issue 160 item 2).
+                        if let note = section.connectionNote {
+                            AboutLine(words: note)
+                                .accessibilityIdentifier(SettingsMarks.inTerminal(id))
+                        }
                         LineView(line: section.under(.connection), mark: SettingsMarks.line(id, .connection))
                     }
                 }
@@ -126,8 +146,7 @@ struct WorkhorseSettingsView: View {
                                     chosen: section.prediction, mark: SettingsMarks.field(id, .prediction)) { value in
                             save(.prediction, value)
                         }
-                        Text(verbatim: section.predictionLine).font(.caption).foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
+                        AboutLine(words: section.predictionLine)
                             .accessibilityIdentifier(SettingsMarks.about(id, .prediction))
                         LineView(line: section.under(.prediction), mark: SettingsMarks.line(id, .prediction))
                     }
@@ -144,7 +163,9 @@ struct WorkhorseSettingsView: View {
             Button(action: toggleAdvanced) {
                 HStack(spacing: 4) {
                     Image(systemName: advancedOpen ? "chevron.down" : "chevron.right")
+                        .foregroundStyle(LookColor.text(.tertiary, on: .surface))
                     Text(verbatim: SettingsWords.advanced)
+                        .foregroundStyle(LookColor.text(.primary, on: .surface))
                 }
             }
             .buttonStyle(.plain)
@@ -156,23 +177,26 @@ struct WorkhorseSettingsView: View {
                         VStack(alignment: .leading, spacing: 3) {
                             SettingTextField(settings: settings, id: id, field: .keyFile, title: SettingsWords.keyFile,
                                              stored: section.keyFile)
-                            Text(verbatim: section.keyFileHelp).font(.caption).foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
+                            AboutLine(words: section.keyFileHelp)
                             LineView(line: section.under(.keyFile), mark: SettingsMarks.line(id, .keyFile))
                         }
                     }
                 }
             }
-            HStack(spacing: 8) {
-                Button { run(section.checklist) } label: { Text(verbatim: section.checklist.title) }
-                    .accessibilityIdentifier(SettingsMarks.checklist(id))
+            Button { run(section.checklist) } label: { Text(verbatim: section.checklist.title) }
+                .buttonStyle(LookButtonStyle(kind: ButtonKind.of(section.checklist.action)))
+                .accessibilityIdentifier(SettingsMarks.checklist(id))
+                .padding(.top, 4)
+            // Last in the panel, on its own line, in red words, with what it opens under it (issue 160 item 1).
+            VStack(alignment: .leading, spacing: 4) {
                 Button { run(section.remove) } label: { Text(verbatim: section.remove.title) }
+                    .buttonStyle(LookButtonStyle(kind: ButtonKind.of(section.remove.action)))
                     .accessibilityIdentifier(SettingsMarks.remove(id))
+                AboutLine(words: section.removeHelp)
+                    .accessibilityIdentifier(SettingsMarks.removeAbout(id))
             }
-            .padding(.top, 4)
+            .padding(.top, 8)
         }
-        // A container, so its controls keep their own identifiers.
-        .accessibilityElement(children: .contain)
     }
 
     private func save(_ field: SettingField, _ value: String) {
@@ -181,13 +205,55 @@ struct WorkhorseSettingsView: View {
     }
 }
 
-/// A setting's name, in the page's first column.
+/// One soft panel (look design 6.9): a surface tile with corners of 12, its name as the heading, read as a header.
+struct SettingsPanel<Content: View>: View {
+    let heading: String
+    /// The heading's identifier; This Mac's has none.
+    let mark: String?
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            title
+            content
+        }
+        .padding(LookSize.panelPadding)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .lookTile(radius: LookSize.panelRadius)
+        // A container, so its controls keep their own identifiers.
+        .accessibilityElement(children: .contain)
+    }
+
+    @ViewBuilder private var title: some View {
+        let text = Text(verbatim: heading)
+            .font(.system(size: LookSize.bodyFont, weight: .semibold))
+            .foregroundStyle(LookColor.text(.primary, on: .surface))
+            .accessibilityAddTraits(.isHeader)
+        if let mark { text.accessibilityIdentifier(mark) } else { text }
+    }
+}
+
+/// A grey line about a setting, in a panel: 11 points in ink-3 on the surface.
+struct AboutLine: View {
+    let words: String
+
+    var body: some View {
+        Text(verbatim: words)
+            .font(.system(size: LookSize.tagFont))
+            .foregroundStyle(LookColor.text(.tertiary, on: .surface))
+            .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// A setting's name, in the panel's first column.
 struct SettingLabel: View {
     let words: String
     init(_ words: String) { self.words = words }
 
     var body: some View {
-        Text(verbatim: words).frame(width: 130, alignment: .leading)
+        Text(verbatim: words)
+            .foregroundStyle(LookColor.text(.primary, on: .surface))
+            .frame(width: 130, alignment: .leading)
     }
 }
 
@@ -277,17 +343,27 @@ struct SettingTextField: View {
     }
 }
 
-/// The grey line under a setting, or the red sentence when nothing was saved.
+/// The grey line under a setting, with a small green tick before "Saved." (look design 6.9), or the red sentence
+/// when nothing was saved. The identifier is on the words alone, so its value stays the words.
 struct LineView: View {
     let line: SettingLine?
     let mark: String
 
     var body: some View {
         if let line {
-            Text(verbatim: line.words).font(.caption)
-                .foregroundStyle(line.isProblem ? Color.red : Color.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .accessibilityIdentifier(mark)
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                if line.showsTick {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: LookSize.tagFont))
+                        .foregroundStyle(LookColor.mark(.green))
+                        .accessibilityHidden(true)
+                }
+                Text(verbatim: line.words)
+                    .font(.system(size: LookSize.tagFont))
+                    .foregroundStyle(LookColor.text(line.isProblem ? .cannot : .tertiary, on: .surface))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier(mark)
+            }
         }
     }
 }
@@ -299,6 +375,8 @@ enum SettingsMarks {
     static let none = "settings.none"
     static let terminal = "settings.thisMac.terminal"
     static let pickForMe = "settings.thisMac.pickForMe"
+    /// "Each change is saved as you make it." under the heading (look step 4).
+    static let howSaved = "settings.howSaved"
     static func heading(_ id: String) -> String { "settings.\(id).heading" }
     /// A setting's control: `settings.attic.name`, `settings.attic.connection`.
     static func field(_ id: String, _ field: SettingField) -> String { "settings.\(id).\(field.rawValue)" }
@@ -309,4 +387,8 @@ enum SettingsMarks {
     static func advanced(_ id: String) -> String { "settings.\(id).advanced" }
     static func checklist(_ id: String) -> String { "settings.\(id).checklist" }
     static func remove(_ id: String) -> String { "settings.\(id).remove" }
+    /// The line under Connection while tabs open in Terminal: `settings.spare.connection.inTerminal` (look step 4).
+    static func inTerminal(_ id: String) -> String { "settings.\(id).connection.inTerminal" }
+    /// The grey line under Remove MacMosh from this workhorse…: `settings.attic.remove.about` (look step 4).
+    static func removeAbout(_ id: String) -> String { "settings.\(id).remove.about" }
 }
