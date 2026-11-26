@@ -54,7 +54,10 @@
 # (each fails); "the unreadable-list page has its heading, the sentence and the next step" (fails); and three
 # findings that never fail: "VoiceOver hears that a desk's details are open" (windowtool isselected), "at the smallest
 # window the opened details can be scrolled into view" (menutool scroll, whose sign is tried both ways), and "Forget
-# stands apart at the right of its row".
+# stands apart at the right of its row". In the "window-names" sample, website's vim is then named with 32 letters,
+# and "a 32-letter window name reaches the field", "a 32-letter window name leaves the facts their width" (narrower
+# facts than with "vim", or facts past the panel or over the lines) and "a 32-letter window name ends before its
+# state" each fail.
 set -uo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -625,6 +628,7 @@ details_beside_and_under() {
     bottom=$((fy + fh))
     # The page's middle: right of the sidebar (200 points) and its one-point line.
     px=$((fx + 200 + 1 + (fw - 201) / 2)); py=$((fy + fh / 2))
+    say "before the scroll: the strip ends at $(box "desk.website.strip" | awk 'NF == 4 { print $2 + $4 }'), the window at $bottom"
     for try in -100 100; do
         tool scroll "$px" "$py" "$try" > /dev/null
         sleep 1
@@ -859,6 +863,14 @@ val() { wax value "$1" | grep '^value' | tail -n 1 | sed 's/^value //'; }
 # box <identifier>: that element's "x y w h", or nothing. right <identifier>: its right edge, or nothing.
 box() { wax box "$1" | grep '^box' | tail -n 1 | sed 's/^box //'; }
 right() { box "$1" | awk 'NF == 4 { print $1 + $3 }'; }
+
+# rest_on_title: the pointer on the window's title bar, which has no help tag, before a picture.
+rest_on_title() {
+    local x y w
+    read -r _ x y w _ <<< "$(wax frame | grep '^frame' | tail -n 1)"
+    [ -n "${w:-}" ] && lim 10 "$TOOL" move "$((x + w / 2))" "$((y + 12))" >> "$LOG" 2>&1
+    sleep 1
+}
 
 # same_end <check> <desk> <other desk>: the two rows' buttons end within 2 points of each other, so the state cells
 # after them stand in one column (look step 1), whether or not the row has an Open button.
@@ -1494,6 +1506,46 @@ window_keys() {
 # @6 vim; blog has one, @3). Its script is 0.11.0 and its report gives the windows' ids, so website's details have
 # a Name… on each window and blog's strip has Name its window…. The stand-in ssh names the window as the script
 # would and writes each call's exact remote command to the log.
+# website's vim (@6) named with 32 letters, the longest the sheet allows (WindowName.maxLength), at the default size
+# (look step 2's review): the facts beside the lines keep the width they had with "vim" and stay in the panel, and the
+# name gives way before its state. A picture, with the pointer on the title bar.
+long_window_name() {
+    local long="Database Migration Worker Logs 2" v deadline before after fx fr sr nr sl lr
+    before=$(box "desk.website.facts" | awk 'NF == 4 { print $3 }')
+    if ! click_id "desk.website.name.@6" || ! wait_id "form.nameWindow" 6; then
+        result FAIL "a 32-letter window name leaves the facts their width" "no sheet for website's window @6"
+        return
+    fi
+    sleep 1
+    clear_field "form.windowName"
+    tool type "$long" > /dev/null
+    expect_value "a 32-letter window name reaches the field" "form.windowName" "$long" 3
+    tool keys 36 1 100 > /dev/null
+    gone_id "form.nameWindow" 6 > /dev/null
+    deadline=$((SECONDS + 10))
+    v=$(val "desk.website.line.@6")
+    while [ "$v" != "$long" ] && [ "$SECONDS" -lt "$deadline" ]; do sleep 0.5; v=$(val "desk.website.line.@6"); done
+    sleep 1
+    read -r fx _ after _ <<< "$(box "desk.website.facts")"
+    fr=$(right "desk.website.facts"); sr=$(right "desk.website.strip"); lr=$(right "desk.website.lines")
+    nr=$(right "desk.website.line.@6"); sl=$(box "desk.website.state.@6" | awk 'NF == 4 { print $1 }')
+    if [ "$v" = "$long" ] && [ -n "$before" ] && [ -n "${after:-}" ] && [ -n "$fr" ] && [ -n "$sr" ] && [ -n "$lr" ] \
+        && [ "$after" -ge $((before - 1)) ] && [ "$fr" -le "$sr" ] && [ "$lr" -le "$fx" ]; then
+        result PASS "a 32-letter window name leaves the facts their width" \
+            "facts $after wide (with vim: $before), from $fx to $fr, the panel ends at $sr, the lines at $lr"
+    else
+        result FAIL "a 32-letter window name leaves the facts their width" \
+            "line @6 reads ${v:-nothing}; facts ${after:-?} wide (with vim: ${before:-?}), from ${fx:-?} to ${fr:-?}, the panel ends at ${sr:-?}, the lines at ${lr:-?}"
+    fi
+    if [ -n "$nr" ] && [ -n "$sl" ] && [ "$nr" -le "$sl" ]; then
+        result PASS "a 32-letter window name ends before its state" "the name ends at $nr, its state starts at $sl"
+    else
+        result FAIL "a 32-letter window name ends before its state" "the name ends at ${nr:-?}, its state starts at ${sl:-?}"
+    fi
+    rest_on_title
+    snap long-window-name
+}
+
 window_names_sample() {
     local since v missing want deadline id t
     start_app window-forms || return
@@ -1593,7 +1645,7 @@ window_names_sample() {
     v=$(val "desk.website.line.@6"); t=$(val "desk.website.state.@6")
     result "$([ "$v" = "front end" ] && [ "$t" = "not in a tab" ] && echo PASS || echo DIFFERS)" \
         "the details show the window's new name whole" "the window's line reads: ${v:-nothing}; its state: ${t:-nothing}"
-    sleep 1
+    rest_on_title
     snap after-name
 
     # Use its program's name: --auto, and the name goes back to the program's.
@@ -1618,6 +1670,7 @@ window_names_sample() {
     else
         result FAIL "Name… opens the sheet again" "no sheet for website's window @6"
     fi
+    long_window_name
 
     # blog has one window, so no list: its strip has Name its window….
     click_id "desk.blog" > /dev/null
