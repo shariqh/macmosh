@@ -490,6 +490,19 @@ private func sidebar(_ latest: [String: CheckResult], order: [Workhorse], checki
         #expect(DeskRow(one).windowWordsAtFewest == "zsh")
     }
 
+    @Test func aWindowCountIsLeftOutNotCut() throws {   // Review Focus 5
+        let long = "garden-planner-for-the-allotment-by-the-river"
+        func unnamed(_ n: Int) -> BoardDesk {
+            BoardDesk(name: long, isOpen: true, windows: (0..<n).map { BoardWindow(index: $0, name: "", id: "@\($0 + 1)", tabs: 0) },
+                      windowCount: n, tabsOpen: 0, folder: nil, command: nil, reopen: nil, keep: nil, permanent: nil,
+                      madeByMacMosh: false, open: nil, buttons: [])
+        }
+        #expect(DeskRow(unnamed(2)).windowWords == "2 windows" && DeskRow(unnamed(2)).windowWordsAtFewest == "2 windows")
+        #expect(DeskRow(unnamed(1)).windowWordsAtFewest == "1 window" && DeskRow(unnamed(1)).windowWordsAreACount)
+        let website = try #require(try rows()["website"])
+        #expect(!website.windowWordsAreACount && website.windowWordsAtFewest == "clau…")   // names are still cut
+    }
+
     @Test func theSpokenLabelIsNameWindowsSecondLineThenState() throws {
         let r = try rows()
         #expect(r["website"]?.spokenLabel == "website, claude, zsh, vim, ~/Development/website, In 2 tabs")

@@ -265,11 +265,16 @@ public struct DeskRow: Sendable, Equatable, Identifiable {
     /// Its window names ("claude, zsh, vim"), or "1 window" when they have none; "" for a closed desk and for a desk
     /// just made (look design 6.5).
     public var windowWords: String
+    /// True when `windowWords` is a count ("1 window", "2 windows", `WindowWords.windows(_:)`), not names; false in the
+    /// row of a desk just made.
+    public var windowWordsAreACount: Bool
     /// The window names as the row shows them when little room is left: cut to `LookSize.windowNamesFewest` letters
-    /// and "…", or whole when no longer than that and one; "" when there are none. Below this the row leaves them out
-    /// (the spoken label keeps them).
+    /// and "…", or whole when no longer than that and one; "" when there are none. A count is never cut: it is whole
+    /// here, so the row shows it whole or leaves it out (look step 3). Below this the row leaves them out (the spoken
+    /// label keeps them).
     public var windowWordsAtFewest: String {
         let fewest = LookSize.windowNamesFewest
+        if windowWordsAreACount { return windowWords }
         return windowWords.count <= fewest + 1 ? windowWords : String(windowWords.prefix(fewest)) + "…"
     }
     /// The state cell: the running action's words first ("Renaming…", "Updating…"); else "In 2 tabs", "No tab" or
@@ -321,6 +326,7 @@ public struct DeskRow: Sendable, Equatable, Identifiable {
         // after it lands: shown in the state cell in place of the tab count.
         let status = running?.progress ?? (marked ? WindowActivity.updatingWords : nil)
         cells = DeskCells(desk)
+        windowWordsAreACount = desk.isOpen && desk.windowNames.isEmpty
         if !desk.isOpen {
             windowWords = ""
         } else if desk.windowNames.isEmpty {
@@ -378,6 +384,7 @@ public struct DeskRow: Sendable, Equatable, Identifiable {
         detailButtons = []
         cells = DeskCells(cells: [], more: false)
         windowWords = ""
+        windowWordsAreACount = false
         state = DeskStateCell(word: WindowActivity.updatingWords, kind: .busy)
         secondLine = SecondLine(folder: nil, facts: [], tag: nil)
         spokenLabel = Self.spoken(name: name, windowWords: windowWords, second: secondLine, state: state)
