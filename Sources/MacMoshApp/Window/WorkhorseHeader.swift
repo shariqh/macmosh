@@ -11,11 +11,11 @@ struct WorkhorseHeader: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .center, spacing: 8) {
+            HStack(alignment: .center, spacing: 6) {
                 // One element for VoiceOver and CI, read as the menu's headline ("Attic · Ready"); the name and the
                 // pill inside it are not read as pieces. Apple, accessibilityElement(children:) (macOS 10.15,
                 // https://developer.apple.com/documentation/swiftui/view/accessibilityelement(children:)).
-                HStack(alignment: .center, spacing: 10) {
+                HStack(alignment: .center, spacing: 8) {
                     Text(verbatim: page.name)
                         .font(.system(size: LookSize.titleFont, weight: .semibold))
                         .foregroundStyle(LookColor.text(.primary, on: .ground))
@@ -28,7 +28,7 @@ struct WorkhorseHeader: View {
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityIdentifier(WindowMarks.headline)
                 .layoutPriority(1)
-                Spacer(minLength: 8)
+                Spacer(minLength: 6)
                 // Always laid out; seen and read only while a check runs.
                 Text(verbatim: page.checking ?? WindowWords.checking)
                     .foregroundStyle(LookColor.text(.tertiary, on: .ground))
