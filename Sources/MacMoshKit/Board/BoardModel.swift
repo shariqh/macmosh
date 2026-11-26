@@ -145,6 +145,7 @@ public enum BoardModel {
             return onlyWindow.map { naming($0, WindowWords.nameItsWindow) }
         } : []
         let lines = withButtons ? perWindow?.windows ?? [] : []
+        let pairs = withButtons ? perWindow?.namesAndStates ?? [] : []
         return BoardDesk(
             name: line.name, isOpen: line.isOpen,
             windows: all.map { w in
@@ -152,7 +153,8 @@ public enum BoardModel {
                 let name = canName && all.count > 1 ? w.id.map { naming($0, WindowWords.nameWindow) } : nil
                 return BoardWindow(index: w.index, name: w.name, id: w.id, tabs: w.tabs,
                                    inTabs: w.id.flatMap { perWindow?.tabsByWindow[$0] },
-                                   button: mine.map(BoardButton.init), nameButton: name)
+                                   button: mine.map(BoardButton.init), nameButton: name,
+                                   nameAndState: w.id.flatMap { id in pairs.first { $0.windowId == id } })
             },
             windowCount: session?.windowCount ?? 0,
             tabsOpen: session == nil ? 0 : perWindow?.tabs ?? session?.attached ?? 0,

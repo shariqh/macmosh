@@ -35,3 +35,22 @@ public enum ButtonKind: Sendable, Equatable {
         }
     }
 }
+
+/// A row of buttons split by where they sit: the rest at the left, in order, and one alone at the right (design 6.4
+/// and 6.6: Restart… at the page's foot, Remove… at the foot of a desk's details, Forget in an Ended row).
+public struct ButtonSplit: Sendable, Equatable {
+    public var left: [BoardButton]
+    public var right: BoardButton?
+
+    public init(left: [BoardButton], right: BoardButton?) {
+        self.left = left
+        self.right = right
+    }
+
+    /// `right` is the first button of `kind`, `left` every other, in order.
+    public init(_ buttons: [BoardButton], apart kind: ButtonKind) {
+        let at = buttons.firstIndex { ButtonKind.of($0.action) == kind }
+        right = at.map { buttons[$0] }
+        left = buttons.enumerated().filter { $0.offset != at }.map(\.element)
+    }
+}

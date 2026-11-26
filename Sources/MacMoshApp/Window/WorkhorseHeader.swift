@@ -158,7 +158,8 @@ struct ResultSlotView: View {
     }
 }
 
-/// The mark before a result: a tick on a small green tile, a red warning triangle, or a neutral question mark.
+/// The mark before a result: a round green tick, as the state cell draws it, a red warning triangle, or a neutral
+/// question mark.
 private struct ResultMark: View {
     let kind: ResultKind
 
@@ -166,12 +167,9 @@ private struct ResultMark: View {
         Group {
             switch kind {
             case .done:
-                // The tick in the surface colour: white on green in light, the dark tile's colour on green in dark.
-                Image(systemName: "checkmark")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(LookColor.background(.surface))
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(LookColor.mark(.green))
                     .frame(width: 15, height: 15)
-                    .background(RoundedRectangle(cornerRadius: 4, style: .continuous).fill(LookColor.mark(.green)))
             case .failed:
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(LookColor.mark(.red))

@@ -245,6 +245,53 @@ private let a = "aaaaaaaaaaaaaaaa", b = "bbbbbbbbbbbbbbbb", c = "ccccccccccccccc
         #expect(w?.windows.map(\.title) == ["window 0", "zsh"])
     }
 
+    // MARK: Each window's name and state, for the window's details (look design 6.6)
+
+    @Test func eachWindowHasItsNameAndItsStateFromTheMenusFacts() {   // Review Focus 1
+        let desk = detailedDesk("website", [
+            detailedWindow(0, "@1", "claude", tabs: 1), detailedWindow(1, "@2", "zsh", tabs: 2), detailedWindow(2, "@3", "logs", tabs: 2),
+            detailedWindow(3, "@4", "web", tabs: 1), detailedWindow(4, "@5", "vim", tabs: 0), detailedWindow(5, "@6", "db", tabs: 2),
+        ], views: [labelledView("website", "@1", c), labelledView("website", "@2", a), labelledView("website", "@2", b),
+                   labelledView("website", "@3", "dddddddddddddddd")])
+        let w = windowsOf(desk, records: [atticRecord(c), atticRecord(a, minutesAgo: 30), atticRecord(b, minutesAgo: 1),
+                                          atticRecord("dddddddddddddddd")])
+        #expect(w?.namesAndStates == [
+            WindowNameAndState(windowId: "@1", name: "claude", state: .inTabs(1)),
+            WindowNameAndState(windowId: "@2", name: "zsh", state: .inTabs(2)),
+            WindowNameAndState(windowId: "@3", name: "logs", state: .inTabs(2)),
+            WindowNameAndState(windowId: "@4", name: "web", state: .inAnotherTab),
+            WindowNameAndState(windowId: "@5", name: "vim", state: .notInATab),
+            WindowNameAndState(windowId: "@6", name: "db", state: .inAnotherTab)])
+        #expect(w?.windows.map(\.title) == ["claude (in a tab)", "zsh (in 2 tabs)", "logs (in 2 tabs)", "web (open in another tab)",
+                                            "vim", "db (open in another tab)"])
+        #expect(w?.windows.map(\.title) == w?.namesAndStates.map(\.menuWords))
+        #expect([WindowTabState.inTabs(1), .inTabs(3), .inAnotherTab, .notInATab].map(\.words)
+                == ["in a tab", "in 3 tabs", "open in another tab", "not in a tab"])
+        #expect([WindowTabState.inTabs(1), .inAnotherTab, .notInATab].map(\.cell) == [.lit, .lit, .unlit])
+        #expect([WindowTabState.inTabs(2), .inAnotherTab, .notInATab].map(\.textRole) == [.good, .good, .tertiary])
+    }
+
+    @Test func aRepeatedNameKeepsItsNumberApartFromItsState() {   // Review Focus 2
+        let w = windowsOf(detailedDesk("x", [detailedWindow(0, "@1", "zsh", tabs: 0), detailedWindow(1, "@2", "vim", tabs: 0),
+                                             detailedWindow(3, "@4", "zsh", tabs: 1), detailedWindow(4, "@5", "zsh", tabs: 0)]))
+        #expect(w?.namesAndStates.map(\.name) == ["zsh", "vim", "zsh (window 3)", "zsh (window 4)"])
+        #expect(w?.namesAndStates.map(\.state) == [.notInATab, .notInATab, .inAnotherTab, .notInATab])
+        #expect(w?.windows.map(\.title) == ["zsh", "vim", "zsh (window 3) (open in another tab)", "zsh (window 4)"])   // the menu's
+        let unnamed = windowsOf(detailedDesk("x", [detailedWindow(0, "@1", "", tabs: 0), detailedWindow(1, "@2", "zsh", tabs: 0)]))
+        #expect(unnamed?.namesAndStates.map(\.name) == ["window 0", "zsh"])
+        #expect(DeskWindows.names([(0, "zsh"), (1, "vim"), (3, "zsh"), (4, "")]) == ["zsh", "vim", "zsh (window 3)", "window 4"])
+    }
+
+    /// A desk with one window has no window lines in the menu, but its details still show that window's line; a closed
+    /// desk has none.
+    @Test func everyOpenDeskHasItsNamesAndStates() {
+        let one = windowsOf(detailedDesk("notes", [detailedWindow(0, "@7", "zsh", tabs: 1)],
+                                         views: [labelledView("notes", "@7", a)]), records: [atticRecord(a)])
+        #expect(one?.windows == [] && one?.namesAndStates == [WindowNameAndState(windowId: "@7", name: "zsh", state: .inTabs(1))])
+        let closed = deskLines(atticResult([], definitions: [permanentDefinition("garden")])).first?.windows
+        #expect(closed != nil && closed?.namesAndStates == [])
+    }
+
     // MARK: New window, and the flags line
 
     @Test func newWindowOpensATabOfItsOwn() {

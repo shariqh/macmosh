@@ -73,9 +73,13 @@ public struct DeskWindows: Sendable, Equatable {
     /// By window id, how many tabs show that window, findable or not, counted as `tabs` counts them; empty for a
     /// closed desk. The window's desk tile lights a cell for each window above 0 (look design 6.5).
     public var tabsByWindow: [String: Int]
+    /// Each window's name and state, in the desk's order, for every open desk, one window included; empty for a
+    /// closed desk. The menu's window lines are built from it; the window's details show it (look design 6.6).
+    public var namesAndStates: [WindowNameAndState]
 
     public init(title: String, first: ActionButton, windows: [ActionButton], newWindow: ActionButton?, flags: String?,
-                tabs: Int = 0, notInATab: [[String]] = [], tabsByWindow: [String: Int] = [:]) {
+                tabs: Int = 0, notInATab: [[String]] = [], tabsByWindow: [String: Int] = [:],
+                namesAndStates: [WindowNameAndState] = []) {
         self.title = title
         self.first = first
         self.windows = windows
@@ -84,6 +88,7 @@ public struct DeskWindows: Sendable, Equatable {
         self.tabs = tabs
         self.notInATab = notInATab
         self.tabsByWindow = tabsByWindow
+        self.namesAndStates = namesAndStates
     }
 
     /// The shape for one desk of workhorse `id`, with this Mac's live records and the time. nil for an open
@@ -144,24 +149,12 @@ public struct DeskWindows: Sendable, Equatable {
             first = ActionButton(key: "open", title: "Open \(name) in a new tab", action: .tab(connect(["--view"])))
         }
 
+        let pairs = namesAndStates(of: session, tabs: tabs)
         var lines: [ActionButton] = []
         if count > 1 {
-            var named: Set<String> = []
-            for w in tabs {
-                let given = session.windows.first { $0.index == w.index && $0.id == w.windowId }?.name ?? ""
-                let base = given.isEmpty ? "window \(w.index)" : given
-                var line = named.contains(base) ? "\(base) (window \(w.index))" : base
-                named.insert(base)
-                let action: MenuAction
-                if let newest = w.newest {
-                    let shown = w.labels.count + w.others
-                    line += shown == 1 ? " (in a tab)" : " (in \(shown) tabs)"
-                    action = .focus(label: newest, orOpen: onWindow(w))
-                } else {
-                    if w.others > 0 { line += " (open in another tab)" }
-                    action = .tab(onWindow(w))
-                }
-                lines.append(ActionButton(key: "win:\(w.windowId)", title: line, action: action))
+            for (w, pair) in zip(tabs, pairs) {
+                let action: MenuAction = w.newest.map { .focus(label: $0, orOpen: onWindow(w)) } ?? .tab(onWindow(w))
+                lines.append(ActionButton(key: "win:\(w.windowId)", title: pair.menuWords, action: action))
             }
         }
         return DeskWindows(title: title, first: first, windows: lines,
@@ -169,6 +162,7 @@ public struct DeskWindows: Sendable, Equatable {
                            flags: flagsLine, tabs: tabs.reduce(0) { $0 + $1.labels.count + $1.others },
                            notInATab: noTab.map(onWindow),
                            tabsByWindow: Dictionary(tabs.map { ($0.windowId, $0.labels.count + $0.others) },
-                                                    uniquingKeysWith: { a, b in a + b }))
+                                                    uniquingKeysWith: { a, b in a + b }),
+                           namesAndStates: pairs)
     }
 }

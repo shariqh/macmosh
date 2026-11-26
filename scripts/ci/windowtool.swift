@@ -27,6 +27,9 @@
 //                                       step 1: state cells in one column, a row inside the window)
 //   windowtool <pid> help <identifier>  that element's help, its accessibility hint: "help <text>", or "notfound"
 //                                       (look step 1: a hand-made desk's sentence)
+//   windowtool <pid> isselected <identifier>  that element's AXSelected attribute (the SDK's kAXSelectedAttribute):
+//                                       "isselected true" or "isselected false", "isselected none" when it has none,
+//                                       or "notfound" (look step 2: VoiceOver hears that a desk's details are open)
 //
 // find, value, text, button, enabled and selected look in the MacMosh window first (its sheets are inside it), then in
 // the app's other windows, where a dialog may be.
@@ -40,7 +43,7 @@ import ApplicationServices
 
 let args = CommandLine.arguments
 guard args.count >= 3, let pid = pid_t(args[1]) else {
-    print("usage: windowtool <pid> windows|front|focused|frame|size|find|value|text|close|button|enabled|selected|radio|chosen|checked|dump [argument]")
+    print("usage: windowtool <pid> windows|front|focused|frame|size|find|value|text|close|button|enabled|selected|radio|chosen|checked|box|help|isselected|dump [argument]")
     exit(2)
 }
 let command = args[2]
@@ -147,6 +150,18 @@ case "enabled":
     let hit = everything().first { text($0.element, "AXIdentifier") == argument }
     if let hit {
         print("enabled \((attribute(hit.element, kAXEnabledAttribute) as? Bool) ?? true)")
+    } else {
+        print("notfound")
+    }
+case "isselected":
+    // Only reads. The attribute may be a boolean or a number; an element without it says so.
+    let hit = everything().first { text($0.element, "AXIdentifier") == argument }
+    if let hit {
+        if let raw = attribute(hit.element, kAXSelectedAttribute) {
+            print("isselected \((raw as? Bool) ?? ((raw as? NSNumber)?.boolValue ?? false))")
+        } else {
+            print("isselected none")
+        }
     } else {
         print("notfound")
     }

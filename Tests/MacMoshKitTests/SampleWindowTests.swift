@@ -45,8 +45,8 @@ import Testing
         let garden = rows.first { $0.name == long }
         #expect(garden?.cells == DeskCells(cells: [.lit, .lit, .unlit, .unlit, .unlit], more: true))
         #expect(garden?.state.word == "In 2 tabs")
-        #expect(rows.first { $0.name == "notes" }?.second == WindowWords.notMadeWithMacMosh)
-        #expect(rows.first { $0.name == "website-redesign" }?.second
+        #expect(rows.first { $0.name == "notes" }?.secondLine.help == WindowWords.notMadeWithMacMosh)
+        #expect(rows.first { $0.name == "website-redesign" }?.secondLine.whole
                 == "~/Development/clients/acme/website-redesign · Kept when it exits · Doesn't come back after a restart")
     }
 

@@ -19,6 +19,11 @@ public struct EndedRow: Sendable, Equatable, Identifiable {
     /// Why Start again is off (the name is taken again), or why the last Start again didn't work; one line.
     public var note: String?
 
+    /// Its tile: one hollow cell, as a closed desk's (look design 6.7).
+    public static let cells = DeskCells(cells: [.hollow], more: false)
+    /// Start again and Start again and keep it at the left, Forget alone at the right (look design 6.7).
+    public var split: ButtonSplit { ButtonSplit(buttons, apart: .destructive) }
+
     /// The group's heading.
     public static let heading = "Ended"
     public static let startAgain = "Start again"

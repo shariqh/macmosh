@@ -7,6 +7,11 @@ public enum Contrast {
     public static let minimum = 4.5
     /// Every pair with Increase Contrast on (look design, 5.1).
     public static let increased = 7.0
+    /// A mark beside words (a tick, a warning triangle, a circle): this project's own floor, borrowing the threshold of
+    /// WCAG 2.2's 1.4.11 Non-text Contrast, "a contrast ratio of at least 3:1 against adjacent color(s)"
+    /// (https://www.w3.org/TR/WCAG22/#non-text-contrast). The words beside the mark say the same, so WCAG does not
+    /// strictly ask it of these marks.
+    public static let nonText = 3.0
 
     /// WCAG 2.2's relative luminance of an sRGB colour, 0 for black and 1 for white: L = 0.2126 R + 0.7152 G
     /// + 0.0722 B, where each channel c = value / 255 is c / 12.92 when c <= 0.04045, else ((c + 0.055) / 1.055) ^ 2.4.

@@ -34,7 +34,7 @@ struct WorkhorsePageView: View {
                 PageFoot(left: page.footLeft, right: page.footRight, home: page.home, run: run)
                     .equatable()
             }
-            .padding(20)
+            .padding(LookSize.pagePadding)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         // The ground behind the page shows through. Apple, scrollContentBackground(_:) (macOS 13.0,
@@ -118,112 +118,75 @@ struct PageFoot: View, Equatable {
     }
 }
 
-/// The detail strip: one line per window when the desk has the menu's line per window (its words and a small
-/// "Go to" or "Open" button) or its windows can be named (a small "Name…", issue 144), then Folder, Starts with,
-/// After a restart, When its last shell exits, "Keeps its command running" when set, and New window, Name its
-/// window… (a desk with one window), Rename…, Remove….
-struct DeskDetail: View {
-    let row: DeskRow
-    let run: (BoardButton) -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            if !row.windowLines.isEmpty {
-                Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 3) {
-                    ForEach(row.windowLines) { line in
-                        GridRow {
-                            Text(verbatim: line.words)
-                            // Apple, controlSize(_:) (macOS 10.15, https://developer.apple.com/documentation/swiftui/view/controlsize(_:)):
-                            // "Sets the size for controls within this view."; ControlSize.small: "A control version
-                            // that is proportionally smaller size for space-constrained views."
-                            // The window's words are its help tag too, so the button's accessibility hint names
-                            // its window (help(_:), quoted above).
-                            HStack(spacing: 6) {
-                                if let open = line.button {
-                                    Button { run(open) } label: { Text(verbatim: open.title) }
-                                        .controlSize(.small)
-                                        .disabled(!open.isEnabled)
-                                        .help(Text(verbatim: line.words))
-                                        .accessibilityIdentifier(WindowMarks.window(row.name, line.id))
-                                }
-                                if let name = line.name {
-                                    Button { run(name) } label: { Text(verbatim: name.title) }
-                                        .controlSize(.small)
-                                        .disabled(!name.isEnabled)
-                                        .help(Text(verbatim: line.words))
-                                        .accessibilityIdentifier(WindowMarks.nameWindow(row.name, line.id))
-                                }
-                            }
-                        }
-                    }
-                }
-                Divider()
-            }
-            if !row.detail.isEmpty {
-                Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 3) {
-                    ForEach(Array(row.detail.enumerated()), id: \.offset) { _, line in
-                        GridRow {
-                            Text(verbatim: line.label).foregroundStyle(.secondary)
-                            Text(verbatim: line.value)
-                        }
-                    }
-                }
-            }
-            ForEach(Array(row.facts.enumerated()), id: \.offset) { _, fact in
-                Text(verbatim: fact)
-            }
-            ButtonRow(buttons: row.detailButtons, run: run)
-        }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.1)))
-        // Under the name column: the chevron, the tile and their gaps (DeskRowView).
-        .padding(.leading, 74)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier(WindowMarks.strip(row.name))
-    }
-}
-
-/// The Ended group (step 5): one block per ended desk, with its name and when it ended, its folder and command on
-/// one line, its buttons, and the note under them when there is one. Button and Text only.
+/// The Ended group (step 5, look design 6.7): the heading as the Desks heading, then each ended desk in the desk row's
+/// parts: the chevron's place left empty, a tile with one hollow cell, the name with when it ended beside it, the folder
+/// and command on one cut line, then Start again and Start again and keep it at the left and Forget alone at the right,
+/// and the note under them when there is one. Button and Text only.
 struct EndedList: View {
     let heading: String
     let rows: [EndedRow]
     let run: (BoardButton) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(verbatim: heading).font(.headline)
+        VStack(alignment: .leading, spacing: 0) {
+            Text(verbatim: heading)
+                .font(.system(size: LookSize.bodyFont, weight: .semibold))
+                .foregroundStyle(LookColor.text(.primary, on: .ground))
                 .accessibilityIdentifier(WindowMarks.endedHeading)
-            Divider()
+                .padding(.bottom, 8)
+            Hairline()
             ForEach(rows) { row in
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(alignment: .firstTextBaseline, spacing: 12) {
-                        Text(verbatim: row.name).fontWeight(.semibold)
-                            .frame(width: 110, alignment: .leading)
-                        Text(verbatim: row.when).foregroundStyle(.secondary).lineLimit(1)
-                            .accessibilityIdentifier(WindowMarks.ended(row.name, "when"))
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack(alignment: .top, spacing: 12) {
+                        // The chevron's place: an ended desk has no details to open.
+                        Color.clear.frame(width: 10, height: 1).accessibilityHidden(true)
+                        DeskTileView(cells: EndedRow.cells)
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                CappedWidth(cap: LookSize.nameMaxWidth) {
+                                    Text(verbatim: row.name)
+                                        .fontWeight(.semibold)
+                                        .foregroundStyle(LookColor.text(.primary, on: .ground))
+                                        .lineLimit(1).truncationMode(.tail)
+                                }
+                                .help(Text(verbatim: row.name))
+                                .layoutPriority(1)
+                                Text(verbatim: row.when)
+                                    .foregroundStyle(LookColor.text(.secondary, on: .ground))
+                                    .lineLimit(1)
+                                    .accessibilityIdentifier(WindowMarks.ended(row.name, "when"))
+                            }
+                            // One line: a long command is cut on screen, never in what Start again sends. Apple,
+                            // lineLimit(_:) (macOS 10.15, https://developer.apple.com/documentation/swiftui/view/linelimit(_:)-513mb):
+                            // "Sets the maximum number of lines that text can occupy in this view." Apple,
+                            // truncationMode(_:) (macOS 10.15, https://developer.apple.com/documentation/swiftui/view/truncationmode(_:)):
+                            // "Sets the truncation mode for lines of text that are too long to fit in the available
+                            // space."; Text.TruncationMode.tail: "Truncate at the end of the line."
+                            Text(verbatim: row.second)
+                                .font(.system(size: LookSize.secondFont))
+                                .foregroundStyle(LookColor.text(.tertiary, on: .ground))
+                                .lineLimit(1).truncationMode(.tail)
+                                .help(Text(verbatim: row.second))
+                                .accessibilityIdentifier(WindowMarks.ended(row.name, "second"))
+                            HStack(spacing: 8) {
+                                ButtonRow(buttons: row.split.left, run: run)
+                                Spacer(minLength: 24)
+                                if let right = row.split.right {
+                                    ButtonRow(buttons: [right], run: run)
+                                }
+                            }
+                            .padding(.top, 2)
+                            if let note = row.note {
+                                Text(verbatim: note)
+                                    .foregroundStyle(LookColor.text(.secondary, on: .ground))
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .accessibilityIdentifier(WindowMarks.ended(row.name, "note"))
+                            }
+                        }
                     }
-                    .padding(.leading, 14)
-                    // One line: a long command is cut on screen, never in what Start again sends. Apple,
-                    // lineLimit(_:) (macOS 10.15, https://developer.apple.com/documentation/swiftui/view/linelimit(_:)-513mb):
-                    // "Sets the maximum number of lines that text can occupy in this view." Apple, truncationMode(_:)
-                    // (macOS 10.15, https://developer.apple.com/documentation/swiftui/view/truncationmode(_:)): "Sets the
-                    // truncation mode for lines of text that are too long to fit in the available space."; Text.TruncationMode
-                    // .tail: "Truncate at the end of the line."
-                    Text(verbatim: row.second).font(.callout).foregroundStyle(.secondary)
-                        .lineLimit(1).truncationMode(.tail)
-                        .help(Text(verbatim: row.second))
-                        .padding(.leading, 136)
-                        .accessibilityIdentifier(WindowMarks.ended(row.name, "second"))
-                    ButtonRow(buttons: row.buttons, run: run)
-                        .padding(.leading, 136)
-                    if let note = row.note {
-                        Text(verbatim: note).font(.callout).fixedSize(horizontal: false, vertical: true)
-                            .padding(.leading, 136)
-                            .accessibilityIdentifier(WindowMarks.ended(row.name, "note"))
-                    }
-                    Divider()
+                    .font(.system(size: LookSize.bodyFont))
+                    .padding(.vertical, 8)
+                    Hairline()
                 }
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier(WindowMarks.ended(row.name))
@@ -233,18 +196,24 @@ struct EndedList: View {
     }
 }
 
-/// The desks of the last Ready check under a workhorse that is not Ready, greyed, with no buttons.
+/// The desks of the last Ready check under a workhorse that is not Ready (look design 6.7): in a surface-2 panel, the
+/// heading and the lines in the faintest grey, with no buttons.
 struct StaleList: View {
     let stale: StaleDesks
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(verbatim: stale.heading).font(.headline)
+            Text(verbatim: stale.heading)
+                .fontWeight(.semibold)
             ForEach(Array(stale.lines.enumerated()), id: \.offset) { _, line in
                 Text(verbatim: line).fixedSize(horizontal: false, vertical: true)
             }
         }
-        .foregroundStyle(.secondary)
+        .font(.system(size: LookSize.bodyFont))
+        .foregroundStyle(LookColor.text(.tertiary, on: .surface2))
+        .padding(LookSize.panelPadding)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .lookPanel()
         .padding(.top, 8)
     }
 }

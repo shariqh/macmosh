@@ -11,6 +11,13 @@ public struct LookRGB: Sendable, Equatable, CustomStringConvertible {
         blue = UInt8(hex & 0xFF)
     }
 
+    /// By channels: `LookRGB(red: 0xB9, green: 0x3F, blue: 0x12)` is `LookRGB(0xB93F12)`.
+    public init(red: UInt8, green: UInt8, blue: UInt8) {
+        self.red = red
+        self.green = green
+        self.blue = blue
+    }
+
     /// "#F0EFED".
     public var description: String { String(format: "#%02X%02X%02X", red, green, blue) }
 }
@@ -85,7 +92,8 @@ public enum Look {
     /// ink-2 takes ink's value, ink-3 ink-2's, the hairline ink-3's, and every other token keeps its own, except
     /// where `LookTests` moved a value until its pairs reach 7:1 (toward black in light, toward white in dark, in
     /// 1 per cent steps): ink-3 in light; and the tokens the design leaves to the builder, ember-text, green, amber
-    /// and red.
+    /// and red. Step 2 holds a pressed button's words to the same thresholds on its darkened fill, which moved red in
+    /// light increased once more.
     private static func table(_ token: LookToken) -> (UInt32, UInt32, UInt32, UInt32) {
         switch token {
         case .ink: return (0x1D1C1A, 0xF3F1EE, 0x1D1C1A, 0xF3F1EE)
@@ -103,7 +111,9 @@ public enum Look {
         case .clayOutline: return (0xA9A49D, 0x8A867F, 0xA9A49D, 0x8A867F)
         case .green: return (0x2A7230, 0x7BC67E, 0x225B26, 0x7BC67E)
         case .amber: return (0x8A5300, 0xF0B44C, 0x804D00, 0xF0B44C)
-        case .red: return (0xB3261E, 0xFF8A7A, 0x9A211A, 0xFF998B)
+        // Light increased: #9A211A was 7.01:1 on the ground but 6.76:1 on a pressed tile (#EBEBEB, look step 2); moved
+        // 3 per cent toward black, 7.05:1 there.
+        case .red: return (0xB3261E, 0xFF8A7A, 0x952019, 0xFF998B)
         case .onPrimary: return (0xFFFFFF, 0x1B1A19, 0xFFFFFF, 0x1B1A19)
         }
     }

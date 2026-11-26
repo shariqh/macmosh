@@ -19,6 +19,10 @@
 //   menutool watch <seconds> <label>   samples the menu windows (a 50 ms rest plus one window list
 //                                  between samples), prints each change and, at the end, the fewest
 //                                  and most seen and the average gap between samples
+//   menutool scroll <x> <y> <lines>    moves the pointer there, rests 150 ms, then posts one scroll-wheel event of
+//                                  that many lines on the first wheel (look step 2: the window's page at its
+//                                  smallest). Which sign moves a page toward its end is not documented; the
+//                                  window's driver tries one, then the other.
 //
 // Built by the workflow with swiftc, as a single file. Each line it prints starts with a Unix time.
 import AppKit
@@ -34,7 +38,7 @@ func out(_ text: String) {
 
 let args = CommandLine.arguments
 guard args.count >= 2 else {
-    out("usage: menutool preflight|move|click|rushclick|keys|type|chord|count|windows|watch")
+    out("usage: menutool preflight|move|click|rushclick|keys|type|chord|count|windows|watch|scroll")
     exit(2)
 }
 
@@ -216,6 +220,20 @@ case "chord":
     if shifted { modifier(kVK_Shift, down: false, flags: .maskCommand) }
     modifier(kVK_Command, down: false, flags: [])
     out("chord: \(shifted ? "Shift-" : "")Command-\(c) (key \(key.code))")
+case "scroll":
+    // Apple, CGEvent init?(scrollWheelEvent2Source:units:wheelCount:wheel1:wheel2:wheel3:) (macOS 10.13,
+    // https://developer.apple.com/documentation/coregraphics/cgevent/init(scrollwheelevent2source:units:wheelcount:wheel1:wheel2:wheel3:)).
+    guard args.count >= 5, let lines = Int32(args[4]) else {
+        out("usage: menutool scroll <x> <y> <lines>")
+        exit(2)
+    }
+    let target = point(2)
+    moveTo(target)
+    usleep(150_000)
+    let event = CGEvent(scrollWheelEvent2Source: source, units: .line, wheelCount: 1, wheel1: lines, wheel2: 0, wheel3: 0)
+    event?.post(tap: .cghidEventTap)
+    usleep(300_000)
+    out("scroll \(lines) at \(target)\(event == nil ? " (no event made)" : "")")
 case "count":
     print(menuWindows().count)
 case "windows":

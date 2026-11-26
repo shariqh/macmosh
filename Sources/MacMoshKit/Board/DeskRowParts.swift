@@ -71,7 +71,14 @@ public struct SecondLine: Sendable, Equatable {
         return String(folder.prefix(head)) + "…" + String(folder.suffix(tail)) + factsPart
     }
 
-    /// The widths the row tries, longest first, in characters: the view draws the first that fits on one line
-    /// (`ViewThatFits`).
-    public static let widths: [Int] = [.max, 96, 80, 64, 48, 32, 0]
+    /// The lines the row tries, longest first: the whole line, then `fitted(n)` for n from one character shorter down
+    /// to 0, each different one once, so each rung is one character shorter than the last and the folder is never cut
+    /// more than the room needs. The view draws the first that fits on one line (`ViewThatFits`). The tag alone for a tag.
+    public var ladder: [String] {
+        let all = whole
+        guard tag == nil, !all.isEmpty else { return [all] }
+        return stride(from: all.count - 1, through: 0, by: -1).map(fitted).reduce(into: [all]) {
+            if $0.last != $1 { $0.append($1) }
+        }
+    }
 }
