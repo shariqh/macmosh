@@ -1,7 +1,7 @@
 name: Icon pictures
 # Look step 5a (issue 175): builds the debug app with its icon on macOS 15 and 26, checks the icon files in it, and
 # draws the icon as the system gives it, in light and then in dark, plus the icon document's six styles drawn by
-# Apple's ictool (scripts/ci/icon-pictures.sh says what it checks).
+# Apple's ictool (scripts/ci/icon-pictures.sh says what it checks). On macOS 26 it then tries the Dark icon style once.
 # The Remove confirmation's pictures, where an alert may show the icon, come from the Menu pictures workflow.
 on:
   pull_request:
@@ -64,6 +64,30 @@ jobs:
         env:
           ICON_OUT: ${{ runner.temp }}/icon-pictures/dark
         run: scripts/ci/icon-pictures.sh dark
+      # Round 2, decision 5: one try at the Dark icon style ("Items are opaque and have a darkened appearance.", Apple's
+      # Mac User Guide), on the macOS 26 runner only, and never in a script a person might run on their own Mac.
+      # Apple documents no command for it. The name AppleIconAppearanceTheme and the value RegularDark are guesses,
+      # not Apple's: both are strings inside macOS 27.3's system libraries, and the Appearance settings pane names
+      # SLSIconAppearanceTheme. The value is read back; the icon services agent is restarted so it reads it again.
+      # A try that does not take is not a failed job: the next step then does not run, or reads NOT-SHOWN.
+      - name: Try the Dark icon style
+        id: style
+        if: ${{ !cancelled() && matrix.os == 'macos-26' && steps.build.outcome == 'success' }}
+        continue-on-error: true
+        timeout-minutes: 3
+        run: |
+          defaults write -g AppleIconAppearanceTheme -string RegularDark
+          theme=$(defaults read -g AppleIconAppearanceTheme 2>/dev/null || true)
+          echo "AppleIconAppearanceTheme reads: ${theme:-nothing}"
+          [ "$theme" = RegularDark ] || { echo "::warning::The guessed icon style setting did not read back."; exit 1; }
+          killall iconservicesagent Finder Dock 2>&1 || true
+          sleep 5
+      - name: The icon in the Dark icon style
+        if: ${{ !cancelled() && steps.style.outcome == 'success' }}
+        timeout-minutes: 4
+        env:
+          ICON_OUT: ${{ runner.temp }}/icon-pictures/darkstyle
+        run: scripts/ci/icon-pictures.sh darkstyle
       - name: Upload the pictures and logs
         if: always()
         timeout-minutes: 5

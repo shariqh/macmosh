@@ -179,4 +179,26 @@ private func pixelSize(_ relativePath: String) throws -> [Int] {
         #expect(turn.contains("        id: dark\n"))
         #expect(dark.contains("steps.dark.outcome == 'success'"))
     }
+
+    /// Round 2, decision 5: the Dark icon style is tried on the macOS 26 runner only, in the workflow, and its
+    /// pictures wait for the read-back. No script in the repository changes a setting, so none can change one on a
+    /// person's own Mac.
+    @Test func theDarkIconStyleIsTriedOnlyOnTheRunner() throws {
+        let workflow = try String(contentsOf: repoRoot().appendingPathComponent(".github/workflows/icon-pictures.yml"),
+                                  encoding: .utf8)
+        let steps = workflow.components(separatedBy: "      - name: ")
+        let style = try #require(steps.first { $0.hasPrefix("Try the Dark icon style\n") })
+        let pictures = try #require(steps.first { $0.hasPrefix("The icon in the Dark icon style\n") })
+        #expect(style.contains("        id: style\n") && style.contains("matrix.os == 'macos-26'"))
+        #expect(style.contains("defaults write -g AppleIconAppearanceTheme"))
+        #expect(style.contains("defaults read -g AppleIconAppearanceTheme"))
+        #expect(pictures.contains("steps.style.outcome == 'success'") && pictures.contains("icon-pictures.sh darkstyle"))
+        #expect(steps.filter { $0.contains("defaults write") }.count == 1)
+        let root = repoRoot()
+        let scripts = try #require(FileManager.default.enumerator(at: root.appendingPathComponent("scripts"),
+                                                                  includingPropertiesForKeys: nil))
+        for case let url as URL in scripts where !url.hasDirectoryPath {
+            let text = String(decoding: try Data(contentsOf: url), as: UTF8.self)
+            #expect(!text.contains("defaults write"), "\(url.lastPathComponent)") }
+    }
 }
