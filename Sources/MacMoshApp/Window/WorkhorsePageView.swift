@@ -14,7 +14,7 @@ struct WorkhorsePageView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                header
+                WorkhorseHeader(page: page, notice: notice, run: run)
                 if !page.underHint.isEmpty {
                     ButtonRow(buttons: page.underHint, run: run)
                 }
@@ -37,35 +37,6 @@ struct WorkhorsePageView: View {
         // https://developer.apple.com/documentation/swiftui/view/scrollcontentbackground(_:)): "Specifies the
         // visibility of the background for scrollable views within this view."
         .scrollContentBackground(.hidden)
-    }
-
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Text(verbatim: page.headline).font(.title2).bold()
-                    .accessibilityIdentifier(WindowMarks.headline)
-                Spacer()
-                if let checking = page.checking {
-                    Text(verbatim: checking).foregroundStyle(.secondary)
-                }
-                if let checked = page.checked {
-                    Text(verbatim: checked).foregroundStyle(.secondary)
-                }
-                Button { run(page.checkNow) } label: { Text(verbatim: page.checkNow.title) }
-                    .accessibilityIdentifier(WindowMarks.button(page.checkNow))
-            }
-            if let hint = page.hint {
-                Text(verbatim: hint).fixedSize(horizontal: false, vertical: true)
-            }
-            if let summary = page.summary {
-                Text(verbatim: summary).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            }
-            if let result = page.result {
-                Text(verbatim: result).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier(WindowMarks.result)
-            }
-            NoticeLine(notice: notice)
-        }
     }
 
     private func desks(_ heading: String) -> some View {

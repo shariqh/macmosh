@@ -84,7 +84,7 @@ private func board() throws -> HostStatus {
     let runner: WindowActionRunner
 
     init(ssh: CommandRunner, projects: String? = "~/Development", last: String? = nil,
-         state: WorkhorseState = .ready(signIns: true)) async throws {
+         state: WorkhorseState = .ready(signIns: true), tabs: RecordingTabs = RecordingTabs()) async throws {
         paths = try temporaryPaths()
         store = WorkhorseStore(paths: paths)
         var attic = Workhorse.sample(id: "attic", name: "Attic", user: "alex", projectsFolder: projects)
@@ -97,7 +97,7 @@ private func board() throws -> HostStatus {
         let store = self.store
         refresher = MenuRefresher(load: { try store.load() }, gather: { checks.gather($0) }, save: { _ in },
                                   log: { lines.add($0) }, pause: { _ in })
-        tabs = RecordingTabs()
+        self.tabs = tabs
         let menuActions = MenuActionRunner(macmoshPath: "/Applications/MacMosh.app/Contents/Helpers/macmosh", tabs: tabs,
                                            runner: FakeRunner { _ in FakeRunner.ok() }, records: scratchTabRecords())
         runner = WindowActionRunner(refresher: refresher, commands: ssh, paths: paths, menuActions: menuActions,
@@ -397,6 +397,18 @@ private func ok(_ stdout: String = "") -> FakeRunner { FakeRunner { _ in FakeRun
         #expect(rig.tabs.opened.first?.line.hasSuffix("connect attic garden-planner") == true)
         #expect(rig.refresher.notice == "Created the desk garden-planner on Attic.")
         #expect(rig.lines.all.contains("menu action: tab connect (window)"))
+    }
+
+    /// The desk was made, so the result is done, its tick and all, even when its tab then failed to open; the tab's
+    /// sentence follows the result's in the same line, as it does today (the coordinator's choice, pull request 169).
+    @Test func aDeskMadeWhoseTabDidNotOpenIsStillDone() async throws {
+        let rig = try await Rig(ssh: ok(), tabs: RecordingTabs(failure: LaunchError.failed("iTerm2 is not installed.")))
+        let result = await rig.runner.newDesk(try await rig.form(openInTab: true))
+        #expect(result == .done("Created the desk garden-planner on Attic."))
+        await rig.runner.idle()
+        #expect(rig.refresher.results["attic"]
+                == "Created the desk garden-planner on Attic. The tab didn't open. iTerm2 is not installed.")
+        #expect(rig.refresher.resultKinds["attic"] == .done)
     }
 
     @Test func theCommandSentIsTheNextFormsDefault() async throws {
