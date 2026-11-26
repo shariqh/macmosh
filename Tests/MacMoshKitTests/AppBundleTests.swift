@@ -208,6 +208,8 @@ private func pixelSize(_ relativePath: String) throws -> [Int] {
                                encoding: .utf8)
         #expect(check.contains("if [ \"$theme\" != RegularDark ]; then\n        result \"$check\" NOT-SHOWN"))
         #expect(check.contains("AppleIconAppearanceTheme (a guessed name, not Apple's) $(defaults read"))
+        // Issue 183: the check also wants the system's icon to show a lit tile of the M, not only a dark unlit one.
+        #expect(check.contains("lit_warm light") && check.contains("lit_warm()"))
         #expect(steps.filter { $0.contains("defaults write") }.count == 1)
         let root = repoRoot()
         let scripts = try #require(FileManager.default.enumerator(at: root.appendingPathComponent("scripts"),
