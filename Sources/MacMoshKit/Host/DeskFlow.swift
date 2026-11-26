@@ -14,11 +14,16 @@ public struct NewDeskRequest: Sendable, Equatable {
     public var keep: Bool
     public var permanent: Bool
     public var command: String?
-    /// What the first window is called; nil when not given, and then nothing is sent unless the form asks.
+    /// What the first window is called; nil when not given, and then the form asks or `firstWindowAfterDesk` decides.
     public var firstWindow: FirstWindow?
+    /// `macmosh desk new` without --window-name: with nothing given and nothing asked, the first window gets the desk's
+    /// name when the script can take it (0.12.0); with an older one nothing is sent, as before. False for the window's
+    /// form and for Start again.
+    public var firstWindowAfterDesk: Bool
 
     public init(name: String? = nil, folder: String? = nil, reopen: Bool = true, keep: Bool = false,
-                permanent: Bool = false, command: String? = nil, firstWindow: FirstWindow? = nil) {
+                permanent: Bool = false, command: String? = nil, firstWindow: FirstWindow? = nil,
+                firstWindowAfterDesk: Bool = false) {
         self.name = name
         self.folder = folder
         self.reopen = reopen
@@ -26,16 +31,25 @@ public struct NewDeskRequest: Sendable, Equatable {
         self.permanent = permanent
         self.command = command
         self.firstWindow = firstWindow
+        self.firstWindowAfterDesk = firstWindowAfterDesk
     }
 
     /// Reads `macmosh desk new`'s flags. `--no-reopen` turns reopening off; `--reopen` is still accepted
-    /// and means the same as leaving both out. Giving both is a mistake. `--window-name` names the first window.
+    /// and means the same as leaving both out. Giving both is a mistake. `--window-name` names the first window:
+    /// exactly `-` leaves it to the program running in it; left out, the window gets the desk's name (look step 4).
     public static func fromFlags(name: String?, folder: String?, reopen: Bool, noReopen: Bool, keep: Bool,
                                  permanent: Bool, command: String?, windowName: String? = nil) throws -> NewDeskRequest {
         if reopen && noReopen { throw DeskUsageError.reopenAndNoReopen }
+        let firstWindow: FirstWindow? = windowName.map { $0 == "-" ? .afterItsProgram : .named($0) }
         return NewDeskRequest(name: name, folder: folder, reopen: !noReopen, keep: keep, permanent: permanent,
-                              command: command, firstWindow: windowName.map { .named($0) })
+                              command: command, firstWindow: firstWindow, firstWindowAfterDesk: windowName == nil)
     }
+
+    /// `macmosh desk new --window-name`'s help.
+    public static let windowNameHelp = "A name for the desk's first window, or - to name it after the program running in it. "
+        + WindowName.rule + " Left out with the desk's name and folder given, the window gets the desk's name; when the "
+        + "questions run, they ask for it. With a workhorse script older than 0.12.0, only - or leaving it out works, and "
+        + "the window is named after the program running in it."
 
     /// The form that asks questions. Everything given in the arguments is taken as it is; it never asks.
     public var isInteractive: Bool { name == nil || folder == nil }
@@ -121,8 +135,12 @@ public struct DeskFlow: Sendable {
                 return .failure(problem)
             }
         }
-        if firstWindow == nil && request.isInteractive && canNameFirstWindow {
-            do { firstWindow = try askFirstWindow(name, ui) } catch { return error as? DeskResult ?? .failure("\(error)") }
+        if firstWindow == nil && canNameFirstWindow {
+            if request.isInteractive {
+                do { firstWindow = try askFirstWindow(name, ui) } catch { return error as? DeskResult ?? .failure("\(error)") }
+            } else if request.firstWindowAfterDesk {
+                firstWindow = .deskName
+            }
         }
 
         let folder: String
@@ -362,7 +380,7 @@ public struct DeskFlow: Sendable {
     public static let firstWindowNameNeeds = "0.12.0"
 
     static func firstWindowQuestion(_ desk: DeskName) -> String {
-        "Name for its first window (Enter for \(desk.value), - to name it after its program): "
+        "First window's name (Enter: same name as the desk, \(desk.value); -: named after the program running in it): "
     }
 
     static let noDeskMade = "No desk was made."
