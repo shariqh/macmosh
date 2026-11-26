@@ -170,6 +170,22 @@ public enum SettingsWords {
     public static func noKeyFile(_ path: String) -> String {
         "There is no file at \(path) on this Mac, so it was not saved."
     }
+
+    // MARK: About, at the end of the page (look design 6.9, look step 5b)
+
+    public static let about = "About"
+    public static let appName = "MacMosh"
+    /// In neither design: the pull request of look step 5b asks the owner (its alternative: "MIT licence.").
+    public static let licence = "Open source under the MIT licence."
+    /// The two credit lines the v1 design fixes (v1 design, section 11), word for word.
+    public static let creditLines = [
+        "Mac and macOS are trademarks of Apple Inc., registered in the U.S. and other countries and regions.",
+        "MacMosh is an independent project, not affiliated with Apple or with the mosh project.",
+    ]
+
+    /// "Version 0.1.0". In neither design: the pull request of look step 5b asks the owner (its alternative: the
+    /// number alone).
+    public static func version(_ number: String) -> String { "Version \(number)" }
 }
 
 /// What a change on the page saves, with `macmosh set`'s checks (`WorkhorseSetting`): pure, so it is tested.
@@ -281,6 +297,8 @@ public struct SettingsPage: Sendable, Equatable {
     public var none: String?
     /// Lines for workhorses no longer on the list, shown at the top: "Den is no longer on MacMosh's list…".
     public var notices: [String]
+    /// The About section, last on the page whatever the list holds, also with no workhorse or an unreadable list.
+    public var about = AboutSection()
 
     /// `list` is the saved list (empty when `listProblem` says why it can't be read); `settings` the app's settings
     /// (nil when `settingsProblem` says why); `pickForMe` what Pick for me picks on this Mac now; `lines` the last
