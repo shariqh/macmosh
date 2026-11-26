@@ -325,6 +325,11 @@ struct SidebarRow: View {
 
 /// A sidebar row's tile: a small square, white on the ground and grey on the chosen card, with the state's symbol in its
 /// tone (the plus and the gear in ink). Decoration: the row's words say the same, so it is hidden from VoiceOver.
+///
+/// The symbol's name stays the menu's; the tile draws its filled variant where it has one, as look-b-light.png and
+/// look-b-dark.png draw the tick and the gear. Apple, symbolVariant(_:) (macOS 12.0,
+/// https://developer.apple.com/documentation/swiftui/view/symbolvariant(_:)): "Makes symbols within the view show a
+/// particular variant." and "A symbol that doesn’t have the specified variant remains unaffected."
 struct SidebarTile: View {
     let symbol: String
     let tone: PillTone?
@@ -332,7 +337,8 @@ struct SidebarTile: View {
 
     var body: some View {
         Image(systemName: symbol)
-            .font(.system(size: 13))
+            .symbolVariant(.fill)
+            .font(.system(size: 13, weight: .medium))
             .foregroundStyle(LookColor.mark(tone?.textRole.token ?? .ink))
             .frame(width: LookSize.smallTile, height: LookSize.smallTile)
             .lookTile(radius: LookSize.smallTileRadius, fill: onCard ? .surface2 : .surface)
