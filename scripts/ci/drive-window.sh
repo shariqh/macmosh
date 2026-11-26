@@ -88,6 +88,13 @@
 # The Settings page is taller now, so into_view scrolls an element into the window before the first action on it,
 # from Attic's Advanced down. New pictures show Spare's panel (window-settings-NN-spare-panel) and the relative key
 # file's refusal (window-settings-NN-relative-key).
+# Look step 5b (issue 187) ends Settings with an About panel. New checks, each failing: in "window-settings", "About
+# names the app", "About's version is the one the build wrote into the app" (settings.about.version against the
+# CFBundleShortVersionString of the bundle the driver starts, read with PlistBuddy), "About names the licence", "About's
+# credit lines are word for word" and "About comes after the last Mac's panel" (the top of settings.about.heading at or
+# below the bottom of settings.spare.remove.about), with a picture of the panel (window-settings-NN-about); in
+# "no-workhorses", "with no workhorse Settings still has About"; in "unreadable-list", "with an unreadable list Settings
+# still has About".
 set -uo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -968,6 +975,7 @@ unreadable_list() {
     else
         result FAIL "Settings with an unreadable list shows the store's sentence" "no settings.none"
     fi
+    expect_value "with an unreadable list Settings still has About" "settings.about.name" "MacMosh" 3
     snap unreadable-settings
     stop_app
 }
@@ -1015,6 +1023,7 @@ no_workhorses() {
     else
         result FAIL "Settings with no workhorse says so" "no settings.none"
     fi
+    expect_value "with no workhorse Settings still has About" "settings.about.name" "MacMosh" 3
     snap no-workhorse-settings
     stop_app
 }
@@ -2361,6 +2370,33 @@ settings_sample() {
     into_view settings.spare.remove.about
     rest_on_title
     snap spare-panel
+    # Look step 5b: the About panel, last on the page, with the app's name, the version the build wrote into the app,
+    # the licence and the two credit lines word for word.
+    into_view settings.about.credit.1
+    rest_on_title
+    snap about
+    expect_value "About names the app" "settings.about.name" "MacMosh" 3
+    want=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/Contents/Info.plist" 2>/dev/null)
+    expect_value "About's version is the one the build wrote into the app" "settings.about.version" \
+        "Version ${want:-(no CFBundleShortVersionString in $APP)}" 3
+    expect_value "About names the licence" "settings.about.licence" "Open source under the MIT licence." 3
+    local c0 c1 hb sb
+    c0=$(val settings.about.credit.0); c1=$(val settings.about.credit.1)
+    if [ "$c0" = "Mac and macOS are trademarks of Apple Inc., registered in the U.S. and other countries and regions." ] \
+        && [ "$c1" = "MacMosh is an independent project, not affiliated with Apple or with the mosh project." ]; then
+        result PASS "About's credit lines are word for word" "$c0 | $c1"
+    else
+        result FAIL "About's credit lines are word for word" "credit.0: ${c0:-nothing} | credit.1: ${c1:-nothing}"
+    fi
+    hb=$(box settings.about.heading); sb=$(box settings.spare.remove.about)
+    if awk -v h="$hb" -v s="$sb" 'BEGIN {
+            split(h, x, " "); split(s, y, " ")
+            if (x[4] == "" || y[4] == "") exit 1
+            exit !(x[2] >= y[2] + y[4]) }'; then
+        result PASS "About comes after the last Mac's panel" "About's heading $hb, Spare's last line $sb"
+    else
+        result FAIL "About comes after the last Mac's panel" "About's heading ${hb:-?}, Spare's last line ${sb:-?}"
+    fi
     into_view settings.thisMac.terminal
     settings_step "Terminal: Pick for me is saved" settings.json "terminal=(gone)" ok click_radio settings.thisMac.terminal "Pick for me"
     expect_value "the terminal's line says what uses it next" "settings.thisMac.terminal.line" "Saved. Used by the next tab MacMosh opens." 3
