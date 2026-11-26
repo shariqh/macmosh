@@ -59,6 +59,18 @@ import Testing
         #expect(throws: StoreError.unreadable("workhorses.json: not JSON")) { try SampleWindow.unreadableList.load() }
     }
 
+    /// Look step 3: the sidebar's second line in each kind of state, for CI's pictures.
+    @Test func theSidebarSampleHasAMacInEachKindOfState() async {
+        let s = SampleWindow.sidebar
+        #expect(s.rawValue == "window-sidebar" && s.workhorses.map(\.id) == ["workhorse", "attic", "spare", "den", "loft"])
+        let r = s.refresher()
+        await r.refresh()
+        let board = BoardModel.build(latest: r.latest, lastReady: r.lastReady, checking: [], order: s.workhorses,
+                                     waitingForDeskServer: [], now: Date(), timeZone: .current)
+        #expect(SidebarItem.list(board).map(\.spokenLabel) == ["Workhorse, Ready · 6 desks", "Attic, Ready · 1 desk",
+            "Spare, Locked after a restart", "Den, Can't reach it", "Loft, Checking…", "Add a Mac…", "Settings"])
+    }
+
     /// Every sample name the app accepts, the menu's and the window's, and nothing else.
     @Test func everySampleNameStartsARun() {
         for name in SampleMenu.allCases.map(\.rawValue) + SampleWindow.allCases.map(\.rawValue) {
