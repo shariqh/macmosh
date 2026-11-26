@@ -592,6 +592,18 @@ private func titles(_ buttons: [BoardButton]) -> [String] { buttons.map(\.title)
 
     /// A saved list that can't be read is not an empty one: the window says what the menu says, and
     /// doesn't invite the person to add a Mac. A list it read before stays on screen.
+    /// Look design 6.7: a heading, the menu's sentence, then the next step; the two fixed parts are proposed, and the
+    /// owner approves them in the pull request.
+    @Test func anUnreadableListHasAHeadingTheSentenceAndANextStep() {
+        let problem = StatusFormat.storeMessage(StoreError.unreadable("workhorses.json: not JSON"))
+        #expect(ListProblemPage(problem: problem) == ListProblemPage(
+            heading: "MacMosh can't list your Macs", problem: "Can't read MacMosh's saved settings: workhorses.json: not JSON",
+            nextStep: "Once the file can be read again, your Macs come back at the next check."))
+        let newer = ListProblemPage(problem: StatusFormat.storeMessage(StoreError.newerVersion(2)))
+        #expect(newer.problem == "MacMosh's saved settings are from a newer version (2). Update MacMosh."
+                && newer.heading == ListProblemPage.headingWords && newer.nextStep == ListProblemPage.nextStepWords)
+    }
+
     @Test func anUnreadableListIsNotTheAddAMacPage() {
         let empty = BoardModel.build(latest: [:], lastReady: [:], checking: [], order: [], waitingForDeskServer: [],
                                      now: formatNow, timeZone: formatZone)

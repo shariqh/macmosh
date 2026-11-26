@@ -31,6 +31,18 @@ private func enabled(_ row: EndedRow) -> [Bool] { row.buttons.map(\.isEnabled) }
 
 /// The Ended group in the window (main window design, section 7.1 C): its words, its buttons and when they are off.
 @Suite struct EndedDeskPageTests {
+    // MARK: the row's parts (look design 6.7)
+
+    @Test func anEndedRowHasAHollowCellAndForgetApart() throws {   // Review Focus 5
+        #expect(EndedRow.cells == DeskCells(cells: [.hollow], more: false))
+        let p = try page([ended("notes"), ended("shop")])
+        let shop = try #require(p.ended.first { $0.name == "shop" })
+        #expect(shop.split.left.map(\.title) == ["Start again", "Start again and keep it"] && shop.split.right?.title == "Forget")
+        let notes = try #require(p.ended.first { $0.name == "notes" })   // taken: both Start again off, Forget on and apart
+        #expect(notes.split.left.map(\.isEnabled) == [false, false] && notes.split.right?.isEnabled == true)
+        #expect(notes.note == "Attic already has a desk called notes.")
+    }
+
     // MARK: the row's words
 
     @Test func todayItSaysTheTime() throws {
