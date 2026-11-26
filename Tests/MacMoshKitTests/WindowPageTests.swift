@@ -336,6 +336,16 @@ private func titles(_ buttons: [BoardButton]) -> [String] { buttons.map(\.title)
         #expect(ButtonSplit([], apart: .destructive) == ButtonSplit(left: [], right: nil))
     }
 
+    /// The first button of the kind stands apart and every other keeps its order at the left; with none of that kind,
+    /// all stay at the left.
+    @Test func aSplitTakesTheFirstOfItsKindAndKeepsTheRestInOrder() {
+        let rename = BoardButton(title: "Rename…", action: .window(.rename(workhorse: "attic", desk: "api")))
+        let remove = BoardButton(title: "Remove…", action: .window(.remove(workhorse: "attic", desk: "api")))
+        let forget = BoardButton(title: "Forget", action: .window(.forget(workhorse: "attic", desk: "api")))
+        #expect(ButtonSplit([rename, remove, forget], apart: .destructive) == ButtonSplit(left: [rename, forget], right: remove))
+        #expect(ButtonSplit([rename], apart: .destructive) == ButtonSplit(left: [rename], right: nil))
+    }
+
     /// Without the menu's tabs (before its first build), a row is what it was: Open, the desk's own connect, and
     /// no window lines.
     @Test func withoutTheMenusTabsARowIsWhatItWas() throws {
