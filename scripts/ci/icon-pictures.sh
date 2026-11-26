@@ -69,8 +69,16 @@ else
 fi
 
 # 2. Info.plist names the icon.
-icon_file=$(plutil -extract CFBundleIconFile raw "$APP/Contents/Info.plist" 2>/dev/null || true)
-icon_name=$(plutil -extract CFBundleIconName raw "$APP/Contents/Info.plist" 2>/dev/null || true)
+# A key's value, or nothing when the key is not there. On macOS 15 plutil prints "No value at that key path" on
+# standard output when it fails, so its output counts only when it succeeds.
+plist_key() {
+    local value
+    if value=$(plutil -extract "$1" raw "$APP/Contents/Info.plist" 2>/dev/null); then
+        printf '%s' "$value"
+    fi
+}
+icon_file=$(plist_key CFBundleIconFile)
+icon_name=$(plist_key CFBundleIconName)
 if [ "$icon_file" = AppIcon ] && [ -z "$icon_name" ]; then
     result "Info.plist names the icon" PASS "CFBundleIconFile reads AppIcon, and there is no CFBundleIconName"
 else
