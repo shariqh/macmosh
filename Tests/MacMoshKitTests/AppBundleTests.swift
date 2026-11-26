@@ -1,10 +1,19 @@
 import Foundation
+import ImageIO
 import Testing
 @testable import MacMoshKit
 
 private func readPlist(_ relativePath: String) throws -> [String: Any]? {
     let url = repoRoot().appendingPathComponent(relativePath)
     return try PropertyListSerialization.propertyList(from: Data(contentsOf: url), format: nil) as? [String: Any]
+}
+
+/// A picture's width and height in pixels, read through ImageIO.
+private func pixelSize(_ relativePath: String) throws -> [Int] {
+    let url = repoRoot().appendingPathComponent(relativePath)
+    let source = try #require(CGImageSourceCreateWithURL(url as CFURL, nil), "cannot read \(relativePath)")
+    let properties = try #require(CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any])
+    return [properties[kCGImagePropertyPixelWidth] as? Int ?? -1, properties[kCGImagePropertyPixelHeight] as? Int ?? -1]
 }
 
 @Suite struct AppBundleTests {
@@ -63,4 +72,19 @@ private func readPlist(_ relativePath: String) throws -> [String: Any]? {
         }
         #expect(offenders.isEmpty, "found the signing identity in: \(offenders)")
     }
+
+    @Test func theIconDocumentHasALightAndADarkLayer() throws {
+        let url = repoRoot().appendingPathComponent("App/AppIcon.icon/icon.json")
+        let json = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        let layers = try #require(((json["groups"] as? [[String: Any]])?.first?["layers"]) as? [[String: Any]])
+        try #require(layers.count == 2)
+        #expect(layers.map { $0["name"] as? String } == ["m-light", "m-dark"])
+        #expect(layers.map { $0["image-name"] as? String } == ["m-light.png", "m-dark.png"])
+        func hidden(_ l: [String: Any]) -> [String] {
+            (l["hidden-specializations"] as? [[String: Any]] ?? []).map { "\($0["appearance"] as? String ?? "default")=\($0["value"] as? Bool ?? false)" } }
+        #expect(hidden(layers[0]) == ["default=false", "dark=true"] && hidden(layers[1]) == ["default=true", "dark=false"])
+        #expect((json["supported-platforms"] as? [String: Any])?["squares"] as? [String] == ["macOS"])
+        #expect(try pixelSize("App/AppIcon.icon/Assets/m-light.png") == [1024, 1024])
+        #expect(try pixelSize("App/AppIcon.icon/Assets/m-dark.png") == [1024, 1024])
+        #expect(try pixelSize("App/AppIcon-16.png") == [16, 16]) }
 }

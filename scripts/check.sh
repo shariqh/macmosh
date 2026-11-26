@@ -19,6 +19,9 @@ echo "check.sh: the built-in copy of the host script is up to date"
 # This fails, naming scripts/embed-host-script.sh, when the script changed and the copy was not regenerated.
 scripts/embed-host-script.sh --check
 
+echo "check.sh: the icon's drawing script compiles with IconArt alone"
+swiftc -typecheck scripts/draw-icon/main.swift Sources/MacMoshKit/Look/IconArt.swift
+
 echo "check.sh: swift build"
 swift build
 
