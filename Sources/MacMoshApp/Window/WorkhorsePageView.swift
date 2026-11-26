@@ -34,7 +34,7 @@ struct WorkhorsePageView: View {
                 PageFoot(left: page.footLeft, right: page.footRight, home: page.home, run: run)
                     .equatable()
             }
-            .padding(20)
+            .padding(LookSize.pagePadding)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         // The ground behind the page shows through. Apple, scrollContentBackground(_:) (macOS 13.0,
@@ -115,72 +115,6 @@ struct PageFoot: View, Equatable {
         if let right {
             ButtonRow(buttons: [right], run: run)
         }
-    }
-}
-
-/// The detail strip: one line per window when the desk has the menu's line per window (its words and a small
-/// "Go to" or "Open" button) or its windows can be named (a small "Name…", issue 144), then Folder, Starts with,
-/// After a restart, When its last shell exits, "Keeps its command running" when set, and New window, Name its
-/// window… (a desk with one window), Rename…, Remove….
-struct DeskDetail: View {
-    let row: DeskRow
-    let run: (BoardButton) -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            if !row.windowLines.isEmpty {
-                Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 3) {
-                    ForEach(row.windowLines) { line in
-                        GridRow {
-                            Text(verbatim: line.title)
-                            // Apple, controlSize(_:) (macOS 10.15, https://developer.apple.com/documentation/swiftui/view/controlsize(_:)):
-                            // "Sets the size for controls within this view."; ControlSize.small: "A control version
-                            // that is proportionally smaller size for space-constrained views."
-                            // The window's words are its help tag too, so the button's accessibility hint names
-                            // its window (help(_:), quoted above).
-                            HStack(spacing: 6) {
-                                if let open = line.button {
-                                    Button { run(open) } label: { Text(verbatim: open.title) }
-                                        .controlSize(.small)
-                                        .disabled(!open.isEnabled)
-                                        .help(Text(verbatim: line.help))
-                                        .accessibilityIdentifier(WindowMarks.window(row.name, line.id))
-                                }
-                                if let name = line.name {
-                                    Button { run(name) } label: { Text(verbatim: name.title) }
-                                        .controlSize(.small)
-                                        .disabled(!name.isEnabled)
-                                        .help(Text(verbatim: line.help))
-                                        .accessibilityIdentifier(WindowMarks.nameWindow(row.name, line.id))
-                                }
-                            }
-                        }
-                    }
-                }
-                Divider()
-            }
-            if !row.detail.isEmpty {
-                Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 3) {
-                    ForEach(Array(row.detail.enumerated()), id: \.offset) { _, line in
-                        GridRow {
-                            Text(verbatim: line.label).foregroundStyle(.secondary)
-                            Text(verbatim: line.value)
-                        }
-                    }
-                }
-            }
-            ForEach(Array(row.facts.enumerated()), id: \.offset) { _, fact in
-                Text(verbatim: fact)
-            }
-            ButtonRow(buttons: row.detailButtons, run: run)
-        }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.1)))
-        // Under the name column: the chevron, the tile and their gaps (DeskRowView).
-        .padding(.leading, 74)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier(WindowMarks.strip(row.name))
     }
 }
 

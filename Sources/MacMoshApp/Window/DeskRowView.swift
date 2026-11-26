@@ -48,10 +48,22 @@ struct DeskRowView: View, Equatable {
                                 }
                                 .help(Text(verbatim: row.name))
                                 .layoutPriority(1)
-                                // The window names give way first.
-                                Text(verbatim: row.windowWords)
-                                    .foregroundStyle(LookColor.text(.secondary, on: .ground))
-                                    .lineLimit(1).truncationMode(.tail)
+                                // The window names give way first: cut with "…" while at least four letters fit
+                                // (`windowWordsAtFewest`, drawn hidden to take that room), left out below that. The
+                                // row's spoken label keeps them. ViewThatFits is quoted at SecondLineView below.
+                                ViewThatFits(in: .horizontal) {
+                                    Text(verbatim: row.windowWordsAtFewest)
+                                        .lineLimit(1)
+                                        .hidden()
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .overlay(alignment: .leading) {
+                                            Text(verbatim: row.windowWords)
+                                                .foregroundStyle(LookColor.text(.secondary, on: .ground))
+                                                .lineLimit(1).truncationMode(.tail)
+                                        }
+                                    // Not EmptyView, which would be no child at all.
+                                    Color.clear.frame(width: 0, height: 0)
+                                }
                             }
                             SecondLineView(line: row.secondLine)
                         }
@@ -61,6 +73,12 @@ struct DeskRowView: View, Equatable {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(Text(verbatim: row.spokenLabel))
+                // VoiceOver hears that the details are open. Apple, accessibilityAddTraits(_:) (macOS 11.0,
+                // https://developer.apple.com/documentation/swiftui/view/accessibilityaddtraits(_:)): "Adds the given
+                // traits to the view."; AccessibilityTraits.isSelected (macOS 10.15,
+                // https://developer.apple.com/documentation/swiftui/accessibilitytraits/isselected): "The
+                // accessibility element is currently selected."
+                .accessibilityAddTraits(isOpen ? .isSelected : [])
                 // A hand-made desk's row says "Made by hand"; today's sentence, its tag's help, is the row's hint so
                 // VoiceOver still reads why its folder is not shown. Apple, accessibilityHint(_:) (macOS 11.0,
                 // https://developer.apple.com/documentation/swiftui/view/accessibilityhint(_:)): "Communicates to
@@ -68,16 +86,18 @@ struct DeskRowView: View, Equatable {
                 .accessibilityHint(Text(verbatim: row.secondLine.tag == nil ? "" : row.secondLine.help))
                 .accessibilityIdentifier(WindowMarks.desk(row.name))
                 StateCellView(state: row.state, name: row.name)
-                // The trailing slot is never narrower than Open, so the state cells stay in one column on a row with
-                // no button (a new desk before its check) or a shorter one. Apple, hidden() (macOS 10.15,
-                // https://developer.apple.com/documentation/swiftui/view/hidden()): "Hidden views are invisible and
-                // can't receive or respond to interactions. However, they do remain in the view hierarchy and affect
-                // layout."
+                // The trailing slot is as wide as the wider of Open and Go to, so the state cells stay in one column
+                // on a row with no button (a new desk before its check) or a shorter one. Both words are
+                // MacMoshKit's. Apple, hidden() (macOS 10.15, https://developer.apple.com/documentation/swiftui/view/hidden()):
+                // "Hidden views are invisible and can't receive or respond to interactions. However, they do remain
+                // in the view hierarchy and affect layout."
                 ZStack(alignment: .trailing) {
-                    Button {} label: { Text(verbatim: "Open") }
-                        .buttonStyle(LookButtonStyle(kind: .secondary))
-                        .hidden()
-                        .accessibilityHidden(true)
+                    ForEach([WindowWords.open, WindowWords.goTo], id: \.self) { word in
+                        Button {} label: { Text(verbatim: word) }
+                            .buttonStyle(LookButtonStyle(kind: .secondary))
+                            .hidden()
+                            .accessibilityHidden(true)
+                    }
                     if let open = row.open {
                         // "Go to" or "Open"; the menu's own words for the click ("Go to website", "Open the 1 window
                         // not in a tab") are its help tag. Apple, help(_:) (macOS 11.0,
@@ -152,8 +172,8 @@ struct DeskTileView: View {
     }
 }
 
-/// One cell, or the small plus when `cell` is nil.
-private struct CellView: View {
+/// One cell, or the small plus when `cell` is nil. A desk's tile and a window's line in the details draw it.
+struct CellView: View {
     let cell: DeskCell?
 
     var body: some View {
