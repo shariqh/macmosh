@@ -61,18 +61,35 @@ struct DeskRowView: View, Equatable {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(Text(verbatim: row.spokenLabel))
+                // A hand-made desk's row says "Made by hand"; today's sentence, its tag's help, is the row's hint so
+                // VoiceOver still reads why its folder is not shown. Apple, accessibilityHint(_:) (macOS 11.0,
+                // https://developer.apple.com/documentation/swiftui/view/accessibilityhint(_:)): "Communicates to
+                // the user what happens after performing the view's action."
+                .accessibilityHint(Text(verbatim: row.secondLine.tag == nil ? "" : row.secondLine.help))
                 .accessibilityIdentifier(WindowMarks.desk(row.name))
                 StateCellView(state: row.state, name: row.name)
-                if let open = row.open {
-                    // "Go to" or "Open"; the menu's own words for the click ("Go to website", "Open the 1 window
-                    // not in a tab") are its help tag. Apple, help(_:) (macOS 11.0,
-                    // https://developer.apple.com/documentation/swiftui/view/help(_:)-9lm7l): "Adding help to a
-                    // view configures the view's accessibility hint and its help tag (also called a tooltip) in macOS".
-                    Button { run(open) } label: { Text(verbatim: open.title) }
-                        .buttonStyle(LookButtonStyle(kind: ButtonKind.of(open.action)))
-                        .disabled(!open.isEnabled)
-                        .help(Text(verbatim: row.openWords ?? ""))
-                        .accessibilityIdentifier(WindowMarks.open(row.name))
+                // The trailing slot is never narrower than Open, so the state cells stay in one column on a row with
+                // no button (a new desk before its check) or a shorter one. Apple, hidden() (macOS 10.15,
+                // https://developer.apple.com/documentation/swiftui/view/hidden()): "Hidden views are invisible and
+                // can't receive or respond to interactions. However, they do remain in the view hierarchy and affect
+                // layout."
+                ZStack(alignment: .trailing) {
+                    Button {} label: { Text(verbatim: "Open") }
+                        .buttonStyle(LookButtonStyle(kind: .secondary))
+                        .hidden()
+                        .accessibilityHidden(true)
+                    if let open = row.open {
+                        // "Go to" or "Open"; the menu's own words for the click ("Go to website", "Open the 1 window
+                        // not in a tab") are its help tag. Apple, help(_:) (macOS 11.0,
+                        // https://developer.apple.com/documentation/swiftui/view/help(_:)-9lm7l): "Adding help to a
+                        // view configures the view's accessibility hint and its help tag (also called a tooltip) in
+                        // macOS".
+                        Button { run(open) } label: { Text(verbatim: open.title) }
+                            .buttonStyle(LookButtonStyle(kind: ButtonKind.of(open.action)))
+                            .disabled(!open.isEnabled)
+                            .help(Text(verbatim: row.openWords ?? ""))
+                            .accessibilityIdentifier(WindowMarks.open(row.name))
+                    }
                 }
             }
             .font(.system(size: LookSize.bodyFont))
@@ -186,9 +203,18 @@ struct SecondLineView: View {
                 }
                 .help(Text(verbatim: line.help))
         } else if !line.whole.isEmpty {
+            // The last, shortest cut is not fixed to one line: when even it is too wide (both facts in a narrow
+            // window) it wraps within the column instead of running under the state cell. Apple,
+            // fixedSize(horizontal:vertical:) (macOS 10.15,
+            // https://developer.apple.com/documentation/swiftui/view/fixedsize(horizontal:vertical:)): "Fixes this
+            // view at its ideal size in the specified dimensions."
             ViewThatFits(in: .horizontal) {
-                ForEach(Array(fittings.enumerated()), id: \.offset) { _, words in
-                    Text(verbatim: words).lineLimit(1).fixedSize()
+                ForEach(Array(fittings.enumerated()), id: \.offset) { index, words in
+                    if index == fittings.count - 1 {
+                        Text(verbatim: words).fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        Text(verbatim: words).lineLimit(1).fixedSize()
+                    }
                 }
             }
             .font(.system(size: LookSize.secondFont))

@@ -23,6 +23,10 @@
 //                                       "focused none" (look step 1, the Tab check)
 //   windowtool <pid> size <w> <h>       sets the MacMosh window's size and prints the size read back, which the
 //                                       window's minimum clamps: "size w h" (look step 1, the smallest window)
+//   windowtool <pid> box <identifier>   that element's position and size: "box x y w h", or "notfound" (look
+//                                       step 1: state cells in one column, a row inside the window)
+//   windowtool <pid> help <identifier>  that element's help, its accessibility hint: "help <text>", or "notfound"
+//                                       (look step 1: a hand-made desk's sentence)
 //
 // find, value, text, button, enabled and selected look in the MacMosh window first (its sheets are inside it), then in
 // the app's other windows, where a dialog may be.
@@ -203,6 +207,15 @@ case "find", "value":
     if let hit {
         let role = text(hit.element, kAXRoleAttribute) ?? "?"
         print(command == "find" ? "found \(centre(hit.element)) \(role)" : "value \(label(hit.element))")
+    } else {
+        print("notfound")
+    }
+case "box", "help":
+    let hit = everything().first { text($0.element, "AXIdentifier") == argument }
+    if let hit, command == "help" {
+        print("help \(text(hit.element, kAXHelpAttribute) ?? "")")
+    } else if let hit, let f = frame(hit.element) {
+        print("box \(Int(f.minX)) \(Int(f.minY)) \(Int(f.width)) \(Int(f.height))")
     } else {
         print("notfound")
     }

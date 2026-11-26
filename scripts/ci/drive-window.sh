@@ -523,6 +523,14 @@ long_folder() {
         result FAIL "a long name's row reads the name whole" "desk.$long reads: ${t:-nothing}"
     fi
     snap long-folder
+    # A hand-made desk's row keeps today's sentence for VoiceOver, as its hint.
+    t=$(wax help "desk.notes" | grep -E '^(help|notfound)' | tail -n 1)
+    if [ "${t#help }" = "Not made with MacMosh: folder and restart not known" ]; then
+        result PASS "a hand-made desk's row has today's sentence as its hint" "desk.notes: ${t#help }"
+    else
+        result FAIL "a hand-made desk's row has today's sentence as its hint" "desk.notes: ${t:-nothing}"
+    fi
+    long_folder_smallest
     if click_id "desk.notes"; then
         sleep 1
         if wax find "desk.notes.strip" | grep -q '^found'; then
@@ -535,6 +543,30 @@ long_folder() {
         result NOT-SHOWN "a click on a hand-made desk's row opens its strip" "no row for notes"
     fi
     stop_app
+}
+
+# The long folder at the window's smallest (700 by 440): website-redesign's line, with both facts, wraps inside its
+# column, so the row ends before its state cell and Open stays in the window. A picture, then the default size back.
+long_folder_smallest() {
+    local w s r o f
+    wax size 600 300 > /dev/null
+    sleep 1
+    f=$(wax frame | grep '^frame' | tail -n 1)
+    w=$(awk '{ print $2 + $4 }' <<< "$f")
+    r=$(right "desk.website-redesign")
+    s=$(box "desk.website-redesign.status" | awk 'NF == 4 { print $1 }')
+    o=$(right "desk.website-redesign.open")
+    if [ -n "$r" ] && [ -n "$s" ] && [ -n "$o" ] && [ "$r" -le "$s" ] && [ "$o" -le "$w" ]; then
+        result PASS "at the smallest window a long folder's row ends before its state" \
+            "row ends at $r, state starts at $s, Open ends at $o, window ends at $w (${f:-no frame})"
+    else
+        result FAIL "at the smallest window a long folder's row ends before its state" \
+            "row ends at ${r:-?}, state starts at ${s:-?}, Open ends at ${o:-?}, window ends at ${w:-?} (${f:-no frame})"
+    fi
+    same_end "at the smallest window the long folder's state stands in the column" "website-redesign" "notes"
+    snap long-folder-minimum-size
+    wax size 880 680 > /dev/null
+    sleep 1
 }
 
 # no_tab_opened <check> <moment>: since then the app brought a tab forward and opened none (the sample's
@@ -716,6 +748,22 @@ gone_id() {
 
 # val <identifier>: that element's text, or nothing.
 val() { wax value "$1" | grep '^value' | tail -n 1 | sed 's/^value //'; }
+
+# box <identifier>: that element's "x y w h", or nothing. right <identifier>: its right edge, or nothing.
+box() { wax box "$1" | grep '^box' | tail -n 1 | sed 's/^box //'; }
+right() { box "$1" | awk 'NF == 4 { print $1 + $3 }'; }
+
+# same_end <check> <desk> <other desk>: the two rows' buttons end within 2 points of each other, so the state cells
+# after them stand in one column (look step 1), whether or not the row has an Open button.
+same_end() {
+    local a b
+    a=$(right "desk.$2"); b=$(right "desk.$3")
+    if [ -n "$a" ] && [ -n "$b" ] && [ $((a - b)) -ge -2 ] && [ $((a - b)) -le 2 ]; then
+        result PASS "$1" "desk.$2 ends at $a, desk.$3 at $b"
+    else
+        result FAIL "$1" "desk.$2 ends at ${a:-?}, desk.$3 at ${b:-?}"
+    fi
+}
 
 # clear_field <identifier>: a click in the field, then the caret to its end and every character deleted, with
 # keys a text field handles itself (arrows and Delete), not the edit menu's shortcuts.
@@ -1022,6 +1070,7 @@ forms_sample() {
     v=$(val "desk.garden-planner.status")
     result "$([ "$v" = "Updating…" ] && echo PASS || echo DIFFERS)" "the new desk's row says Updating… until the check lands" "it reads: ${v:-nothing}"
     snap updating
+    same_end "a new desk's state stands in the column while it has no Open" "garden-planner" "api"
     expect_value "the page says what happened" "page.result" "Created the desk garden-planner on Attic." 10
     v=$(val "desk.garden-planner.status")
     deadline=$((SECONDS + 8))
