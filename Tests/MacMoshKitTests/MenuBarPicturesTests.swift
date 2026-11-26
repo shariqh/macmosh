@@ -21,4 +21,15 @@ import Testing
         let ax = try file("scripts/ci/menu-ax.applescript")   // the AX attribute, never System Events' description
         #expect(ax.contains("value of attribute \"AXDescription\"") && ax.contains("barinfo pos="))
     }
+
+    /// The words are kept in one place: the driver expects `MenuBarMark.spokenName` of each sample's symbol.
+    @Test func theDriverExpectsTheSameWords() throws {
+        let pairs = ["six-desks": "checkmark.circle", "sign-ins-off": "exclamationmark.circle",
+            "waiting-for-login": "person.crop.circle.badge.questionmark", "locked": "lock.circle",
+            "unreadable-list": "exclamationmark.triangle", "cant-reach": "wifi.slash", "not-set-up": "wrench.and.screwdriver",
+            "still-checking": "ellipsis.circle", "no-workhorses": "plus.circle"]
+        let driver = try file("scripts/ci/drive-menu-bar.sh")
+        for (sample, symbol) in pairs {
+            #expect(driver.contains("        \(sample)) echo \"\(MenuBarMark.spokenName(for: symbol) ?? "")\" ;;"), "\(sample)") }
+        #expect(Set(pairs.values) == Set(MenuBarMark.symbols)) }
 }

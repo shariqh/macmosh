@@ -83,4 +83,18 @@ import Testing
         #expect(MenuBarMark.badgeFrame(natural: CGSize(width: 8, height: 7)) == CGRect(x: 10, y: 10.75, width: 6, height: 5.25))
         let person = MenuBarMark.badgeFrame(natural: CGSize(width: 6, height: 7))
         #expect(abs(person.width - 36.0 / 7) < 1e-9 && person.height == 6 && person.maxY == 16 && abs(person.midX - 13) < 1e-9) }
+
+    /// Decision 4: the menu-bar item keeps the words it has today. Push 1 (Menu pictures run 45883300450, macOS 15 and
+    /// 26, light and dark) read them as the item's AXTitle; its AXDescription was empty for every state.
+    @Test func theSpokenNamesAreTodays() {
+        #expect(MenuBarMark.spokenName(for: "checkmark.circle") == "Selected")
+        #expect(MenuBarMark.spokenName(for: "exclamationmark.circle") == "Error")
+        #expect(MenuBarMark.spokenName(for: "person.crop.circle.badge.questionmark") == "person.crop.circle.badge.questionmark")
+        #expect(MenuBarMark.spokenName(for: "lock.circle") == "Lock")
+        #expect(MenuBarMark.spokenName(for: "exclamationmark.triangle") == "Warning")
+        #expect(MenuBarMark.spokenName(for: "wifi.slash") == "Wi-Fi Off")
+        #expect(MenuBarMark.spokenName(for: "wrench.and.screwdriver") == "wrench.and.screwdriver")
+        #expect(MenuBarMark.spokenName(for: "ellipsis.circle") == "More")
+        #expect(MenuBarMark.spokenName(for: "plus.circle") == "Add")
+        #expect(MenuBarMark.spokenName(for: "gearshape") == MenuBarMark.spokenName(for: "ellipsis.circle")) }
 }

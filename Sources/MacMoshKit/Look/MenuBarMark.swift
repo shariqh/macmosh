@@ -84,6 +84,25 @@ public struct MenuBarMark: Sendable, Hashable {
         }
     }
 
+    /// What the menu-bar item says to VoiceOver for a name: the words it has today, with the system symbol as its
+    /// picture (decision 4: they stay). CI's runners read them as the item's AXTitle, the same on macOS 15 and 26 in
+    /// light and dark (Menu pictures run 45883300450); its AXDescription was empty for every state. Two are the
+    /// symbol's own name, because the system symbol carries no words for them. A name not in `symbols` gets the
+    /// still-checking mark's words, as it gets its mark.
+    public static func spokenName(for symbol: String) -> String? {
+        switch symbol {
+        case "checkmark.circle": return "Selected"
+        case "exclamationmark.circle": return "Error"
+        case "person.crop.circle.badge.questionmark": return "person.crop.circle.badge.questionmark"
+        case "lock.circle": return "Lock"
+        case "exclamationmark.triangle": return "Warning"
+        case "wifi.slash": return "Wi-Fi Off"
+        case "wrench.and.screwdriver": return "wrench.and.screwdriver"
+        case "plus.circle": return "Add"
+        default: return "More"
+        }
+    }
+
     // Design 9, in points, y counted down from the top of the box.
     public static let box = 16.0
     public static let inset = 1.0

@@ -20,7 +20,8 @@
 #   the app starts                    PASS: the "sample menu: <sample>" line within 25 s and the process alive; else FAIL
 #   the log names the state           PASS: the state's log line within 20 s; else FAIL
 #   the menu-bar item's spoken name   the item's AXDescription, AXTitle, AXHelp and AXRoleDescription, read as
-#                                     attributes; PASS when AXDescription is expected_spoken's words, else FAIL
+#                                     attributes; PASS when AXTitle is expected_spoken's words, else FAIL. Today's
+#                                     words are the AXTitle on both versions; the AXDescription is empty
 #   the system recolours the mark     PASS: our item and the system's items to its right each have at least 8 ink
 #                                     pixels, the farthest ink of each lies on the same side of its bar (both darker
 #                                     or both lighter), and ours is at least 0.3 from its bar in luminance. FAIL when
@@ -97,10 +98,19 @@ state_line() {
     esac
 }
 
-# The words the item's AXDescription must read, per sample (MenuBarMark.spokenName of its symbol).
+# The words the item must carry, per sample: MenuBarMark.spokenName of its symbol, today's words, which push 1 read
+# as the item's AXTitle on macOS 15 and 26 (its AXDescription was empty).
 expected_spoken() {
     case "$1" in
-        *) echo "__not-pinned-yet__" ;;
+        six-desks) echo "Selected" ;;
+        sign-ins-off) echo "Error" ;;
+        waiting-for-login) echo "person.crop.circle.badge.questionmark" ;;
+        locked) echo "Lock" ;;
+        unreadable-list) echo "Warning" ;;
+        cant-reach) echo "Wi-Fi Off" ;;
+        not-set-up) echo "wrench.and.screwdriver" ;;
+        still-checking) echo "More" ;;
+        no-workhorses) echo "Add" ;;
     esac
 }
 
@@ -135,11 +145,11 @@ recolour_check() {
     result "$verdict" "the system recolours the mark" "$detail; ours far-bar=$od, theirs far-bar=$td"
 }
 
-# barinfo: reads the item into $item ("x y w h"), $spoken_record (its four attributes) and $description (its
-# AXDescription). Called directly, never in $(...), so the three reach the caller.
+# barinfo: reads the item into $item ("x y w h"), $spoken_record (its four attributes) and $title (its AXTitle).
+# Called directly, never in $(...), so the three reach the caller.
 item=""
 spoken_record=""
-description=""
+title=""
 barinfo() {
     local b pos size
     b=$(lim 25 osascript "$AX" barinfo 2>&1 | grep '^barinfo' | tail -n 1)
@@ -147,7 +157,7 @@ barinfo() {
     pos=$(sed -n 's/.*pos=\([0-9-]*,[0-9-]*\).*/\1/p' <<< "$b")
     size=$(sed -n 's/.*size=\([0-9-]*,[0-9-]*\).*/\1/p' <<< "$b")
     spoken_record=$(sed -n 's/.* \(axdescription=\[.*\]\)$/\1/p' <<< "$b")
-    description=$(sed -n 's/.* axdescription=\[\(.*\)\] axtitle=\[.*$/\1/p' <<< "$b")
+    title=$(sed -n 's/.* axtitle=\[\(.*\)\] axhelp=\[.*$/\1/p' <<< "$b")
     item=""
     [ -z "$pos" ] || [ -z "$size" ] && return 1
     item="${pos%,*} ${pos#*,} ${size%,*} ${size#*,}"
@@ -205,12 +215,12 @@ one_sample() {
     fi
     read -r x y w h <<< "$item"
     want=$(expected_spoken "$sample")
-    if [ "$want" = "__not-pinned-yet__" ]; then
-        result PASS "the menu-bar item's spoken name" "$spoken_record (recorded, not compared)"
-    elif [ "$description" = "$want" ]; then
+    if [ -z "$spoken_record" ]; then
+        result FAIL "the menu-bar item's spoken name" "System Events gave no attributes for the item"
+    elif [ "$title" = "$want" ]; then
         result PASS "the menu-bar item's spoken name" "$spoken_record"
     else
-        result FAIL "the menu-bar item's spoken name" "expected axdescription=[$want]; read $spoken_record"
+        result FAIL "the menu-bar item's spoken name" "expected axtitle=[$want]; read $spoken_record"
     fi
     both=$(shoot "$os-$look-menubar-$sample" "$x" "$y" "$w" "$h")
     ours=$(sed -n 1p <<< "$both")
