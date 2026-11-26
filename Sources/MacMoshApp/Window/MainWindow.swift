@@ -1,3 +1,4 @@
+import AppKit
 import MacMoshKit
 import SwiftUI
 
@@ -6,9 +7,10 @@ import SwiftUI
 /// comes from the board and the page models in MacMoshKit (`WorkhorsePage`, `SidebarItem`,
 /// `WindowSelection`, `AddMacPage`), where they are tested; this only lays them out.
 ///
-/// The controls are only Button, Text, TextField, List and radio-group Pickers: no pop-up, context menu, `Menu` or toolbar, because the
-/// app can't yet tell the window's menus from the menu-bar menu (design, section 7.2). It is a plain
-/// split of two views, not a `NavigationSplitView`, which brings a sidebar button of its own.
+/// The controls are only Button, Text, TextField and radio-group Pickers: no pop-up, context menu, `Menu` or toolbar,
+/// because the app can't yet tell the window's menus from the menu-bar menu (design, section 7.2). It is a plain
+/// split of two views, not a `NavigationSplitView`, which brings a sidebar button of its own; the sidebar is a column
+/// of buttons (look design 6.2), 200 points wide, that cannot be hidden or resized.
 struct MainWindow: View {
     @ObservedObject var screen: BoardOnScreen
     let actions: MenuActionRunner
@@ -31,9 +33,20 @@ struct MainWindow: View {
     var body: some View {
         let selection = WindowSelection.resolve(chosen, board: screen.board, listUnreadable: screen.listProblem != nil)
         HStack(spacing: 0) {
-            Sidebar(items: SidebarItem.list(screen.board), selection: selection) { chosen = $0 }
-                .frame(width: 200)
-            Divider()
+            Sidebar(items: SidebarItem.list(screen.board), selection: selection) { next in
+                // A Settings field being typed in ends its editing first, so it sends what it holds while it is still
+                // on screen (`endTextEditing`); the page changes one turn later. Otherwise the change is at once.
+                if endTextEditing() {
+                    Task { chosen = next }
+                } else {
+                    chosen = next
+                }
+            }
+            .frame(width: LookSize.sidebarWidth)
+            Rectangle()
+                .fill(LookColor.mark(.hairline))
+                .frame(width: 1)
+                .accessibilityHidden(true)
             Group {
                 switch selection {
                 case .workhorse(let id):
@@ -61,9 +74,10 @@ struct MainWindow: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            // The page sits on the look's warm ground (look design 6.1); the sidebar keeps the system's look in step 1.
-            .background(LookColor.background(.ground))
         }
+        // The sidebar and the page share the look's warm ground, with a one-point hairline between them (look design
+        // 6.1).
+        .background(LookColor.background(.ground))
         .frame(minWidth: 700, minHeight: 440)
         // Apple, sheet(item:onDismiss:content:) (macOS 10.15,
         // https://developer.apple.com/documentation/swiftui/view/sheet(item:ondismiss:content:)): "Presents a
@@ -211,21 +225,116 @@ enum WindowMarks {
     static let listProblemNext = "page.listProblemNext"
 }
 
-/// Each workhorse with its state's symbol, then Add a Mac….
+/// Ends the editing of a text field that is being typed in, so it sends what it holds (a Settings field sends when its
+/// focus leaves, `SettingTextField`): true when one was being typed in and gave up the keyboard. A click on a sidebar
+/// row, a plain button, may not take the keyboard from it as the system's list did (look step 3, Review Focus 1).
+/// A typing text field's first responder is expected to be the window's field editor, an `NSTextView` (not found in
+/// Apple's pages; CI's key-file check settles it). Apple, NSWindow.makeFirstResponder(_:)
+/// (https://developer.apple.com/documentation/appkit/nswindow/makefirstresponder(_:)): "If responder is nil, this method
+/// still sends resignFirstResponder() to the current first responder." and "If the current first responder returns
+/// true from resignFirstResponder(), the window is made its own first responder and this method returns true." Apple,
+/// NSWindow.fieldEditor(_:for:) (https://developer.apple.com/documentation/appkit/nswindow/fieldeditor(_:for:)): "The
+/// field editor is a single NSTextView object that is shared among all the controls in a window". Apple,
+/// NSApplication.keyWindow (https://developer.apple.com/documentation/appkit/nsapplication/keywindow): "The window that
+/// currently receives keyboard events."
+@MainActor private func endTextEditing() -> Bool {
+    guard let window = NSApp.keyWindow, window.firstResponder is NSTextView else { return false }
+    return window.makeFirstResponder(nil)
+}
+
+/// The sidebar (look design 6.2): a column of buttons on the ground, not the system's selectable list, each workhorse
+/// with its state's symbol and second line, then Add a Mac… and Settings. A click calls `choose`. It gives up the
+/// system's sidebar material, its selection drawing and the arrow keys between Macs; every row stays a button that Tab
+/// reaches when keyboard navigation is on, and the chosen one carries the selected trait.
+///
+/// Apple, ScrollView (macOS 10.15, https://developer.apple.com/documentation/swiftui/scrollview): "A scrollable view."
+/// Apple, scrollContentBackground(_:) (macOS 13.0,
+/// https://developer.apple.com/documentation/swiftui/view/scrollcontentbackground(_:)): "Specifies the visibility of
+/// the background for scrollable views within this view." It is hidden, as look design 6.1 says, so the ground shows.
 struct Sidebar: View {
     let items: [SidebarItem]
     let selection: WindowSelection
     let choose: (WindowSelection) -> Void
 
     var body: some View {
-        List(selection: Binding(get: { Optional(selection) }, set: { if let next = $0 { choose(next) } })) {
-            ForEach(items) { item in
-                Label { Text(verbatim: item.title) } icon: { Image(systemName: item.symbol) }
-                    .tag(item.selection)
-                    .accessibilityIdentifier(WindowMarks.sidebar(item.selection))
+        ScrollView(.vertical) {
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(items) { item in
+                    SidebarRow(item: item, isChosen: item.selection == selection) { choose(item.selection) }
+                }
             }
+            .padding(10)
         }
-        .listStyle(.sidebar)
+        .scrollContentBackground(.hidden)
+    }
+}
+
+/// One row of the sidebar (look design 6.2, look-b-light.png): a small tile with the symbol, the name on one line
+/// (cut with "…") and the second line under it in ink-3; the chosen row is a card with the selected trait. One
+/// button, whose label for VoiceOver and CI is the name, then the second line ("Workhorse, Ready · 6 desks"). No help
+/// tag: a click leaves CI's pointer on the row, and the spoken label and the page's title carry a cut name whole.
+///
+/// Apple, PrimitiveButtonStyle.plain (macOS 10.15, https://developer.apple.com/documentation/swiftui/primitivebuttonstyle/plain):
+/// "A button style that doesn't style or decorate its content while idle, but may apply a visual effect to indicate the
+/// pressed, focused, or enabled state of the button." Apple, accessibilityLabel(_:)
+/// (https://developer.apple.com/documentation/swiftui/view/accessibilitylabel(_:)): "Adds a label to the view that
+/// describes its contents." Apple, accessibilityAddTraits(_:) (macOS 11.0,
+/// https://developer.apple.com/documentation/swiftui/view/accessibilityaddtraits(_:)): "Adds the given traits to the
+/// view."; AccessibilityTraits.isSelected (macOS 10.15,
+/// https://developer.apple.com/documentation/swiftui/accessibilitytraits/isselected): "The accessibility element is
+/// currently selected."
+struct SidebarRow: View {
+    let item: SidebarItem
+    let isChosen: Bool
+    let choose: () -> Void
+
+    var body: some View {
+        let on: BackgroundRole = isChosen ? .surface : .ground
+        Button(action: choose) {
+            HStack(spacing: 10) {
+                SidebarTile(symbol: item.symbol, tone: item.tone, onCard: isChosen)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(verbatim: item.title)
+                        .font(.system(size: LookSize.bodyFont, weight: isChosen ? .semibold : .regular))
+                        .foregroundStyle(LookColor.text(.primary, on: on))
+                        .lineLimit(1).truncationMode(.tail)
+                    if let second = item.second {
+                        Text(verbatim: second)
+                            .font(.system(size: LookSize.tagFont))
+                            .foregroundStyle(LookColor.text(.tertiary, on: on))
+                            .lineLimit(LookSize.sidebarSecondLines)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(8)
+            .background {
+                if isChosen { Color.clear.lookTile(radius: LookSize.smallTileRadius) }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(verbatim: item.spokenLabel))
+        .accessibilityAddTraits(isChosen ? .isSelected : [])
+        .accessibilityIdentifier(WindowMarks.sidebar(item.selection))
+    }
+}
+
+/// A sidebar row's tile: a small square, white on the ground and grey on the chosen card, with the state's symbol in its
+/// tone (the plus and the gear in ink). Decoration: the row's words say the same, so it is hidden from VoiceOver.
+struct SidebarTile: View {
+    let symbol: String
+    let tone: PillTone?
+    let onCard: Bool
+
+    var body: some View {
+        Image(systemName: symbol)
+            .font(.system(size: 13))
+            .foregroundStyle(LookColor.mark(tone?.textRole.token ?? .ink))
+            .frame(width: LookSize.smallTile, height: LookSize.smallTile)
+            .lookTile(radius: LookSize.smallTileRadius, fill: onCard ? .surface2 : .surface)
+            .accessibilityHidden(true)
     }
 }
 
