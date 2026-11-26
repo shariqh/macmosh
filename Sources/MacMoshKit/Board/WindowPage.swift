@@ -247,6 +247,8 @@ public struct DeskRow: Sendable, Equatable, Identifiable {
     /// "Renaming…", "Removing…" or "Naming…" while one of the window's actions runs on it, "Updating…" until the
     /// check after it lands; nil otherwise. Shown in place of the tab count.
     public var status: String?
+    /// The cells on the desk's tile (look design 6.5); none for a desk just made, before its check.
+    public var cells: DeskCells
     /// A click on the row opens a detail strip with something in it; a new desk's row before its check has none.
     public var hasStrip: Bool { !(detail.isEmpty && facts.isEmpty && windowLines.isEmpty && detailButtons.isEmpty) }
 
@@ -297,6 +299,7 @@ public struct DeskRow: Sendable, Equatable, Identifiable {
         let running = activity.busy[desk.name]
         let marked = activity.updating.contains(desk.name) || activity.arriving.contains(desk.name)
         status = running?.progress ?? (marked ? WindowActivity.updatingWords : nil)
+        cells = DeskCells(desk)
         if let running {
             func off(_ b: BoardButton) -> BoardButton {
                 var b = b
@@ -330,6 +333,7 @@ public struct DeskRow: Sendable, Equatable, Identifiable {
         facts = []
         detailButtons = []
         status = WindowActivity.updatingWords
+        cells = DeskCells(cells: [], more: false)
     }
 
     /// The strip sits under the desk's own row, so its buttons need not name it: "Rename…" for

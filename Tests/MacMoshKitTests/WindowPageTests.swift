@@ -236,10 +236,11 @@ private func titles(_ buttons: [BoardButton]) -> [String] { buttons.map(\.title)
     }
 
     /// The rows of the menu design's example, with the records and the time the menu's last build had.
-    private func rowsWithTabs() throws -> [String: DeskRow] {
-        let r = CheckResult.sample(.ready(signIns: true), workhorse: attic, status: windowsReport(), homeReachable: true,
+    private func rowsWithTabs(_ status: HostStatus = windowsReport(), mode: ConnectionMode = .mosh) throws -> [String: DeskRow] {
+        let w = Workhorse.sample(id: "attic", name: "Attic", user: "alex", mode: mode)
+        let r = CheckResult.sample(.ready(signIns: true), workhorse: w, status: status, homeReachable: true,
                                    checkedAt: checkedAt)
-        let board = BoardModel.build(latest: ["attic": r], lastReady: [:], checking: [], order: [attic],
+        let board = BoardModel.build(latest: ["attic": r], lastReady: [:], checking: [], order: [w],
                                      waitingForDeskServer: [],
                                      tabs: TabsSeen(tabs: TabsOnThisMac(records: windowsRecords, terminal: .iterm2), at: windowsNow),
                                      now: formatNow, timeZone: formatZone)
@@ -289,6 +290,61 @@ private func titles(_ buttons: [BoardButton]) -> [String] { buttons.map(\.title)
         let website = try #require(try rows()["website"])
         #expect(website.open == BoardButton(title: "Open", action: .menu(.tab(["connect", "attic", "website"]))))
         #expect(website.openWords == "Open website" && website.windowLines.isEmpty)
+    }
+
+    // MARK: The cells on a desk's tile (look design 6.5)
+
+    /// An open desk "shop" made by hand, with `windows` windows w0… (ids @1…), each in `inTabs` tabs when given.
+    private func desk(windows: Int, inTabs: [Int]?, tabsOpen: Int) -> BoardDesk {
+        BoardDesk(name: "shop", isOpen: true,
+                  windows: (0..<windows).map { i in
+                      BoardWindow(index: i, name: "w\(i)", id: "@\(i + 1)", tabs: inTabs?[i], inTabs: inTabs?[i])
+                  },
+                  windowCount: windows, tabsOpen: tabsOpen, folder: nil, command: nil, reopen: nil, keep: nil,
+                  permanent: nil, madeByMacMosh: false, open: nil, buttons: [])
+    }
+
+    @Test func eachWindowInATabLightsItsCell() throws {
+        let r = try rowsWithTabs()
+        #expect(r["website"]?.cells == DeskCells(cells: [.lit, .lit, .unlit], more: false) && r["garden"]?.cells.cells == [.hollow])
+        #expect(r["api"]?.cells.cells == [.unlit, .unlit] && r["shop"]?.cells.cells == [.lit, .unlit])
+        #expect(r["notes"]?.cells.cells == [.lit] && r["blog"]?.cells.cells == [.unlit])
+        #expect(DeskCells.most == 6 && DeskCells.shownWithMore == 5)
+    }
+
+    @Test func withoutPerWindowCountsTheCellsLightFromTheFirst() throws {   // Review Focus 3
+        let r = try rows()   // no menu tabs
+        #expect(r["website"]?.cells == DeskCells(cells: [.lit, .lit, .unlit], more: false))
+        #expect(r["blog"]?.cells == DeskCells(cells: [.lit, .unlit], more: false) && r["notes"]?.cells.cells == [.hollow])
+        var seen = 0
+        for (status, mode) in [(windowsReport(version: "0.1.0"), ConnectionMode.mosh), (windowsReport(), .tabs)] {
+            for row in try rowsWithTabs(status, mode: mode).values where row.cells.cells != [.hollow] {
+                let lit = row.cells.cells.prefix { $0 == .lit }.count
+                #expect(row.cells.cells.dropFirst(lit).allSatisfy { $0 == .unlit }, "\(row.name)")
+                seen += 1
+            }
+        }
+        #expect(seen == 10)
+        #expect(DeskCells(desk(windows: 3, inTabs: nil, tabsOpen: 12)) == DeskCells(cells: [.lit, .lit, .lit], more: false))
+        // Counts known for some windows only: the fallback, from the first.
+        var some = desk(windows: 3, inTabs: [0, 0, 1], tabsOpen: 1)
+        some.windows[0].inTabs = nil
+        #expect(DeskCells(some).cells == [.lit, .unlit, .unlit])
+    }
+
+    @Test func nineWindowsShowFiveCellsAndThePlus() {   // Review Focus 2
+        let nine = desk(windows: 9, inTabs: [0, 1, 0, 0, 0, 0, 0, 1, 0], tabsOpen: 2)
+        #expect(DeskCells(nine) == DeskCells(cells: [.unlit, .lit, .unlit, .unlit, .unlit], more: true) && DeskRow(nine).tabs == "In 2 tabs")
+        #expect(DeskCells(desk(windows: 9, inTabs: nil, tabsOpen: 7)) == DeskCells(cells: Array(repeating: .lit, count: 5), more: true))
+        #expect(DeskCells(desk(windows: 6, inTabs: nil, tabsOpen: 0)) == DeskCells(cells: Array(repeating: .unlit, count: 6), more: false))
+        #expect(DeskCells(desk(windows: 7, inTabs: nil, tabsOpen: 0)).cells.count == 5)
+    }
+
+    /// An open desk the report gives no window for has no cells; nor has the row of a desk just made.
+    @Test func noWindowsNoCells() throws {
+        #expect(DeskCells(desk(windows: 0, inTabs: nil, tabsOpen: 0)) == DeskCells(cells: [], more: false))
+        let arriving = try activePage(WindowActivity(arriving: ["garden-planner"]))
+        #expect(arriving.desks.first { $0.name == "garden-planner" }?.cells == DeskCells(cells: [], more: false))
     }
 
     // MARK: The greyed list under a workhorse that is not Ready

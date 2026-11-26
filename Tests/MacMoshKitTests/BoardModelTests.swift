@@ -382,6 +382,28 @@ private func titles(_ buttons: [BoardButton]) -> [String] { buttons.map(\.title)
 
     /// Some windows in tabs this Mac can find, one in none: Open runs the menu's first line, and each window
     /// carries the menu's words and action for it. New window opens a tab of its own.
+    /// Look design 6.5: each window carries how many tabs show it, as the menu counts them, past the menu's gate.
+    @Test func pastTheGateEachWindowCarriesItsTabsCountedAsTheMenuCountsThem() throws {
+        let w = try withTabs()
+        #expect(try deskOf(w, "website").windows.map(\.inTabs) == [1, 1, 0])
+        #expect(try deskOf(w, "shop").windows.map(\.inTabs) == [1, 0])   // web is in a tab this Mac can't find
+        var checked = 0
+        for d in w.desks where d.isOpen && d.windows.allSatisfy({ $0.inTabs != nil }) {
+            #expect(d.windows.compactMap(\.inTabs).reduce(0, +) == d.tabsOpen, "\(d.name)")
+            checked += 1
+        }
+        #expect(checked == 5)
+        // A tab opened a minute ago on the second window, on no view line yet, counts for that window.
+        let fresh = try withTabs(records: windowsRecords + [atticRecord("9f3a1c2e5b7d4a60", asked: "@6", minutesAgo: 1)])
+        #expect(try deskOf(fresh, "api").windows.map(\.inTabs) == [0, 1])
+        let plain = try #require(board([result(.ready(signIns: true), status: try boardReport())]).workhorses.first)
+        #expect(try deskOf(plain, "website").windows.map(\.inTabs) == [nil, nil, nil])   // today's equality tests hold
+        // An older script, and the Tabs connection, are not past the gate.
+        for older in [try withTabs(windowsReport(version: "0.7.0")), try withTabs(mode: .tabs)] {
+            #expect(older.desks.flatMap(\.windows).allSatisfy { $0.inTabs == nil })
+        }
+    }
+
     @Test func aDeskWithAWindowNotInATabOpensThatOneAndListsItsWindows() throws {
         let website = try deskOf(try withTabs(), "website")
         #expect(website.open == BoardButton(title: "Open the 1 window not in a tab",

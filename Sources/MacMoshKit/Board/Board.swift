@@ -93,6 +93,10 @@ public struct BoardWindow: Sendable, Equatable {
     /// tmux's window id, `@` and digits.
     public var id: String?
     public var tabs: Int?
+    /// How many tabs show this window, counted as the menu counts them (`DeskWindows.tabsByWindow`): set only for a
+    /// desk past the menu's gate (`WindowLinesGate`); nil otherwise (an older script, the Tabs connection), when the
+    /// desk tile falls back on the desk's tab count (`DeskCells`).
+    public var inTabs: Int?
     /// The menu's line for this window, its words ("claude (in a tab)", "vim") and its action (go to its tab,
     /// or open one), when the desk is past the menu's gate and has more than one window (issue #134); nil
     /// otherwise, as the menu then has no such line.
@@ -102,11 +106,13 @@ public struct BoardWindow: Sendable, Equatable {
     /// window…" in its strip instead).
     public var nameButton: BoardButton?
 
-    public init(index: Int, name: String, id: String?, tabs: Int?, button: BoardButton? = nil, nameButton: BoardButton? = nil) {
+    public init(index: Int, name: String, id: String?, tabs: Int?, inTabs: Int? = nil, button: BoardButton? = nil,
+                nameButton: BoardButton? = nil) {
         self.index = index
         self.name = name
         self.id = id
         self.tabs = tabs
+        self.inTabs = inTabs
         self.button = button
         self.nameButton = nameButton
     }

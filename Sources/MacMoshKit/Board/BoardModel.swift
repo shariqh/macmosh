@@ -150,8 +150,9 @@ public enum BoardModel {
             windows: all.map { w in
                 let mine = w.id.flatMap { id in lines.first { $0.key == "win:\(id)" } }
                 let name = canName && all.count > 1 ? w.id.map { naming($0, WindowWords.nameWindow) } : nil
-                return BoardWindow(index: w.index, name: w.name, id: w.id, tabs: w.tabs, button: mine.map(BoardButton.init),
-                                   nameButton: name)
+                return BoardWindow(index: w.index, name: w.name, id: w.id, tabs: w.tabs,
+                                   inTabs: w.id.flatMap { perWindow?.tabsByWindow[$0] },
+                                   button: mine.map(BoardButton.init), nameButton: name)
             },
             windowCount: session?.windowCount ?? 0,
             tabsOpen: session == nil ? 0 : perWindow?.tabs ?? session?.attached ?? 0,
