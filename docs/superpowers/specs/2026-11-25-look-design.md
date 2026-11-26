@@ -27,7 +27,8 @@ This document adds to the v1 design (`docs/superpowers/specs/2026-11-18-macmosh-
   ![The Remove confirmation on macOS 15 today, with the blank placeholder icon (CI's picture)](look-2026-11-25/today-remove-dialog-macos15.png)
   ![The M icon, light and dark, at 64, 32 and 16 pixels](look-2026-11-25/icon-m-light-and-dark.png)
 
-- **Proposed, not yet decided:** the picture in the menu bar becomes a small M made of cells, with a badge per state (section 9), and later the menu's order and marks (section 10).
+- **The picture in the menu bar** becomes a small M made of cells, with a badge per state (section 9).
+- **Proposed, not yet decided:** later, the menu's order and marks (section 10).
 - **A few words change** in the window, and one behaviour of the command line (section 7). Nothing the menu says changes in this pass.
 
 ### What you approve by approving this document
@@ -36,12 +37,11 @@ This document adds to the v1 design (`docs/superpowers/specs/2026-11-18-macmosh-
 2. The M icon in light and dark, shipped as section 8 says, with two new keys in `App/Info.plist`, and an About section at the end of Settings.
 3. The words table in section 7: every row as recommended, unless you change a row.
 4. One behaviour change (section 7, recommended yes): `macmosh desk new` with a name and a folder and no `--window-name` names the first window after the desk. It is its own item, so you can say no to it alone.
-5. Steps 1 to 5 of section 14, each tried by you before its rollout, and step 6 as soon as you have chosen the menu-bar mark (asked separately on the board). Steps 7 and 8 each come back to you for a separate yes.
+5. Steps 1 to 6 of section 14, each tried by you before its rollout. Steps 7 and 8 each come back to you for a separate yes.
 
 ### What you can still change
 
 - **Any row of the words table**, now or when its step's pull request shows it.
-- **The menu-bar picture:** the M mark (recommended) or the earlier 3 by 3 cell mark (section 9). Step 6 waits for your choice.
 - **The menu's content** (section 10) and **the marketing kit** (section 11) are later steps. Each comes back to you for a yes, and nothing is ever posted without asking.
 
 ## 1. Why, and what the owner chose
@@ -62,7 +62,9 @@ He was shown mockups and chose:
 - the window, at 15:27: **"Look B: soft tiles"** (the other choices were "Look A: stock macOS, tidied" and "A's window with B's desk tiles");
 - the icon, at 15:26: **"option 4 and then adopt the color from 2 for dark mode but keep them M"**. Option 4 is the letter M drawn by lit tiles; option 2 was a night version: a charcoal ground, dark tiles, warm lit tiles.
 
-Still open with him: the menu-bar picture (section 9), the words (section 7), the one behaviour change (section 7) and the menu changes (section 10).
+- the icon as drawn and the picture in the menu bar, at 16:10: **"Yes: this icon, and the M in the menu bar"** (the other choices were "Yes to the icon; keep the cell mark" and "Change something").
+
+Still open with him: the words (section 7), the one behaviour change (section 7) and the menu changes (section 10).
 
 ## 2. Scope, non-goals and anti-goals
 
@@ -125,7 +127,7 @@ Five ideas were drawn: **lit windows**, **night shift** (charcoal ground, dark t
 
 ### The picture in the menu bar
 
-Two marks: the **3 by 3 cell mark** drawn first, and the **M mark** drawn after the icon was chosen. Recommended (agent's call): the M mark, so the menu bar and the icon are one picture. Open with the owner. The pictures that show the 3 by 3 cell mark (the Add a Mac title tile and the menu picture of section 10) were drawn before the icon was chosen.
+Two marks: the **3 by 3 cell mark** drawn first, and the **M mark** drawn after the icon was chosen. He picked the M mark ("Yes: this icon, and the M in the menu bar"), so the menu bar and the icon are one picture. The pictures that show the 3 by 3 cell mark (the Add a Mac title tile and the menu picture of section 10) were drawn before the icon was chosen.
 
 ## 5. The look, "Ember"
 
@@ -318,7 +320,7 @@ So step 5a is not merged until CI's macOS 15 and 26 runners have built the app a
 
 Apple: "Both interface icons and symbols use black and clear colors to define their shapes; the system can apply other colors to the black areas in each image so it looks good on both dark and light menu bars, and when your menu bar extra is selected. The menu bar's height is 24 pt." [17]. So the mark is black and clear only; a **template image** is such a picture, which macOS recolours ("Images you mark as template images should consist of only black and clear colors." [18]).
 
-**Recommended (agent's call; open with the owner): the M mark.** A 16 by 16 point box, 1 point clear on every side; 5 by 5 cells of 2 points with 1 point between, corners 0.5, all on whole points; the M's thirteen cells solid, the other twelve clear. Ready is the plain M. Each other state swaps the lower right (the M's right leg's lower two cells) for a 6-point badge, or changes the M's outline, so every state differs in shape even in one colour, as the v1 plan asks ("menu-bar images that differ in shape for each state").
+**The owner's choice: the M mark.** A 16 by 16 point box, 1 point clear on every side; 5 by 5 cells of 2 points with 1 point between, corners 0.5, all on whole points; the M's thirteen cells solid, the other twelve clear. Ready is the plain M. Each other state swaps the lower right (the M's right leg's lower two cells) for a 6-point badge, or changes the M's outline, so every state differs in shape even in one colour, as the v1 plan asks ("menu-bar images that differ in shape for each state").
 
 | State (today's name) | Today's symbol | The M mark |
 |---|---|---|
@@ -338,7 +340,7 @@ Apple: "Both interface icons and symbols use black and clear colors to define th
 
 **Drawn in code** as a template image: an AppKit picture drawn from the cell table, marked as a template, wrapped in SwiftUI's `Image(nsImage:)`, which "Creates a SwiftUI image from an AppKit image instance." [18], inside today's `MenuBarExtra(isInserted:)` label [19]. **Unproven:** Apple does not say whether the template flag survives inside a `MenuBarExtra` label, and it was not tested. So this step too is tried on CI's runners, in a light and a dark menu bar, before it merges; if the flag does not survive, SwiftUI's template rendering mode is the next try ("Template mode renders all nontransparent pixels as the foreground color" [18]).
 
-**Open with the owner: the M mark or the 3 by 3 cell mark.** The menu picture in section 10 still shows the cell mark.
+The menu picture in section 10 still shows the 3 by 3 cell mark; it was drawn before this choice.
 
 ## 10. The menu, a later step
 
@@ -407,7 +409,7 @@ Each step is one issue and one pull request, tests first, with a build-log entry
 3. **Sidebar and Add a Mac.** The sidebar of buttons with its second line, the Add a Mac page with its name-and-rest model, and the dot-table script with its `--check`. *He tries:* moving between Macs with the mouse and with Tab.
 4. **Forms and Settings, with the words of section 7.** The sheets with the button styles and aligned labels, the Make desk reason, the Settings panels, every word of section 7 including the terminal's first-window question, and, if the owner said yes, the one behaviour change of `macmosh desk new`, named as such in the pull request and the build log. Links #34 as partly done. *He tries:* making a desk, renaming one, changing a setting and reading the new lines.
 5. **The icon (5a) and the About section (5b).** 5a: the drawing script, `AppIcon.icon`, the build script, the two Info.plist keys, `AppBundleTests`, and the trial on CI's runners (section 8.3); it merges after the owner's yes to the real render beside the picture. 5b: the About section in Settings. Both link #34 as partly done. *He tries:* finding MacMosh in Finder in light and dark, and reading About.
-6. **The picture in the menu bar**, after his choice of mark, with its trial in a light and a dark menu bar. *He tries:* the menu bar in light and dark, and locking or sleeping the workhorse to see a badge.
+6. **The picture in the menu bar** (the M mark), with its trial in a light and a dark menu bar. *He tries:* the menu bar in light and dark, and locking or sleeping the workhorse to see a badge.
 7. **The menu's content**, only after the marks' trial on macOS 15, 26 and 27 and his yes.
 8. **The marketing kit**, only after his yes; nothing posted.
 
