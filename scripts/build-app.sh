@@ -56,7 +56,8 @@ fi
 # scripts/make-icon.sh and committed: the light and dark M for macOS 26 and newer. The build does not compile
 # it, because on CI's macOS 15 image Xcode 26's asset compiler crashed in each build (pull request 176).
 # App/AppIcon.iconset is that compile's light render, with the solid 16-pixel M (App/AppIcon-16.png) as
-# icon_16x16.png; packed into AppIcon.icns, it is the loose icon that older macOS needs (design 8.2).
+# icon_16x16.png; packed into AppIcon.icns, it is the loose icon CFBundleIconFile names (design 8.2). On CI's macOS
+# 15 and 26 runners the system's 16-point icon showed Assets.car's tiles, not this solid M (pull request 176).
 if [ ! -s App/Assets.car ]; then
     echo "build-app.sh: FAILED: App/Assets.car is missing or empty; make it again with scripts/make-icon.sh" >&2
     exit 1
