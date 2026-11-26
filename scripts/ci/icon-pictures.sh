@@ -12,7 +12,7 @@
 # What it leaves in ICON_OUT:
 #   pictures/<os>-icon-sheet-1x.png and -2x.png   icontool's sheet at 1 and 2 pixels per point: the icon in a light
 #                                                 row, a dark row and the .icns's own row, at 16 to 256 points
-#   pictures/<os>-finder.png                      the screen with the app revealed in Finder
+#   pictures/<os>-finder.png and -finder-later.png the screen with the app revealed in Finder, 3 and 15 seconds on
 #   <os>-icns/AppIcon.iconset                     the app's AppIcon.icns, unpacked
 #   <os>-assetutil.json                           assetutil's description of the app's Assets.car
 #   icon.log                                      every step and icontool's output
@@ -127,13 +127,16 @@ else
 fi
 
 # 6. Finder shows the app: revealed, then a picture of the screen. What it shows is read by a person.
+# Two pictures, 3 and 15 seconds after the reveal: Finder may still be loading its icons at the first.
 finder="$OUT/pictures/$os-finder.png"
 if lim 20 open -R "$APP" >> "$LOG" 2>&1; then
     sleep 3
     lim 20 screencapture -x "$finder" >> "$LOG" 2>&1
+    sleep 12
+    lim 20 screencapture -x "$OUT/pictures/$os-finder-later.png" >> "$LOG" 2>&1
 fi
 if [ -f "$finder" ]; then
-    result "Finder shows the app" PASS "$os-finder.png was taken"
+    result "Finder shows the app" PASS "$os-finder.png (3 seconds) and $os-finder-later.png (15 seconds) were taken"
 else
     result "Finder shows the app" NOT-SHOWN "Finder could not reveal the app or the screen picture failed"
 fi

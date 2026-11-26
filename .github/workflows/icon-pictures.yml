@@ -32,6 +32,30 @@ jobs:
           ls -d /Applications/Xcode*.app
           command -v assetutil iconutil sips || true
           system_profiler SPDisplaysDataType | grep -E 'Resolution|UI Looks like' || true
+      # A trial, read by a person: which Xcode 26 or newer on this image has an actool that compiles App/AppIcon.icon,
+      # and whether that Xcode still needs its first launch. It prints and never fails the job.
+      - name: Trial, actool from each Xcode 26 on the image
+        timeout-minutes: 10
+        run: |
+          out=$(mktemp -d)
+          seen=""
+          for x in /Applications/Xcode*.app; do
+            real=$(cd -P "$x" && pwd)
+            case " $seen " in *" $real "*) continue ;; esac
+            seen="$seen $real"
+            v=$(plutil -extract CFBundleShortVersionString raw "$real/Contents/version.plist" 2>/dev/null || echo none)
+            case "$v" in 2[6-9]*|[3-9][0-9]*) ;; *) continue ;; esac
+            first=0
+            DEVELOPER_DIR="$real/Contents/Developer" xcodebuild -checkFirstLaunchStatus >/dev/null 2>&1 || first=$?
+            mkdir -p "$out/$v"
+            st=0
+            DEVELOPER_DIR="$real/Contents/Developer" xcrun actool "$PWD/App/AppIcon.icon" --compile "$out/$v" \
+              --platform macosx --minimum-deployment-target 15.0 --app-icon AppIcon \
+              --output-partial-info-plist "$out/$v/partial.plist" --target-device mac --standalone-icon-behavior all \
+              --errors --warnings --output-format human-readable-text > "$out/$v.txt" 2>&1 || st=$?
+            echo "TRIAL Xcode $v ($real): checkFirstLaunchStatus exit $first; actool exit $st; made: $(ls "$out/$v" | tr '\n' ' ')"
+            grep -m 2 -E "reason:|error:" "$out/$v.txt" | cut -c1-200 || true
+          done
       - name: Build the debug app and icontool
         id: build
         timeout-minutes: 15
