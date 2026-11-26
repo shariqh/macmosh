@@ -40,6 +40,7 @@ shellcheck scripts/build-app.sh
 
 echo "check.sh: shellcheck scripts/ci"
 shellcheck scripts/ci/drive-menu.sh scripts/ci/drive-window.sh scripts/ci/try-select.sh scripts/ci/try-title.sh
+shellcheck scripts/ci/icon-pictures.sh
 
 echo "check.sh: shellcheck scripts/sitting-2"
 shellcheck scripts/sitting-2/record.sh scripts/sitting-2/start.sh scripts/sitting-2/restart.sh
