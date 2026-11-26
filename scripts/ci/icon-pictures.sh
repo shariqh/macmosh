@@ -1,5 +1,5 @@
 #!/bin/bash
-# CI only (.github/workflows/icon-pictures.yml; look step 5a, issue 175): checks what actool put in the debug app and
+# CI only (.github/workflows/icon-pictures.yml; look step 5a, issue 175): checks the icon files in the debug app and
 # draws the app's icon as the system gives it (scripts/ci/icontool.swift), then reveals the app in Finder and takes a
 # picture of the screen. It opens Finder: never run it on your own Mac. It needs scripts/build-app.sh --debug and the
 # built dist/debug/icontool first.
@@ -14,13 +14,13 @@
 #                                                 row, a dark row and the .icns's own row, at 16 to 256 points
 #   pictures/<os>-finder.png and -finder-later.png the screen with the app revealed in Finder, 3 and 15 seconds on
 #   <os>-icns/AppIcon.iconset                     the app's AppIcon.icns, unpacked
-#   <os>-assetutil.json                           assetutil's description of the app's Assets.car
 #   icon.log                                      every step and icontool's output
 #   results.tsv                                   one line per check: <check> PASS|FAIL|NOT-SHOWN <detail>
 #
-# Checks: the app has its icon files (Assets.car and AppIcon.icns in Contents/Resources); Info.plist names the
-# icon (CFBundleIconFile and CFBundleIconName read AppIcon); Assets.car holds a light and a dark icon (assetutil's
-# description contains IconImageStack, NSAppearanceNameAqua and NSAppearanceNameDarkAqua, in any order); the .icns
+# The app carries the fallback of design 8.3: a plain AppIcon.icns of the light M, with no Assets.car.
+# Checks: the app has its icon files (AppIcon.icns in Contents/Resources and no Assets.car); Info.plist names the
+# icon (CFBundleIconFile reads AppIcon and there is no CFBundleIconName); the app has no Assets.car and no
+# CFBundleIconName (so the system has nothing but the .icns to draw); the .icns
 # holds a 16-pixel picture (icon_16x16.png is 16 wide); the icon sheet was drawn (icontool exits 0 at 1x and 2x and
 # both files exist); Finder shows the app (a picture was taken; NOT-SHOWN when not, never FAIL). It exits 1 when any
 # check is FAIL, and never on how a picture looks: a person reads the pictures.
@@ -62,8 +62,8 @@ say "$os: $(sw_vers -productVersion), appearance $appearance, AppleInterfaceStyl
 resources="$APP/Contents/Resources"
 
 # 1. The app has its icon files.
-if [ -f "$resources/Assets.car" ] && [ -f "$resources/AppIcon.icns" ]; then
-    result "the app has its icon files" PASS "Assets.car and AppIcon.icns in Contents/Resources"
+if [ -f "$resources/AppIcon.icns" ] && [ ! -e "$resources/Assets.car" ]; then
+    result "the app has its icon files" PASS "AppIcon.icns in Contents/Resources, and no Assets.car"
 else
     result "the app has its icon files" FAIL "Contents/Resources holds: $(find "$resources" -mindepth 1 -maxdepth 1 -exec basename {} \; 2>&1 | tr '\n' ' ')"
 fi
@@ -71,29 +71,19 @@ fi
 # 2. Info.plist names the icon.
 icon_file=$(plutil -extract CFBundleIconFile raw "$APP/Contents/Info.plist" 2>/dev/null || true)
 icon_name=$(plutil -extract CFBundleIconName raw "$APP/Contents/Info.plist" 2>/dev/null || true)
-if [ "$icon_file" = AppIcon ] && [ "$icon_name" = AppIcon ]; then
-    result "Info.plist names the icon" PASS "CFBundleIconFile and CFBundleIconName read AppIcon"
+if [ "$icon_file" = AppIcon ] && [ -z "$icon_name" ]; then
+    result "Info.plist names the icon" PASS "CFBundleIconFile reads AppIcon, and there is no CFBundleIconName"
 else
     result "Info.plist names the icon" FAIL "CFBundleIconFile reads ${icon_file:-nothing}, CFBundleIconName reads ${icon_name:-nothing}"
 fi
 
-# 3. Assets.car holds a light and a dark icon.
-info="$OUT/$os-assetutil.json"
-if ! command -v assetutil >/dev/null 2>&1; then
-    result "Assets.car holds a light and a dark icon" NOT-SHOWN "this runner has no assetutil"
-elif ! lim 60 assetutil --info "$resources/Assets.car" > "$info" 2>&1; then
-    result "Assets.car holds a light and a dark icon" FAIL "assetutil --info failed: $(head -c 300 "$info")"
+# 3. The app has no Assets.car and no CFBundleIconName.
+car=absent
+[ -e "$resources/Assets.car" ] && car=there
+if [ "$car" = absent ] && [ -z "$icon_name" ]; then
+    result "the app has no Assets.car and no CFBundleIconName" PASS "the system has only AppIcon.icns to draw"
 else
-    missing=""
-    for word in IconImageStack NSAppearanceNameAqua NSAppearanceNameDarkAqua; do
-        grep -qF "$word" "$info" || missing="$missing $word"
-    done
-    stacks=$(grep -cF IconImageStack "$info" || true)
-    if [ -z "$missing" ]; then
-        result "Assets.car holds a light and a dark icon" PASS "IconImageStack ($stacks lines), NSAppearanceNameAqua and NSAppearanceNameDarkAqua are in $os-assetutil.json"
-    else
-        result "Assets.car holds a light and a dark icon" FAIL "$os-assetutil.json lacks:$missing"
-    fi
+    result "the app has no Assets.car and no CFBundleIconName" FAIL "Assets.car is $car, CFBundleIconName reads ${icon_name:-nothing}"
 fi
 
 # 4. The .icns holds a 16-pixel picture.

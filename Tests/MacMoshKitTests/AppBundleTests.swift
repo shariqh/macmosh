@@ -88,19 +88,20 @@ private func pixelSize(_ relativePath: String) throws -> [Int] {
         #expect(try pixelSize("App/AppIcon.icon/Assets/m-dark.png") == [1024, 1024])
         #expect(try pixelSize("App/AppIcon-16.png") == [16, 16]) }
 
+    /// The fallback (design 8.3, Task 6): a plain .icns of the light M on every version, so no CFBundleIconName.
     @Test func theInfoPlistNamesTheIcon() throws {
         let plist = try readPlist("App/Info.plist")
         #expect(plist?["CFBundleIconFile"] as? String == "AppIcon")
-        #expect(plist?["CFBundleIconName"] as? String == "AppIcon") }
+        #expect(plist?["CFBundleIconName"] == nil) }
 
-    /// Design 8.2: actool before the app is made, Contents/Resources, both files, then signing as today (Review Focus 1, 2 and 4).
+    /// Design 8.2 and 8.3: iconutil before the app is made, Contents/Resources, then signing as today. No actool: on CI's
+    /// macOS 15 image it crashed in every build (pull request 176).
     @Test func theBuildScriptMakesTheIconBeforeItSigns() throws {
         let script = try String(contentsOf: repoRoot().appendingPathComponent("scripts/build-app.sh"), encoding: .utf8)
-        for part in ["xcrun actool", "App/AppIcon.icon", "--app-icon AppIcon", "--minimum-deployment-target 15.0",
-                     "--standalone-icon-behavior all", "Contents/version.plist", "DEVELOPER_DIR=",
-                     "icon_16x16.png", "App/AppIcon-16.png", "iconutil -c iconset -o", "iconutil -c icns -o",
-                     "$app/Contents/Resources", "Assets.car", "AppIcon.icns"] { #expect(script.contains(part), "\(part)") }
-        let compile = try #require(script.range(of: "--app-icon AppIcon"))
+        for part in ["iconutil -c icns -o", "App/AppIcon.iconset", "$app/Contents/Resources", "AppIcon.icns"] {
+            #expect(script.contains(part), "\(part)") }
+        #expect(!script.contains("xcrun actool"))
+        let compile = try #require(script.range(of: "iconutil -c icns -o"))
         let makeApp = try #require(script.range(of: "rm -rf \"$app\""))
         let sampleCheck = try #require(script.range(of: "sample_variable=MACMOSH_SAMPLE_MENU"))
         let resources = try #require(script.range(of: "$app/Contents/Resources"))
@@ -109,11 +110,10 @@ private func pixelSize(_ relativePath: String) throws -> [Int] {
         #expect(sampleCheck.lowerBound < resources.lowerBound && resources.lowerBound < firstSign.lowerBound)
         #expect(script.components(separatedBy: "codesign --verify --deep --strict").count == 2) }
 
-    /// On CI's macOS 15 image, actool from Xcode 26.3 crashed when reached through /Applications/Xcode_26.3.0.app, a
-    /// second name for /Applications/Xcode_26.3.app, and compiled the document through the real path (pull request 176).
-    @Test func theBuildScriptRunsActoolFromTheXcodesRealPath() throws {
-        let script = try String(contentsOf: repoRoot().appendingPathComponent("scripts/build-app.sh"), encoding: .utf8)
-        let resolve = try #require(script.range(of: "real=$(cd -P \"$xcode\" && pwd)"))
-        let use = try #require(script.range(of: "developer_dir=\"$real/Contents/Developer\""))
-        #expect(resolve.lowerBound < use.lowerBound) }
+    @Test func theFallbackIconsetHasEverySize() throws {
+        let sizes = [("icon_16x16.png", 16), ("icon_16x16@2x.png", 32), ("icon_32x32.png", 32), ("icon_32x32@2x.png", 64),
+                     ("icon_128x128.png", 128), ("icon_128x128@2x.png", 256), ("icon_256x256.png", 256),
+                     ("icon_256x256@2x.png", 512), ("icon_512x512.png", 512), ("icon_512x512@2x.png", 1024)]
+        for (name, side) in sizes {
+            #expect(try pixelSize("App/AppIcon.iconset/\(name)") == [side, side], "\(name)") } }
 }

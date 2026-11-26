@@ -1,7 +1,7 @@
 name: Icon pictures
-# Look step 5a (issue 175): builds the debug app with its icon on macOS 15 and 26, checks what actool put in it, and
+# Look step 5a (issue 175): builds the debug app with its icon on macOS 15 and 26, checks the icon files in it, and
 # draws the icon as the system gives it, in light and then in dark (scripts/ci/icon-pictures.sh says what it checks).
-# The Remove confirmation's pictures, which show the icon in an alert, come from the Menu pictures workflow.
+# The Remove confirmation's pictures, where an alert may show the icon, come from the Menu pictures workflow.
 on:
   pull_request:
     paths: ['App/**', 'scripts/build-app.sh', 'scripts/draw-icon/**', 'scripts/ci/icontool.swift',
