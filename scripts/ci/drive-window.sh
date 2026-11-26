@@ -86,7 +86,8 @@
 # iTerm2 Spare's Tabs has no Mosh line", "with tabs in Terminal Spare's Tabs says Mosh is used instead, and Mosh's
 # Attic says nothing", "the typed text reached Spare's name" and "the typed text reached Spare's projects folder".
 # The Settings page is taller now, so into_view scrolls an element into the window before the first action on it,
-# from Attic's Advanced down, and a new picture shows Spare's panel (window-settings-NN-spare-panel).
+# from Attic's Advanced down. New pictures show Spare's panel (window-settings-NN-spare-panel) and the relative key
+# file's refusal (window-settings-NN-relative-key).
 set -uo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -2440,6 +2441,7 @@ settings_sample() {
             type_and settings.attic.keyFile "keys/work" return
         expect_value "a relative key file says what is wrong" "settings.attic.keyFile.line" \
             "Type a full path, starting with / or with ~." 3
+        snap relative-key
         # An empty file in ~/.ssh, on a GitHub runner only: never in a person's own ~/.ssh.
         if [ -n "${GITHUB_ACTIONS:-}" ]; then
             mkdir -p "$HOME/.ssh" && : > "$HOME/.ssh/sample_work_key"
