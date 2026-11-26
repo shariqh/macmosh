@@ -45,6 +45,16 @@
 # rule's sentence, Make desk does not send exactly the window's name (the desk's, its own, or none), or the new
 # desk's row does not show that name after the check; and, in the "window-forms-0.11" sample, when the form shows the
 # line or sends anything about the window to an older script.
+# Look step 2 (issue 174) reads a window's line in a desk's details as two static texts, its name
+# (desk.<desk>.line.<id>) and its state (desk.<desk>.state.<id>): "a desk's details list its windows" fails when
+# website's three lines do not read claude, zsh and vim with "in a tab", "open in another tab" and "not in a tab", and
+# "the details show the window's new name whole" reads the line and the state of window @6. New checks: "the facts sit
+# beside the window lines" at the default size, and, at the smallest window with the page scrolled to its end, "below
+# 620 points of page the facts go under the window lines" and "at the smallest window Remove… stays in the window"
+# (each fails); "the unreadable-list page has its heading, the sentence and the next step" (fails); and three
+# findings that never fail: "VoiceOver hears that a desk's details are open" (windowtool isselected), "at the smallest
+# window the opened details can be scrolled into view" (menutool scroll, whose sign is tried both ways), and "Forget
+# stands apart at the right of its row".
 set -uo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -336,6 +346,14 @@ six_desks() {
         else
             result FAIL "a click on a desk's row opens its detail strip" "no strip found for website"
         fi
+        # The row's button carries the selected trait while its details are open (look step 2). Unproven (design 15):
+        # what the trait reads as through the accessibility API on each macOS version is what this records.
+        t=$(wax isselected "desk.website" | grep -E '^(isselected|notfound)' | tail -n 1)
+        if [ "$t" = "isselected true" ]; then
+            result PASS "VoiceOver hears that a desk's details are open" "desk.website: $t"
+        else
+            result DIFFERS "VoiceOver hears that a desk's details are open" "desk.website: ${t:-no answer}"
+        fi
         snap detail-strip
     else
         result NOT-SHOWN "a click on a desk's row opens its detail strip" "no row for website"
@@ -581,6 +599,70 @@ no_tab_opened() {
     fi
 }
 
+# The opened details at the default size and at the smallest (look step 2), website's open. At the default size the
+# facts sit beside the window lines. At 700 by 440 website, the sample's last row, is below the window's bottom, so the
+# page is scrolled to its end with one posted scroll at its middle; the sign that moves it there is not documented, so
+# the other is tried when the first did not bring the details into view. Then the facts are read under the lines and
+# Remove… inside the window, a picture is taken, the page is scrolled back and the window is set to its default size,
+# so the clicks that follow find the page as before.
+details_beside_and_under() {
+    local l f lb ft rr fx fy fw fh px py try sign="" bottom strip_bottom
+    l=$(right "desk.website.lines"); f=$(box "desk.website.facts" | awk 'NF == 4 { print $1 }')
+    if [ -n "$l" ] && [ -n "$f" ] && [ "$f" -ge "$l" ]; then
+        result PASS "the facts sit beside the window lines" "lines end at $l, facts start at $f"
+    else
+        result FAIL "the facts sit beside the window lines" "lines end at ${l:-?}, facts start at ${f:-?}"
+    fi
+    wax size 600 300 > /dev/null
+    sleep 1
+    read -r _ fx fy fw fh <<< "$(wax frame | grep '^frame' | tail -n 1)"
+    if [ -z "${fh:-}" ]; then
+        result NOT-SHOWN "at the smallest window the opened details can be scrolled into view" "no frame for the window"
+        wax size 880 680 > /dev/null
+        sleep 1
+        return
+    fi
+    bottom=$((fy + fh))
+    # The page's middle: right of the sidebar (200 points) and its one-point line.
+    px=$((fx + 200 + 1 + (fw - 201) / 2)); py=$((fy + fh / 2))
+    for try in -100 100; do
+        tool scroll "$px" "$py" "$try" > /dev/null
+        sleep 1
+        strip_bottom=$(box "desk.website.strip" | awk 'NF == 4 { print $2 + $4 }')
+        say "scrolled $try at $px,$py: the strip ends at ${strip_bottom:-?}, the window at $bottom"
+        if [ -n "$strip_bottom" ] && [ "$strip_bottom" -le "$bottom" ]; then sign=$try; break; fi
+    done
+    if [ -n "$sign" ]; then
+        result PASS "at the smallest window the opened details can be scrolled into view" \
+            "a scroll of $sign lines took the page to its end: the strip ends at $strip_bottom, the window at $bottom"
+    else
+        result DIFFERS "at the smallest window the opened details can be scrolled into view" \
+            "after scrolls of -100 and 100 lines the strip ends at ${strip_bottom:-?}, the window at $bottom"
+    fi
+    lb=$(box "desk.website.lines" | awk 'NF == 4 { print $2 + $4 }'); ft=$(box "desk.website.facts" | awk 'NF == 4 { print $2 }')
+    if [ -n "$lb" ] && [ -n "$ft" ] && [ "$ft" -ge "$lb" ]; then
+        result PASS "below 620 points of page the facts go under the window lines" "lines end at $lb, facts start at $ft"
+    else
+        result FAIL "below 620 points of page the facts go under the window lines" "lines end at ${lb:-?}, facts start at ${ft:-?}"
+    fi
+    rr=$(right "button.remove")
+    if [ -n "$rr" ] && [ "$rr" -le $((fx + fw)) ]; then
+        result PASS "at the smallest window Remove… stays in the window" "Remove… ends at $rr, the window at $((fx + fw))"
+    else
+        result FAIL "at the smallest window Remove… stays in the window" "Remove… ends at ${rr:-?}, the window at $((fx + fw))"
+    fi
+    if [ -n "$sign" ]; then
+        snap website-windows-minimum-size
+        tool scroll "$px" "$py" "$((-sign))" > /dev/null
+        sleep 1
+    else
+        result NOT-SHOWN "the details stacked at the smallest window, in a picture" \
+            "the strip was not in view: lines $(box desk.website.lines), facts $(box desk.website.facts), strip $(box desk.website.strip)"
+    fi
+    wax size 880 680 > /dev/null
+    sleep 1
+}
+
 # The "windows" sample (issue #134): the menu's sample with window details and stand-in tab records. A desk's
 # Open button goes to its tab when this Mac can find it, and a desk's details list its windows with the
 # menu's words and actions. website: claude in a tab this Mac can find, zsh in one it can't, vim in none;
@@ -620,25 +702,36 @@ windows_sample() {
         result NOT-SHOWN "the row's button has the menu's words as its help tag" "no Open button for website"
     fi
 
-    # website's details list its three windows with the menu's words, each with its own button.
+    # website's details list its three windows, each as two static texts, its name and its state (look step 2), each
+    # with its own button.
     if click_id "desk.website"; then
         sleep 1
         missing=""
-        for line in "claude (in a tab)" "zsh (open in another tab)" "vim"; do
-            t=$(wax text "$line" | grep '^text' | tail -n 1)
-            [ "${t#text }" = "$line" ] || missing="$missing [$line]"
-        done
-        for line in "@1" "@2" "@3"; do
-            wax find "desk.website.win.$line" | grep -q '^found' || missing="$missing [button $line]"
+        local entry id want_name want_state r part
+        for entry in "@1:claude:in a tab" "@2:zsh:open in another tab" "@3:vim:not in a tab"; do
+            id=${entry%%:*}
+            want_name=${entry#*:}
+            want_state=${want_name#*:}
+            want_name=${want_name%%:*}
+            v=$(val "desk.website.line.$id")
+            [ "$v" = "$want_name" ] || missing="$missing [line $id: ${v:-none}]"
+            v=$(val "desk.website.state.$id")
+            [ "$v" = "$want_state" ] || missing="$missing [state $id: ${v:-none}]"
+            for part in line state; do
+                r=$(wax find "desk.website.$part.$id" | grep '^found' | tail -n 1 | awk '{ print $NF }')
+                [ "$r" = AXStaticText ] || missing="$missing [$part $id role: ${r:-none}]"
+            done
+            wax find "desk.website.win.$id" | grep -q '^found' || missing="$missing [button $id]"
         done
         if [ -z "$missing" ]; then
-            result PASS "a desk's details list its windows" "website: claude (in a tab), zsh (open in another tab), vim, each with a button"
+            result PASS "a desk's details list its windows" "website: claude in a tab, zsh open in another tab, vim not in a tab, each with a button"
         else
-            result FAIL "a desk's details list its windows" "missing:$missing"
+            result FAIL "a desk's details list its windows" "missing or wrong:$missing"
         fi
         v=$(wax value "desk.website.win.@1" | grep '^value' | tail -n 1)
         [ "${v#value }" = "Go to" ] || result DIFFERS "a window in a findable tab has Go to" "desk.website.win.@1 reads ${v:-nothing}"
         snap website-windows
+        details_beside_and_under
     else
         result FAIL "a desk's details list its windows" "no row for website"
     fi
@@ -694,6 +787,16 @@ unreadable_list() {
         result PASS "an unreadable list shows the menu's sentence, not Add a Mac" "page.listProblem found"
     else
         result DIFFERS "an unreadable list shows the menu's sentence, not Add a Mac" "page.listProblem not found, or page.addMac found"
+    fi
+    # Look step 2: a heading, the menu's sentence and the next step (ListProblemPage; the two fixed parts proposed).
+    local h p x
+    h=$(val "page.listProblemHeading"); p=$(val "page.listProblem"); x=$(val "page.listProblemNext")
+    if [ "$h" = "MacMosh can't list your Macs" ] && [ "$p" = "Can't read MacMosh's saved settings: workhorses.json: not JSON" ] \
+        && [ "$x" = "Once the file can be read again, your Macs come back at the next check." ]; then
+        result PASS "the unreadable-list page has its heading, the sentence and the next step" "$h | $p | $x"
+    else
+        result FAIL "the unreadable-list page has its heading, the sentence and the next step" \
+            "heading: ${h:-nothing} | sentence: ${p:-nothing} | next step: ${x:-nothing}"
     fi
     snap unreadable-list
     # Settings with a list that can't be read: This Mac's terminal and the store's sentence (issue 157).
@@ -1388,7 +1491,7 @@ window_keys() {
 # a Name… on each window and blog's strip has Name its window…. The stand-in ssh names the window as the script
 # would and writes each call's exact remote command to the log.
 window_names_sample() {
-    local since v missing want deadline id
+    local since v missing want deadline id t
     start_app window-forms || return
     # The same sample as forms_sample: its pictures and results are named apart.
     sample=window-names
@@ -1483,8 +1586,9 @@ window_names_sample() {
     else
         result FAIL "after the check the row shows the new name" "desk.website reads: ${v:-nothing}"
     fi
-    v=$(wax text "front end" | grep '^text' | tail -n 1 | sed 's/^text //')
-    result "$([ "$v" = "front end" ] && echo PASS || echo DIFFERS)" "the details show the window's new name whole" "the window's line reads: ${v:-nothing}"
+    v=$(val "desk.website.line.@6"); t=$(val "desk.website.state.@6")
+    result "$([ "$v" = "front end" ] && [ "$t" = "not in a tab" ] && echo PASS || echo DIFFERS)" \
+        "the details show the window's new name whole" "the window's line reads: ${v:-nothing}; its state: ${t:-nothing}"
     sleep 1
     snap after-name
 
@@ -1622,6 +1726,14 @@ ended_sample() {
     result "$([ "$v" = "$want" ] && echo PASS || echo FAIL)" "the row has the folder and its startup command" "it reads: ${v:-nothing}"
     v=$(val "ended.recipes.when")
     result "$([[ "$v" == "ended about "[0-2][0-9]:[0-5][0-9] ]] && echo PASS || echo FAIL)" "the row says when it ended" "it reads: ${v:-nothing}"
+    # Look step 2: Forget stands apart, at the right of its row, as Remove… does in a desk's details. A finding.
+    local kr fl
+    kr=$(right "ended.recipes.keep"); fl=$(box "ended.recipes.forget" | awk 'NF == 4 { print $1 }')
+    if [ -n "$kr" ] && [ -n "$fl" ] && [ "$fl" -ge $((kr + 24)) ]; then
+        result PASS "Forget stands apart at the right of its row" "Start again and keep it ends at $kr, Forget starts at $fl"
+    else
+        result DIFFERS "Forget stands apart at the right of its row" "Start again and keep it ends at ${kr:-?}, Forget starts at ${fl:-?}"
+    fi
     snap ended-group
 
     # shop's name is held by a permanent desk again: both Start again buttons are off, with the reason; Forget is not.
