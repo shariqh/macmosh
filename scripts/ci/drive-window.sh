@@ -67,8 +67,8 @@
 # repeated name read as the menu's facts" opens shop's details (FAIL). In the "no-workhorses" sample, "the Add a Mac
 # page reads its title and today's two settings" and "at the smallest window Add a Mac… stays in the window" fail, and
 # a picture shows the page at its smallest. A new "window-sidebar" sample (five Macs in five states) fails when a row is
-# not a button with its words, when the chosen row is not the one selected, or when a click on a row does not show its
-# page; "Tab and Space choose a Mac in the sidebar" is a finding, and a menu-open signal from them fails. The pointer
+# not a button with its words, when the chosen row is not the one selected, when a click on a row does not show its
+# page, when Tab then Space on a row does not show that Mac's page, or when they set off the menu-open signal. The pointer
 # rests on the title bar before the pictures of the details at the smallest window, where a help tag showed.
 set -uo pipefail
 
@@ -561,7 +561,9 @@ two_workhorses() {
 
 # The "window-sidebar" sample (look step 3): five Macs in five states. Each sidebar row is a button read as its name
 # and second line; the chosen row alone is selected; a click on a row shows its page and moves the selection; Tab then
-# Space on a row is a finding, and a menu-open signal from them fails.
+# Space on a row shows its page too, and they set off no menu-open signal. "Tab and Space choose a Mac in the sidebar"
+# started as a finding; pull request 179's first full run showed it on macOS 15 and 26, in light and dark, so it fails
+# now (the plan's Decision 9).
 sidebar_sample() {
     local entry id want r v missing="" rows since f i seen=""
     rows="sidebar.workhorse sidebar.attic sidebar.spare sidebar.den sidebar.loft sidebar.addMac sidebar.settings"
@@ -596,7 +598,7 @@ sidebar_sample() {
     fi
     rest_on_title
     snap spare-chosen
-    # Tab to Attic's row, then Space. No Apple page says what Space does on a plain button: a finding.
+    # Tab to Attic's row, then Space. No Apple page says what Space does on a plain button; the runners showed it.
     since=$(moment)
     id=""
     for i in $(seq 1 40); do
@@ -611,10 +613,10 @@ sidebar_sample() {
         tool keys 49 1 150 > /dev/null
         sleep 1.5
         v=$(val "page.headline")
-        result "$([ "$v" = "Attic · Ready" ] && echo PASS || echo DIFFERS)" "Tab and Space choose a Mac in the sidebar" \
+        result "$([ "$v" = "Attic · Ready" ] && echo PASS || echo FAIL)" "Tab and Space choose a Mac in the sidebar" \
             "after $i presses of Tab and one of Space page.headline reads: ${v:-nothing}; focus went to:$seen"
     else
-        result DIFFERS "Tab and Space choose a Mac in the sidebar" "Tab never reached sidebar.attic in 40 presses; focus went to:$seen"
+        result FAIL "Tab and Space choose a Mac in the sidebar" "Tab never reached sidebar.attic in 40 presses; focus went to:$seen"
     fi
     f=$(applog "$since" | grep -cE "menu opened|menu tracking")
     result "$([ "$f" -eq 0 ] && echo PASS || echo FAIL)" "Tab and Space set off no menu-open signal" \
