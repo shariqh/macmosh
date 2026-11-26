@@ -39,9 +39,14 @@ import Testing
         let board = BoardModel.build(latest: r.latest, lastReady: r.lastReady, checking: r.checking,
                                      order: s.workhorses, waitingForDeskServer: [], now: Date(), timeZone: .current)
         let rows = board.workhorses.first.map { WorkhorsePage($0, now: Date(), timeZone: .current).desks } ?? []
-        #expect(rows.map(\.name) == ["notes", "website-redesign"])
-        #expect(rows.first?.second == WindowWords.notMadeWithMacMosh)
-        #expect(rows.last?.second
+        let long = "garden-planner-for-the-allotment-by-the-river"
+        #expect(rows.map(\.name) == [long, "notes", "website-redesign"])
+        // A very long name with nine windows, two in a tab: five cells, the first two lit, and the plus.
+        let garden = rows.first { $0.name == long }
+        #expect(garden?.cells == DeskCells(cells: [.lit, .lit, .unlit, .unlit, .unlit], more: true))
+        #expect(garden?.state.word == "In 2 tabs")
+        #expect(rows.first { $0.name == "notes" }?.second == WindowWords.notMadeWithMacMosh)
+        #expect(rows.first { $0.name == "website-redesign" }?.second
                 == "~/Development/clients/acme/website-redesign · Kept when it exits · Doesn't come back after a restart")
     }
 

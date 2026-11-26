@@ -1,6 +1,7 @@
 // windowtool: reads the MacMosh window through the accessibility API, in one quick pass. CI only
-// (.github/workflows/menu-pictures.yml, through scripts/ci/drive-window.sh). It reads and never
-// presses anything: the driver clicks with posted pointer events (menutool). Never run it on your own Mac.
+// (.github/workflows/menu-pictures.yml, through scripts/ci/drive-window.sh). It never presses anything: the driver
+// clicks with posted pointer events (menutool). It sets one thing, the window's size, for the picture of the window at
+// its smallest (look step 1); every other command only reads. Never run it on your own Mac.
 //
 //   windowtool <pid> windows            how many windows titled MacMosh the app has: "windows 1"
 //   windowtool <pid> front              whether the app is active, and its focused window's title
@@ -18,6 +19,14 @@
 //   windowtool <pid> chosen <identifier>    the title of the chosen radio button in it: "chosen <title>", or
 //                                       "chosen none" (issue 157)
 //   windowtool <pid> checked <identifier>   whether that checkbox is ticked: "checked 1" or "checked 0" (issue 163)
+//   windowtool <pid> focused            the app's focused element: "focused <identifier or -> <role>", or
+//                                       "focused none" (look step 1, the Tab check)
+//   windowtool <pid> size <w> <h>       sets the MacMosh window's size and prints the size read back, which the
+//                                       window's minimum clamps: "size w h" (look step 1, the smallest window)
+//   windowtool <pid> box <identifier>   that element's position and size: "box x y w h", or "notfound" (look
+//                                       step 1: state cells in one column, a row inside the window)
+//   windowtool <pid> help <identifier>  that element's help, its accessibility hint: "help <text>", or "notfound"
+//                                       (look step 1: a hand-made desk's sentence)
 //
 // find, value, text, button, enabled and selected look in the MacMosh window first (its sheets are inside it), then in
 // the app's other windows, where a dialog may be.
@@ -31,7 +40,7 @@ import ApplicationServices
 
 let args = CommandLine.arguments
 guard args.count >= 3, let pid = pid_t(args[1]) else {
-    print("usage: windowtool <pid> windows|front|frame|find|value|text|close|button|enabled|selected|radio|chosen|checked|dump [argument]")
+    print("usage: windowtool <pid> windows|front|focused|frame|size|find|value|text|close|button|enabled|selected|radio|chosen|checked|dump [argument]")
     exit(2)
 }
 let command = args[2]
@@ -105,6 +114,16 @@ if command == "front" {
     print("front active=\(active) focused=\(focused)")
     exit(0)
 }
+if command == "focused" {
+    // The element that has keyboard focus, wherever it is: its identifier (or "-") and its role.
+    if let raw = attribute(app, kAXFocusedUIElementAttribute), CFGetTypeID(raw) == AXUIElementGetTypeID() {
+        let e = raw as! AXUIElement   // the type id was checked just above
+        print("focused \(text(e, "AXIdentifier").flatMap { $0.isEmpty ? nil : $0 } ?? "-") \(text(e, kAXRoleAttribute) ?? "?")")
+    } else {
+        print("focused none")
+    }
+    exit(0)
+}
 guard let window = windows.first else {
     print("nowindow")
     exit(0)
@@ -161,6 +180,18 @@ case "radio", "chosen":
         let on = radios.first { (attribute($0, kAXValueAttribute) as? NSNumber)?.intValue == 1 }
         print("chosen \(on.map { text($0, kAXTitleAttribute) ?? label($0) } ?? "none")")
     }
+case "size":
+    // The one command that changes anything: the window's size, for the picture at its smallest.
+    guard var size = Double(argument).flatMap({ w in Double(second).map { CGSize(width: w, height: $0) } }),
+          let value = AXValueCreate(.cgSize, &size) else {
+        print("usage: windowtool <pid> size <w> <h>")
+        exit(2)
+    }
+    let set = AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, value)
+    if set != .success { print("size not set: error \(set.rawValue)") }
+    usleep(300_000)
+    guard let f = frame(window) else { print("noframe"); break }
+    print("size \(Int(f.width)) \(Int(f.height))")
 case "frame":
     guard let f = frame(window) else { print("noframe"); break }
     print("frame \(Int(f.minX)) \(Int(f.minY)) \(Int(f.width)) \(Int(f.height))")
@@ -176,6 +207,15 @@ case "find", "value":
     if let hit {
         let role = text(hit.element, kAXRoleAttribute) ?? "?"
         print(command == "find" ? "found \(centre(hit.element)) \(role)" : "value \(label(hit.element))")
+    } else {
+        print("notfound")
+    }
+case "box", "help":
+    let hit = everything().first { text($0.element, "AXIdentifier") == argument }
+    if let hit, command == "help" {
+        print("help \(text(hit.element, kAXHelpAttribute) ?? "")")
+    } else if let hit, let f = frame(hit.element) {
+        print("box \(Int(f.minX)) \(Int(f.minY)) \(Int(f.width)) \(Int(f.height))")
     } else {
         print("notfound")
     }

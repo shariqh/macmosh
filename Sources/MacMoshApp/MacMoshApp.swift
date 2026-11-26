@@ -41,7 +41,19 @@ struct MacMoshApp: App {
                                        menuActions: sample.actions)
             // The sample's stand-in store, never the person's saved list or settings.
             settings = Self.settingsRunner(WorkhorseStore(paths: sample.settingsPaths), board: sampleBoard)
-            pause = { _ in try? await Task.sleep(for: SampleMenu.lookEvery) }
+            // A sample checks every second and its check takes most of one, so a background check asked for while
+            // another runs would keep that one's loop going (`MenuRefresher.refresh` runs one more for every ask),
+            // and a window action whose check owns the loop would wait for its result line behind them (look step 1,
+            // pull request 173: the result of New desk and Start again came a minute late on macOS 26). So the
+            // sample's next background check waits until none runs. The app's own checks are 30 seconds apart.
+            pause = { _ in
+                try? await Task.sleep(for: SampleMenu.lookEvery)
+                // At most ten seconds, so a check that never ends cannot stop the background checks.
+                for _ in 0..<100 {
+                    guard await MainActor.run(body: { refresher.isRefreshing }) else { break }
+                    try? await Task.sleep(for: .milliseconds(100))
+                }
+            }
             return
         }
         #endif

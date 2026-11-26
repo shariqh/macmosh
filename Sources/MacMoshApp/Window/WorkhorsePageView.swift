@@ -14,7 +14,7 @@ struct WorkhorsePageView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                header
+                WorkhorseHeader(page: page, notice: notice, run: run)
                 if !page.underHint.isEmpty {
                     ButtonRow(buttons: page.underHint, run: run)
                 }
@@ -27,143 +27,93 @@ struct WorkhorsePageView: View {
                 if let stale = page.stale {
                     StaleList(stale: stale)
                 }
-                Divider()
-                foot
+                // Under the desks the last row's line is enough; otherwise a line sets the foot apart.
+                if page.desksHeading == nil || page.desks.isEmpty || page.endedHeading != nil || page.stale != nil {
+                    Hairline()
+                }
+                PageFoot(left: page.footLeft, right: page.footRight, home: page.home, run: run)
+                    .equatable()
             }
             .padding(20)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-    }
-
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Text(verbatim: page.headline).font(.title2).bold()
-                    .accessibilityIdentifier(WindowMarks.headline)
-                Spacer()
-                if let checking = page.checking {
-                    Text(verbatim: checking).foregroundStyle(.secondary)
-                }
-                if let checked = page.checked {
-                    Text(verbatim: checked).foregroundStyle(.secondary)
-                }
-                Button { run(page.checkNow) } label: { Text(verbatim: page.checkNow.title) }
-                    .accessibilityIdentifier(WindowMarks.button(page.checkNow))
-            }
-            if let hint = page.hint {
-                Text(verbatim: hint).fixedSize(horizontal: false, vertical: true)
-            }
-            if let summary = page.summary {
-                Text(verbatim: summary).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            }
-            if let result = page.result {
-                Text(verbatim: result).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier(WindowMarks.result)
-            }
-            NoticeLine(notice: notice)
-        }
+        // The ground behind the page shows through. Apple, scrollContentBackground(_:) (macOS 13.0,
+        // https://developer.apple.com/documentation/swiftui/view/scrollcontentbackground(_:)): "Specifies the
+        // visibility of the background for scrollable views within this view."
+        .scrollContentBackground(.hidden)
     }
 
     private func desks(_ heading: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text(verbatim: heading).font(.headline)
+                Text(verbatim: heading)
+                    .font(.system(size: LookSize.bodyFont, weight: .semibold))
+                    .foregroundStyle(LookColor.text(.primary, on: .ground))
                 Spacer()
                 ButtonRow(buttons: page.deskButtons, run: run)
             }
-            Divider()
+            .padding(.bottom, 8)
+            Hairline()
             if let none = page.noDesks {
-                Text(verbatim: none).foregroundStyle(.secondary)
+                Text(verbatim: none)
+                    .foregroundStyle(LookColor.text(.secondary, on: .ground))
+                    .padding(.vertical, 8)
             }
             ForEach(page.desks) { row in
                 DeskRowView(row: row, isOpen: openRow == row.id, run: run) {
                     openRow = openRow == row.id ? nil : row.id
                 }
+                .equatable()
             }
         }
     }
 
-    /// The rarer buttons in the menu's order: all but the checklist on one line, then the checklist with
-    /// the home-address line, as in the design's drawing.
-    private var foot: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if page.foot.count > 1 {
-                ButtonRow(buttons: Array(page.foot.dropLast()), run: run)
-            }
-            HStack(spacing: 12) {
-                ButtonRow(buttons: Array(page.foot.suffix(1)), run: run)
-                if let home = page.home {
-                    Text(verbatim: home).foregroundStyle(.secondary)
-                }
-            }
-        }
-    }
 }
 
-/// A desk's short row, and its detail strip under it when it is open. A click on the row (not on its
-/// Open button) opens or closes the strip.
-struct DeskRowView: View {
-    let row: DeskRow
-    let isOpen: Bool
+/// The rarer buttons (look design 6.4): Share screen, the lid-closed button and Run the checklist… at the left,
+/// Restart… alone at the right, and the home-address line under them. When the page is too narrow for one line,
+/// Restart… moves to a line of its own, still at the right, and then the left buttons take two lines. Equal when its
+/// buttons and line are, so a check that changes none of them does not draw it again.
+struct PageFoot: View, Equatable {
+    let left: [BoardButton]
+    let right: BoardButton?
+    let home: String?
     let run: (BoardButton) -> Void
-    let toggle: () -> Void
+
+    nonisolated static func == (a: PageFoot, b: PageFoot) -> Bool { a.left == b.left && a.right == b.right && a.home == b.home }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .top, spacing: 12) {
-                // The row is a button, so a click, the keyboard and VoiceOver all open its strip. Apple,
-                // onTapGesture(count:perform:) (https://developer.apple.com/documentation/swiftui/view/ontapgesture(count:perform:)):
-                // "If you create a control that's functionally equivalent to a Button, use ButtonStyle to
-                // create a customized button instead." Apple, PrimitiveButtonStyle.plain (macOS 10.15,
-                // https://developer.apple.com/documentation/swiftui/primitivebuttonstyle/plain): "A button
-                // style that doesn't style or decorate its content while idle". The chevron says it opens;
-                // Image(systemName:) "Creates a system symbol image." (macOS 11.0,
-                // https://developer.apple.com/documentation/swiftui/image/init(systemname:)).
-                Button(action: { if row.hasStrip { toggle() } }) {
-                    HStack(alignment: .firstTextBaseline, spacing: 4) {
-                        // No chevron on a row with nothing to open, such as a new desk before its check.
-                        Image(systemName: isOpen ? "chevron.down" : "chevron.right")
-                            .font(.caption).foregroundStyle(.secondary).frame(width: 10)
-                            .opacity(row.hasStrip ? 1 : 0)
-                        VStack(alignment: .leading, spacing: 2) {
-                            HStack(spacing: 12) {
-                                Text(verbatim: row.name).fontWeight(.semibold)
-                                    .frame(width: 110, alignment: .leading)
-                                Text(verbatim: row.windows).foregroundStyle(.secondary).lineLimit(1)
-                            }
-                            // Wraps rather than cutting: the facts after the folder are what the line is for.
-                            // Apple, fixedSize(horizontal:vertical:) (https://developer.apple.com/documentation/swiftui/view/fixedsize(horizontal:vertical:)):
-                            // "Fixes this view at its ideal size in the specified dimensions."
-                            Text(verbatim: row.second).font(.callout).foregroundStyle(.secondary)
-                                .padding(.leading, 122)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
+        VStack(alignment: .leading, spacing: 10) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    ButtonRow(buttons: left, run: run)
+                    Spacer(minLength: 16)
+                    restart
+                }
+                VStack(alignment: .leading, spacing: 8) {
+                    ButtonRow(buttons: left, run: run)
+                    HStack { Spacer(minLength: 0); restart }
+                }
+                VStack(alignment: .leading, spacing: 8) {
+                    ButtonRow(buttons: Array(left.dropLast()), run: run)
+                    HStack(spacing: 8) {
+                        ButtonRow(buttons: Array(left.suffix(1)), run: run)
+                        Spacer(minLength: 16)
+                        restart
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier(WindowMarks.desk(row.name))
-                // "Renaming…", "Removing…" or "Updating…" while the window's action on it runs, else its tabs.
-                if let shown = row.status ?? row.tabs {
-                    Text(verbatim: shown).foregroundStyle(.secondary)
-                        .accessibilityIdentifier(WindowMarks.status(row.name))
-                }
-                if let open = row.open {
-                    // "Go to" or "Open"; the menu's own words for the click ("Go to website", "Open the 1 window
-                    // not in a tab") are its help tag. Apple, help(_:) (macOS 11.0,
-                    // https://developer.apple.com/documentation/swiftui/view/help(_:)-9lm7l): "Adding help to a
-                    // view configures the view's accessibility hint and its help tag (also called a tooltip) in macOS".
-                    Button { run(open) } label: { Text(verbatim: open.title) }
-                        .disabled(!open.isEnabled)
-                        .help(Text(verbatim: row.openWords ?? ""))
-                        .accessibilityIdentifier(WindowMarks.open(row.name))
                 }
             }
-            if isOpen && row.hasStrip {
-                DeskDetail(row: row, run: run)
+            if let home {
+                Text(verbatim: home)
+                    .foregroundStyle(LookColor.text(.tertiary, on: .ground))
             }
-            Divider()
+        }
+        .font(.system(size: LookSize.bodyFont))
+    }
+
+    @ViewBuilder private var restart: some View {
+        if let right {
+            ButtonRow(buttons: [right], run: run)
         }
     }
 }
@@ -227,7 +177,8 @@ struct DeskDetail: View {
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.1)))
-        .padding(.leading, 122)
+        // Under the name column: the chevron, the tile and their gaps (DeskRowView).
+        .padding(.leading, 74)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(WindowMarks.strip(row.name))
     }

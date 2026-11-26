@@ -57,14 +57,12 @@ struct MainWindow: View {
                             Task { await settings.reload() }
                         }
                 case .unreadableList:
-                    // The menu's own sentence, in place of an invitation to add a Mac.
-                    Text(verbatim: screen.listProblem ?? "")
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(20)
-                        .accessibilityIdentifier(WindowMarks.listProblem)
+                    UnreadableListPageView(problem: screen.listProblem ?? "")
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            // The page sits on the look's warm ground (look design 6.1); the sidebar keeps the system's look in step 1.
+            .background(LookColor.background(.ground))
         }
         .frame(minWidth: 700, minHeight: 440)
         // Apple, sheet(item:onDismiss:content:) (macOS 10.15,
@@ -234,7 +232,7 @@ struct NoticeLine: View {
     }
 }
 
-/// A row of buttons, each with the board's title.
+/// A row of buttons, each with the board's title, in the look's style for what it does (`ButtonKind`).
 struct ButtonRow: View {
     let buttons: [BoardButton]
     let run: (BoardButton) -> Void
@@ -243,6 +241,8 @@ struct ButtonRow: View {
         HStack(spacing: 8) {
             ForEach(Array(buttons.enumerated()), id: \.offset) { _, button in
                 Button { run(button) } label: { Text(verbatim: button.title) }
+                    .buttonStyle(LookButtonStyle(kind: ButtonKind.of(button.action),
+                                                 glyph: LookButtonStyle.glyph(for: button.action)))
                     .disabled(!button.isEnabled)
                     .accessibilityIdentifier(WindowMarks.button(button))
             }
