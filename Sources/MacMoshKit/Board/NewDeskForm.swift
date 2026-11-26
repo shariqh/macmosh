@@ -50,7 +50,7 @@ public struct NewDeskForm: Sendable, Equatable {
         public static let orAPath = "Or a path, full or starting with ~:"
         public static let name = "Name"
         public static let nameHelp = "Letters, digits, - and _ only."
-        /// The first window's line (issue 163). A first proposal; the owner chooses the words.
+        /// The first window's line (issue 163). The owner approved these words with the look's design (section 7).
         public static let firstWindow = "First window"
         public static let sameAsDesk = "Same name as the desk"
         public static let firstWindowHelp = "Left empty, the window is named after the program running in it."
@@ -69,6 +69,10 @@ public struct NewDeskForm: Sendable, Equatable {
         public static let reading = "Reading the folders…"
         /// What the projects folder field holds before he types: the folder the design draws.
         public static let projectsFolderDefault = "~/Development"
+        /// Beside Make desk while it is off because no folder is chosen (look design 6.8 and 7).
+        public static let chooseAFolderFirst = "Choose a folder first."
+        /// Why a typed path is refused when it is not full; Settings' key file uses the same sentence (look design 7).
+        public static let typeAFullPath = "Type a full path, starting with / or with ~."
     }
 
     /// The folders of the projects folder, as far as they are known.
@@ -211,7 +215,7 @@ public struct NewDeskForm: Sendable, Equatable {
         guard let path = folderPath else { return "Pick a folder, or type a path." }
         if DeskNameRule.hasTabOrNewline(path) { return "A path can't contain a tab or a new line." }
         if !(path.hasPrefix("/") || path == "~" || path.hasPrefix("~/")) {
-            return "A path is full, starting with /, or starts with ~."
+            return Words.typeAFullPath
         }
         return nil
     }
@@ -267,6 +271,10 @@ public struct NewDeskForm: Sendable, Equatable {
     public var problems: [String] { [folderProblem, nameProblem, firstWindowProblem, commandProblem].compactMap { $0 } }
 
     public var canMake: Bool { problems.isEmpty }
+
+    /// The one line beside Make desk (look design 6.8): "Choose a folder first." while no folder is chosen, whatever
+    /// else is wrong; nil otherwise, since every other reason is the refusal under its own field.
+    public var makeReason: String? { folderPath == nil ? Words.chooseAFolderFirst : nil }
 
     /// The command as sent and as saved for the next form: exactly as typed, or nil for a plain shell (empty,
     /// or only spaces, as the terminal form takes it).
