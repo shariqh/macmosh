@@ -130,6 +130,14 @@ private func enabled(_ row: EndedRow) -> [Bool] { row.buttons.map(\.isEnabled) }
         #expect(titles(try #require(try page([ended("shop")], status: new).ended.first)).count == 3)
     }
 
+    /// Issue 156 item 2, look design 7: beside Start again and keep it, what keep it means; nothing without that button.
+    @Test func keepItSaysWhatKeptMeans() throws {
+        let row = try #require(try page([ended("shop")]).ended.first)
+        #expect(row.keepHelp == "Kept: the desk stays, closed, when its last shell exits." && EndedRow.keptMeans == row.keepHelp)
+        let old = try boardReport { $0.replacingOccurrences(of: "macmosh-host\t1\t0.8.0", with: "macmosh-host\t1\t0.4.2") }
+        #expect(try #require(try page([ended("shop")], status: old).ended.first).keepHelp == nil)
+    }
+
     /// Taken by the script's rule: an open desk (website), or a permanent one (notes, closed). A leftover line (shop)
     /// is not, because the script replaces it. Both Start again buttons are off with the reason; Forget is not.
     @Test func bothAreOffWithTheReasonWhenTheNameIsTaken() throws {

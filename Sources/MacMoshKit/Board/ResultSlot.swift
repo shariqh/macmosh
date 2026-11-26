@@ -6,12 +6,13 @@ import Foundation
 public enum ResultKind: Sendable, Equatable {
     case done, failed, unknown
 
-    /// A failure in red words; a done or unknown result in secondary words (the view gives each its own mark: a tick,
-    /// a warning, or a neutral one).
+    /// A failure in red words, a done result in ink (look-b-details.png draws it so), an unknown one in secondary
+    /// words (the view gives each its own mark: a tick, a warning, or a neutral one).
     public var textRole: TextRole {
         switch self {
         case .failed: return .cannot
-        case .done, .unknown: return .secondary
+        case .done: return .primary
+        case .unknown: return .secondary
         }
     }
 }

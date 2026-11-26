@@ -832,7 +832,7 @@ private func sidebar(_ latest: [String: CheckResult], order: [Workhorse], checki
         let long = "The desk garden-planner wasn't made. Attic already has a desk with that name. Pick another name."
         let slot = try #require(try pageWithResult(long, kind: .failed).resultSlot(notice: long))
         #expect(slot.sentence == long && slot.kind == .failed && slot.sentenceLines == 2 && slot.notice == nil)
-        #expect(ResultKind.failed.textRole == .cannot && ResultKind.done.textRole == .secondary)
+        #expect(ResultKind.failed.textRole == .cannot && ResultKind.done.textRole == .primary)
     }
 
     /// A call that passed the time limit may still have worked: neither done nor failed, in secondary words.
