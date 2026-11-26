@@ -523,20 +523,51 @@ public struct SidebarItem: Sendable, Equatable, Identifiable {
     }
 }
 
+/// One of the two settings on the Add a Mac page (look design 6.10): its number on the card, the setting's name, drawn
+/// semibold, and the rest of today's sentence.
+public struct AddMacStep: Sendable, Equatable {
+    public var number: Int
+    public var name: String
+    public var rest: String
+
+    public init(number: Int, name: String, rest: String) {
+        self.number = number
+        self.name = name
+        self.rest = rest
+    }
+
+    /// The name and the rest: today's sentence, "Remote Login, so MacMosh can reach it."
+    public var sentence: String { name + rest }
+}
+
 /// The Add a Mac page (main window design, section 7.1 E): what to switch on at the other Mac, and the
-/// menu's own Add a Mac… button, which opens the terminal tab that pairs.
+/// menu's own Add a Mac… button, which opens the terminal tab that pairs. Look step 3 holds each setting as its name
+/// and the rest of its sentence (`AddMacStep`); the words are today's.
 public struct AddMacPage: Sendable, Equatable {
     public var heading: String
-    public var lines: [String]
+    public var intro: String
+    public var steps: [AddMacStep]
+    public var closing: String
     public var button: BoardButton
+
+    public init(heading: String, intro: String, steps: [AddMacStep], closing: String, button: BoardButton) {
+        self.heading = heading
+        self.intro = intro
+        self.steps = steps
+        self.closing = closing
+        self.button = button
+    }
+
+    /// The intro, each setting's sentence, then the closing paragraph: today's four lines.
+    public var lines: [String] { [intro] + steps.map(\.sentence) + [closing] }
 
     public static let standard = AddMacPage(
         heading: "Add a Mac",
-        lines: [
-            "At the other Mac, turn on these two in System Settings > General > Sharing:",
-            "Remote Login, so MacMosh can reach it.",
-            "Screen Sharing, so you can log in to it after a restart.",
-            "The button below opens a terminal tab, where the first connection asks for the other Mac's password. MacMosh never sees it.",
+        intro: "At the other Mac, turn on these two in System Settings > General > Sharing:",
+        steps: [
+            AddMacStep(number: 1, name: "Remote Login", rest: ", so MacMosh can reach it."),
+            AddMacStep(number: 2, name: "Screen Sharing", rest: ", so you can log in to it after a restart."),
         ],
+        closing: "The button below opens a terminal tab, where the first connection asks for the other Mac's password. MacMosh never sees it.",
         button: BoardButton(ButtonRules.addAMac))
 }

@@ -709,6 +709,18 @@ private func sidebar(_ latest: [String: CheckResult], order: [Workhorse], checki
         #expect(p.button.title == ButtonRules.addAMac.title)
     }
 
+    /// Look design 6.10: each setting as its name, drawn semibold, and the rest of its sentence; together, today's words.
+    @Test func eachSettingIsItsNameThenTheRestOfTodaysSentence() {
+        let p = AddMacPage.standard
+        #expect(p.steps == [AddMacStep(number: 1, name: "Remote Login", rest: ", so MacMosh can reach it."),
+                            AddMacStep(number: 2, name: "Screen Sharing", rest: ", so you can log in to it after a restart.")])
+        #expect(p.steps.map(\.sentence) == ["Remote Login, so MacMosh can reach it.",
+                                            "Screen Sharing, so you can log in to it after a restart."])
+        #expect(p.intro == "At the other Mac, turn on these two in System Settings > General > Sharing:")
+        #expect(p.closing == "The button below opens a terminal tab, where the first connection asks for the other Mac's password. MacMosh never sees it.")
+        #expect(p.lines == [p.intro] + p.steps.map(\.sentence) + [p.closing])
+    }
+
     // MARK: While a window action runs (step 4)
 
     private func activePage(_ activity: WindowActivity, version: String = "0.8.0") throws -> WorkhorsePage {
