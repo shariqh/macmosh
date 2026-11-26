@@ -869,7 +869,8 @@ rest_on_title() {
     local x y w
     read -r _ x y w _ <<< "$(wax frame | grep '^frame' | tail -n 1)"
     [ -n "${w:-}" ] && lim 10 "$TOOL" move "$((x + w / 2))" "$((y + 12))" >> "$LOG" 2>&1
-    sleep 1
+    # A tag shown before the move fades out; one second was not always enough on macOS 26.
+    sleep 2
 }
 
 # same_end <check> <desk> <other desk>: the two rows' buttons end within 2 points of each other, so the state cells
@@ -1179,8 +1180,7 @@ forms_sample() {
     snap making
     # The box is ticked, so the first window gets the desk's name (issue 163).
     want="sample ssh: to=alex@192.168.1.20 batch=yes stdin=closed limit=15s run=~/.macmosh/macmosh-host desk-new garden-planner '~/Development/garden-planner' --reopen --window-name garden-planner --command '$paste'"
-    expect_log "Make desk sends the exact arguments" "$since" "$want"
-    expect_log "Make desk writes its log line" "$since" "window action: newDesk ok"
+    # The row is read before the log, which can take longer to read than the sample's 0.8-second check.
     if gone_id "form.newDesk" 6; then
         result PASS "the form closes once the desk is made" "form.newDesk gone"
     else
@@ -1190,6 +1190,8 @@ forms_sample() {
     result "$([ "$v" = "Updating…" ] && echo PASS || echo DIFFERS)" "the new desk's row says Updating… until the check lands" "it reads: ${v:-nothing}"
     snap updating
     same_end "a new desk's state stands in the column while it has no Open" "garden-planner" "api"
+    expect_log "Make desk sends the exact arguments" "$since" "$want"
+    expect_log "Make desk writes its log line" "$since" "window action: newDesk ok"
     expect_value "the page says what happened" "page.result" "Created the desk garden-planner on Attic." 10
     v=$(val "desk.garden-planner.status")
     deadline=$((SECONDS + 8))
