@@ -92,8 +92,9 @@ private func pixelSize(_ relativePath: String) throws -> [Int] {
         #expect(try pixelSize("App/AppIcon.icon/Assets/m-dark.png") == [1024, 1024])
         #expect(try pixelSize("App/AppIcon-16.png") == [16, 16]) }
 
-    /// Round 2, decision 1: the layered icon. Assets.car carries the light and dark M for macOS 26 and newer,
-    /// AppIcon.icns the light M for macOS 15.
+    /// Round 2, decision 1: the layered icon. Assets.car carries the light and dark M, AppIcon.icns the light M
+    /// with the solid 16-pixel M. On CI's macOS 15 and 26 runners the system's 16-point icon showed Assets.car's
+    /// tiles, not the .icns's solid M (pull request 176), so both draw from Assets.car.
     @Test func theInfoPlistNamesTheIcon() throws {
         let plist = try readPlist("App/Info.plist")
         #expect(plist?["CFBundleIconFile"] as? String == "AppIcon")
@@ -180,9 +181,18 @@ private func pixelSize(_ relativePath: String) throws -> [Int] {
         #expect(dark.contains("steps.dark.outcome == 'success'"))
     }
 
-    /// Round 2, decision 5: the Dark icon style is tried on the macOS 26 runner only, in the workflow, and its
-    /// pictures wait for the read-back. No script in the repository changes a setting, so none can change one on a
-    /// person's own Mac.
+    /// The Finder check names what it checks, that the pictures were taken; a person reads what they show.
+    @Test func theFinderCheckSaysOnlyThatThePicturesWereTaken() throws {
+        let check = try String(contentsOf: repoRoot().appendingPathComponent("scripts/ci/icon-pictures.sh"),
+                               encoding: .utf8)
+        #expect(check.contains("result \"Finder pictures were taken\" PASS"))
+        #expect(!check.contains("Finder shows the app"))
+    }
+
+    /// Round 2, decision 5: the Dark icon style is tried on the macOS 26 runner only, in the workflow, through
+    /// AppleIconAppearanceTheme (a guessed name, not Apple's). Its pictures run whether or not the try took, and the
+    /// check reads NOT-SHOWN, naming the setting and what it reads, when the read-back is not RegularDark. No script
+    /// in the repository changes a setting, so none can change one on a person's own Mac.
     @Test func theDarkIconStyleIsTriedOnlyOnTheRunner() throws {
         let workflow = try String(contentsOf: repoRoot().appendingPathComponent(".github/workflows/icon-pictures.yml"),
                                   encoding: .utf8)
@@ -192,7 +202,12 @@ private func pixelSize(_ relativePath: String) throws -> [Int] {
         #expect(style.contains("        id: style\n") && style.contains("matrix.os == 'macos-26'"))
         #expect(style.contains("defaults write -g AppleIconAppearanceTheme"))
         #expect(style.contains("defaults read -g AppleIconAppearanceTheme"))
-        #expect(pictures.contains("steps.style.outcome == 'success'") && pictures.contains("icon-pictures.sh darkstyle"))
+        #expect(pictures.contains("matrix.os == 'macos-26' && steps.build.outcome == 'success'"))
+        #expect(!pictures.contains("steps.style.outcome") && pictures.contains("icon-pictures.sh darkstyle"))
+        let check = try String(contentsOf: repoRoot().appendingPathComponent("scripts/ci/icon-pictures.sh"),
+                               encoding: .utf8)
+        #expect(check.contains("if [ \"$theme\" != RegularDark ]; then\n        result \"$check\" NOT-SHOWN"))
+        #expect(check.contains("AppleIconAppearanceTheme (a guessed name, not Apple's) $(defaults read"))
         #expect(steps.filter { $0.contains("defaults write") }.count == 1)
         let root = repoRoot()
         let scripts = try #require(FileManager.default.enumerator(at: root.appendingPathComponent("scripts"),

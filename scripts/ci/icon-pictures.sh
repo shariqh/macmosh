@@ -35,13 +35,15 @@
 #                                       assetutil too old to know them); FAIL when it lists stacks but not both
 #   the .icns holds a 16-pixel picture  icon_16x16.png is 16 wide
 #   the icon sheet was drawn            icontool exits 0 at 1x and 2x and both files exist
-#   Finder shows the app                a picture was taken; NOT-SHOWN when not, never FAIL
+#   Finder pictures were taken          both screen pictures exist; NOT-SHOWN when not, never FAIL. What they
+#                                       show is read by a person, not by this check
 #   the styles sheet was drawn          (light only) ictool from the selected Xcode or an /Applications/Xcode_26*.app
 #                                       rendered all six and icontool drew the sheet; NOT-SHOWN when no ictool
 #                                       is found or none renders, FAIL only when icontool cannot draw six renders
-#   the system draws the dark M in the Dark icon style   (darkstyle only) the unlit tile icontool reads in the
-#                                       system's icon, drawn under aqua, is dark (luminance under 0.35); NOT-SHOWN
-#                                       otherwise, with the readings and what the workflow tried
+#   the system draws the dark M in the Dark icon style   (darkstyle only) the workflow's setting reads back
+#                                       RegularDark and the unlit tile icontool reads in the system's icon, drawn
+#                                       under aqua, is dark (luminance under 0.35); NOT-SHOWN otherwise, with the
+#                                       setting, what it reads and the readings
 # In every mode the log says which M the system's icon shows under each drawing appearance (icontool's "tile"
 # lines). It exits 1 when any check is FAIL, and never on how a picture looks: a person reads the pictures.
 set -uo pipefail
@@ -78,7 +80,7 @@ result() {
     if [ "$2" = FAIL ]; then failures=$((failures + 1)); fi
 }
 
-say "$os: $(sw_vers -productVersion), mode $appearance, AppleInterfaceStyle $(defaults read -g AppleInterfaceStyle 2>/dev/null || echo unset), AppleIconAppearanceTheme $(defaults read -g AppleIconAppearanceTheme 2>/dev/null || echo unset)"
+say "$os: $(sw_vers -productVersion), mode $appearance, AppleInterfaceStyle $(defaults read -g AppleInterfaceStyle 2>/dev/null || echo unset), AppleIconAppearanceTheme (a guessed name, not Apple's) $(defaults read -g AppleIconAppearanceTheme 2>/dev/null || echo unset)"
 resources="$APP/Contents/Resources"
 
 # 1. The app has its icon files.
@@ -172,7 +174,7 @@ which_m() {
 }
 say "reading: the system's icon drawn under aqua shows $(which_m light); under darkAqua $(which_m dark)"
 
-# 6. Finder shows the app: revealed, then a picture of the screen. What it shows is read by a person.
+# 6. Finder pictures: the app revealed, then a picture of the screen. What it shows is read by a person.
 # Two pictures, 3 and 15 seconds after the reveal: Finder may still be loading its icons at the first.
 finder="$OUT/pictures/$os-finder.png"
 if lim 20 open -R "$APP" >> "$LOG" 2>&1; then
@@ -182,9 +184,9 @@ if lim 20 open -R "$APP" >> "$LOG" 2>&1; then
     lim 20 screencapture -x "$OUT/pictures/$os-finder-later.png" >> "$LOG" 2>&1
 fi
 if [ -f "$finder" ] && [ -f "$OUT/pictures/$os-finder-later.png" ]; then
-    result "Finder shows the app" PASS "$os-finder.png (3 seconds) and $os-finder-later.png (15 seconds) were taken"
+    result "Finder pictures were taken" PASS "$os-finder.png (3 seconds) and $os-finder-later.png (15 seconds) were taken"
 else
-    result "Finder shows the app" NOT-SHOWN "Finder could not reveal the app or the screen picture failed"
+    result "Finder pictures were taken" NOT-SHOWN "Finder could not reveal the app or the screen picture failed"
 fi
 # Close Finder's windows so the next run's picture shows its own. A failure here changes no result.
 lim 15 osascript -e 'tell application "Finder" to close every window' >> "$LOG" 2>&1 || say "Finder's windows were not closed"
@@ -243,15 +245,20 @@ if [ "$appearance" = light ]; then
     fi
 fi
 
-# 8. The Dark icon style (darkstyle only): the workflow has set it, by a guessed name, and read it back. Did the
-# system's icon follow? icontool's reading under aqua says which M it drew.
+# 8. The Dark icon style (darkstyle only): the workflow has tried to set it, by a guessed name. This runs whether or
+# not that try took. Did the setting read back, and did the system's icon follow? icontool's reading under aqua says
+# which M it drew.
 if [ "$appearance" = darkstyle ]; then
     check="the system draws the dark M in the Dark icon style"
+    theme=$(defaults read -g AppleIconAppearanceTheme 2>/dev/null || echo unset)
+    tried="the workflow wrote AppleIconAppearanceTheme (a guessed name, not Apple's) as RegularDark; it reads $theme"
     reading=$(which_m light)
-    if [[ "$reading" == *"the dark M" ]]; then
-        result "$check" PASS "under aqua the system's icon shows $reading ($os-icon-sheet-2x.png)"
+    if [ "$theme" != RegularDark ]; then
+        result "$check" NOT-SHOWN "the style was not set: $tried; under aqua the system's icon shows $reading"
+    elif [[ "$reading" == *"the dark M" ]]; then
+        result "$check" PASS "under aqua the system's icon shows $reading ($os-icon-sheet-2x.png); $tried"
     else
-        result "$check" NOT-SHOWN "under aqua the system's icon shows $reading, under darkAqua $(which_m dark); tried: AppleIconAppearanceTheme (a guessed name) reads $(defaults read -g AppleIconAppearanceTheme 2>/dev/null || echo unset)"
+        result "$check" NOT-SHOWN "under aqua the system's icon shows $reading, under darkAqua $(which_m dark); $tried"
     fi
 fi
 
