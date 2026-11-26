@@ -20,9 +20,11 @@ struct LookButtonStyle: ButtonStyle {
         LookButtonBody(kind: kind, glyph: glyph, small: small, label: configuration.label, isPressed: configuration.isPressed)
     }
 
-    /// The small leading glyph: New desk… and Restart… have one (look design 6.4 and 15).
+    /// The small leading glyph: New desk…, Restart… and the Add a Mac page's Add a Mac… have one (look design 6.4 and
+    /// 15, look-b-add-a-mac.png). A re-pair (`pair <id>`) has none.
     static func glyph(for action: BoardAction) -> String? {
         if case .window(.newDesk) = action { return "plus.square.on.square" }
+        if case .menu(.tab(let args)) = action, args == ["pair"] { return "plus" }
         return ButtonKind.of(action) == .setApart ? "arrow.clockwise" : nil
     }
 }

@@ -219,6 +219,8 @@ enum WindowMarks {
     static let result = "page.result"
     static let headline = "page.headline"
     static let addMac = "page.addMac"
+    /// A setting's sentence on the Add a Mac page, one static text: `page.addMac.step.1` (look step 3).
+    static func addMacStep(_ number: Int) -> String { "page.addMac.step.\(number)" }
     static let listProblem = "page.listProblem"
     /// The unreadable-list page's heading and next step (look step 2).
     static let listProblemHeading = "page.listProblemHeading"
@@ -345,7 +347,7 @@ struct NoticeLine: View {
     var body: some View {
         if let notice {
             Text(verbatim: notice)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(LookColor.text(.secondary, on: .ground))
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -368,25 +370,5 @@ struct ButtonRow: View {
                     .accessibilityIdentifier(WindowMarks.button(button))
             }
         }
-    }
-}
-
-/// Section 7.1 E: what to switch on at the other Mac, and the menu's Add a Mac… button.
-struct AddMacPageView: View {
-    let page: AddMacPage
-    let notice: String?
-    let run: (BoardButton) -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(verbatim: page.heading).font(.title2).bold()
-                .accessibilityIdentifier(WindowMarks.addMac)
-            NoticeLine(notice: notice)
-            ForEach(Array(page.lines.enumerated()), id: \.offset) { _, line in
-                Text(verbatim: line).fixedSize(horizontal: false, vertical: true)
-            }
-            ButtonRow(buttons: [page.button], run: run)
-        }
-        .padding(20)
     }
 }
