@@ -48,6 +48,7 @@ jobs:
       # The switch is read back: a run that stayed light is a setup failure, not a set of light pictures.
       # Dark runs when a light check failed too, so one failure does not hide the dark pictures.
       - name: Turn on dark
+        id: dark
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         timeout-minutes: 3
         run: |
@@ -56,7 +57,7 @@ jobs:
           echo "AppleInterfaceStyle reads: ${style:-nothing}"
           [ "$style" = Dark ] || { echo "::error::The runner did not switch to dark; no dark pictures were taken."; exit 1; }
       - name: The icon in dark
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.dark.outcome == 'success' }}
         timeout-minutes: 4
         env:
           ICON_OUT: ${{ runner.temp }}/icon-pictures/dark

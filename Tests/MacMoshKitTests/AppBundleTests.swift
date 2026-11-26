@@ -115,5 +115,21 @@ private func pixelSize(_ relativePath: String) throws -> [Int] {
                      ("icon_128x128.png", 128), ("icon_128x128@2x.png", 256), ("icon_256x256.png", 256),
                      ("icon_256x256@2x.png", 512), ("icon_512x512.png", 512), ("icon_512x512@2x.png", 1024)]
         for (name, side) in sizes {
-            #expect(try pixelSize("App/AppIcon.iconset/\(name)") == [side, side], "\(name)") } }
+            #expect(try pixelSize("App/AppIcon.iconset/\(name)") == [side, side], "\(name)") }
+        // The 16-pixel picture is the solid M, not a shrunk render of the tiles (Task 6).
+        let root = repoRoot()
+        #expect(try Data(contentsOf: root.appendingPathComponent("App/AppIcon.iconset/icon_16x16.png"))
+            == Data(contentsOf: root.appendingPathComponent("App/AppIcon-16.png"))) }
+
+    /// A runner that stayed light must not leave light pictures under dark names: the dark pictures
+    /// run only when the switch to dark was read back.
+    @Test func theDarkPicturesWaitForTheDarkSwitch() throws {
+        let workflow = try String(contentsOf: repoRoot().appendingPathComponent(".github/workflows/icon-pictures.yml"),
+                                  encoding: .utf8)
+        let steps = workflow.components(separatedBy: "      - name: ")
+        let turn = try #require(steps.first { $0.hasPrefix("Turn on dark\n") })
+        let dark = try #require(steps.first { $0.hasPrefix("The icon in dark\n") })
+        #expect(turn.contains("        id: dark\n"))
+        #expect(dark.contains("steps.dark.outcome == 'success'"))
+    }
 }
