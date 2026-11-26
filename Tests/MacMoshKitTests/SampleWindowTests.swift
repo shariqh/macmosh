@@ -67,14 +67,16 @@ import Testing
     /// the cause was not proven; the app running the same sample there did not abort. Issue 180 tracks it.
     @Test func theSidebarSampleHasAMacInEachKindOfState() {
         let s = SampleWindow.sidebar
-        #expect(s.rawValue == "window-sidebar" && s.workhorses.map(\.id) == ["workhorse", "attic", "spare", "den", "loft"])
+        #expect(s.rawValue == "window-sidebar" && s.workhorses.map(\.id)
+                == ["workhorse", "attic", "spare", "den", "loft", "annex", "shed"])
         var latest: [String: CheckResult] = [:]
         for case .checked(let result) in s.gathered(check: 0) { latest[result.workhorse.id] = result }
         #expect(latest["loft"] == nil)
         let board = BoardModel.build(latest: latest, lastReady: [:], checking: [], order: s.workhorses,
                                      waitingForDeskServer: [], now: Date(), timeZone: .current)
         #expect(SidebarItem.list(board).map(\.spokenLabel) == ["Workhorse, Ready · 6 desks", "Attic, Ready · 1 desk",
-            "Spare, Locked after a restart", "Den, Can't reach it", "Loft, Checking…", "Add a Mac…", "Settings"])
+            "Spare, Locked after a restart", "Den, Can't reach it", "Loft, Checking…",
+            "Workhorse-in-the-attic-by-the-window, Ready · 1 desk", "Shed, Ready, sign-ins off", "Add a Mac…", "Settings"])
     }
 
     /// Every sample name the app accepts, the menu's and the window's, and nothing else.

@@ -33,8 +33,9 @@
 # without them, ends the app or stops the menu from opening, or when one of these keys sets off the menu-open
 # signal (issue #147). How a picture looks never fails it.
 # Naming a window (issue 144) fails when a desk's details lack their Name… buttons or Name its window…, the
-# sheet does not open, refuse a name or name its window, Name or Use its program's name does not send its exact
-# arguments, or the row does not show the name after the check.
+# sheet does not open, refuse a name or name its window, Name or Name it after the program running in it (Use its
+# program's name before look step 4) does not send its exact arguments, or the row does not show the name after the
+# check.
 # The Settings page (issue 157, the "window-settings" sample) fails as settings_sample says.
 # Look step 1 adds two checks to the "six-desks" sample: Tab moves keyboard focus across the page's buttons (it fails
 # when Check now, New desk… or a desk's Open is never reached in 25 presses of Tab, or a press sets off the menu-open
@@ -70,6 +71,23 @@
 # not a button with its words, when the chosen row is not the one selected, when a click on a row does not show its
 # page, when Tab then Space on a row does not show that Mac's page, or when they set off the menu-open signal. The pointer
 # rests on the title bar before the pictures of the details at the smallest window, where a help tag showed.
+# Look step 4 (issue 182) draws the sheets and Settings in the look and changes some words. Two checks read new words:
+# "a refused path says why under the field" and "a relative key file says what is wrong" now read "Type a full path,
+# starting with / or with ~.". The "window-sidebar" sample has seven Macs (Workhorse-in-the-attic-by-the-window, a
+# name too long for its row, and Shed, Ready with sign-ins off, after Loft), so "each sidebar row is a button with its
+# Mac's name and second line" reads nine rows and the two selected_only checks read eight other rows. New checks, each
+# failing: in "window-forms", "with no folder chosen the reason stands beside Make desk" (form.make.reason reads
+# "Choose a folder first.", is a static text, ends at or left of Cancel and sits within 4 points of Make desk's
+# middle), "with a folder chosen nothing stands beside Make desk" and "a taken name's reason is under its field only";
+# in "window-forms-0.11", "Escape closes the New desk sheet and sends nothing"; in "window-names", "the sheet's other
+# button says what it does"; in "window-ended", "Start again and keep it says what keep it means"; in
+# "window-settings", "under the heading the page says changes save themselves", "Remove MacMosh from this workhorse…
+# has its grey line", "Remove MacMosh… is last in its panel, on a line of its own, and still a button", "with tabs in
+# iTerm2 Spare's Tabs has no Mosh line", "with tabs in Terminal Spare's Tabs says Mosh is used instead, and Mosh's
+# Attic says nothing", "the typed text reached Spare's name" and "the typed text reached Spare's projects folder".
+# The Settings page is taller now, so into_view scrolls an element into the window before the first action on it,
+# from Attic's Advanced down. New pictures show Spare's panel (window-settings-NN-spare-panel) and the relative key
+# file's refusal (window-settings-NN-relative-key).
 set -uo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -279,6 +297,19 @@ open_window() {
         close_menu
         return 1
     fi
+    # Look step 4: with the window-sidebar sample's seven Macs the menu is taller than the runner's screen allows, and
+    # Open MacMosh lies below the bottom of the screen's visible part (above the Dock), where the menu ends. The menu is
+    # scrolled with one posted scroll, the pointer on the menu near that bottom; the sign is tried both ways, as for the
+    # page (on pull request 185's second run, 30 scrolled it on macOS 26 and -30 did not).
+    local try
+    for try in 30 -30; do
+        [ "$y" -le $((visible_bottom - 12)) ] && break
+        say "Open MacMosh is at $x,$y, below the visible bottom ($visible_bottom): scroll the menu by $try lines"
+        tool scroll "$x" $((visible_bottom - 20)) "$try" > /dev/null
+        sleep 1.5
+        read -r idx x y name <<< "$(max find top "Open MacMosh" | grep '^found' | tail -n 1 | cut -d' ' -f2-)"
+        [ -z "${y:-}" ] && y=$((visible_bottom + 1))
+    done
     since=$(moment)
     say "click on line $idx [$name] at $x,$y"
     tool click "$x" "$y" > /dev/null
@@ -566,12 +597,15 @@ two_workhorses() {
 # now (the plan's Decision 9).
 sidebar_sample() {
     local entry id want r v missing="" rows since f i seen=""
-    rows="sidebar.workhorse sidebar.attic sidebar.spare sidebar.den sidebar.loft sidebar.addMac sidebar.settings"
+    rows="sidebar.workhorse sidebar.attic sidebar.spare sidebar.den sidebar.loft sidebar.annex sidebar.shed sidebar.addMac"
+    rows="$rows sidebar.settings"
     start_app window-sidebar || return
     if ! open_window; then stop_app; return; fi
     sleep 1
     for entry in "workhorse|Workhorse, Ready · 6 desks" "attic|Attic, Ready · 1 desk" "spare|Spare, Locked after a restart" \
-                 "den|Den, Can't reach it" "loft|Loft, Checking…" "addMac|Add a Mac…" "settings|Settings"; do
+                 "den|Den, Can't reach it" "loft|Loft, Checking…" \
+                 "annex|Workhorse-in-the-attic-by-the-window, Ready · 1 desk" "shed|Shed, Ready, sign-ins off" \
+                 "addMac|Add a Mac…" "settings|Settings"; do
         id="sidebar.${entry%%|*}"
         want=${entry#*|}
         r=$(wax find "$id" | grep '^found' | tail -n 1 | awk '{ print $NF }')
@@ -579,7 +613,7 @@ sidebar_sample() {
         if [ "$r" != AXButton ] || [ "$v" != "$want" ]; then missing="$missing [$id: ${r:-not found}, ${v:-nothing}]"; fi
     done
     if [ -z "$missing" ]; then
-        result PASS "each sidebar row is a button with its Mac's name and second line" "all seven rows read as expected"
+        result PASS "each sidebar row is a button with its Mac's name and second line" "all nine rows read as expected"
     else
         result FAIL "each sidebar row is a button with its Mac's name and second line" "missing or wrong:$missing"
     fi
@@ -1022,6 +1056,43 @@ rest_on_title() {
     sleep 2
 }
 
+# view_place <identifier> <window top> <window height>: "inside" when the element's top is at least the window's top
+# plus 28 (the title bar) and its bottom at most the window's bottom, else "below", "above", or "none" with no box.
+view_place() {
+    local top h
+    read -r _ top _ h <<< "$(box "$1")"
+    if [ -z "${h:-}" ]; then echo none
+    elif [ "$top" -lt $(($2 + 28)) ]; then echo above
+    elif [ $((top + h)) -gt $(($2 + $3)) ]; then echo below
+    else echo inside; fi
+}
+
+# into_view <identifier> (look step 4): when the element is not inside the window, one posted scroll at the page's
+# middle (right of the sidebar, as details_beside_and_under computes it), -100 lines when it is below or has no box and
+# 100 when it is above; if it is still not inside, the other sign once. No check and no result: it returns 1 and says
+# so in the log, so the check that follows fails on its own. Inside already, it costs two reads and no scroll.
+into_view() {
+    local fx fy fw fh px py place first
+    read -r _ fx fy fw fh <<< "$(wax frame | grep '^frame' | tail -n 1)"
+    if [ -z "${fh:-}" ]; then say "into_view [$1]: no frame for the window"; return 1; fi
+    place=$(view_place "$1" "$fy" "$fh")
+    [ "$place" = inside ] && return 0
+    px=$((fx + 201 + (fw - 201) / 2)); py=$((fy + fh / 2))
+    first=-100
+    [ "$place" = above ] && first=100
+    [ "$place" = none ] && say "into_view: no box for $1"
+    tool scroll "$px" "$py" "$first" > /dev/null
+    sleep 0.5
+    place=$(view_place "$1" "$fy" "$fh")
+    if [ "$place" != inside ]; then
+        tool scroll "$px" "$py" "$((-first))" > /dev/null
+        sleep 0.5
+        place=$(view_place "$1" "$fy" "$fh")
+    fi
+    say "into_view [$1]: $place after a scroll of $first lines at $px,$py (box $(box "$1"), window $fy+$fh)"
+    [ "$place" = inside ]
+}
+
 # selected_only <check> <chosen> <other…> (look step 3): PASS when the chosen element reads "isselected true" and every
 # other "isselected false"; DIFFERS when the chosen is true and some other has no selected attribute (listed); FAIL
 # otherwise.
@@ -1148,6 +1219,22 @@ forms_sample() {
     sleep 0.5
     # shellcheck disable=SC2088 # the field's own text, a tilde and all
     expect_value "with no projects folder the form offers one" "form.projectsFolder" "~/Development" 3
+    # Look step 4: with no folder chosen, one line stands on Make desk's line, just before Cancel.
+    local rb cb mb role
+    deadline=$((SECONDS + 3))
+    while v=$(val "form.make.reason"); [ "$v" != "Choose a folder first." ] && [ "$SECONDS" -lt "$deadline" ]; do sleep 0.5; done
+    role=$(wax find "form.make.reason" | grep '^found' | tail -n 1 | awk '{ print $NF }')
+    rb=$(box "form.make.reason"); cb=$(box "form.cancel"); mb=$(box "form.make")
+    if [ "$v" = "Choose a folder first." ] && [ "$role" = AXStaticText ] && awk -v r="$rb" -v c="$cb" -v m="$mb" 'BEGIN {
+            split(r, a, " "); split(c, b, " "); split(m, d, " ")
+            if (a[4] == "" || b[4] == "" || d[4] == "") exit 1
+            mid = (a[2] + a[4] / 2) - (d[2] + d[4] / 2); if (mid < 0) mid = -mid
+            exit !(a[1] + a[3] <= b[1] && mid <= 4) }'; then
+        result PASS "with no folder chosen the reason stands beside Make desk" "reads: $v ($role); reason $rb, Cancel $cb, Make desk $mb"
+    else
+        result FAIL "with no folder chosen the reason stands beside Make desk" \
+            "reads: ${v:-nothing} (${role:-not found}); reason ${rb:-?}, Cancel ${cb:-?}, Make desk ${mb:-?}"
+    fi
     snap new-desk-projects-folder
 
     # Save fills the list from the workhorse.
@@ -1169,6 +1256,11 @@ forms_sample() {
     # A click on a folder names the desk after it.
     click_id "form.folder.garden-planner"
     expect_value "a chosen folder names the desk" "form.name" "garden-planner" 3
+    if gone_id "form.make.reason" 3; then
+        result PASS "with a folder chosen nothing stands beside Make desk" "no form.make.reason"
+    else
+        result FAIL "with a folder chosen nothing stands beside Make desk" "form.make.reason reads: $(val form.make.reason)"
+    fi
 
     # The first window's line (issue 163): at script 0.12.0 its box is there and ticked at first, with no field.
     v=$(checked "form.sameAsDesk")
@@ -1190,13 +1282,16 @@ forms_sample() {
     else
         result FAIL "Make desk is off while the name is taken" "${v:-no answer}"
     fi
+    v=$(wax find "form.make.reason" | grep -E '^(found|notfound)' | tail -n 1)
+    result "$([ "$v" = notfound ] && echo PASS || echo FAIL)" "a taken name's reason is under its field only" \
+        "form.make.reason: ${v:-no answer}"
     snap taken-name
 
     # A typed path that is neither full nor starts with ~ says why under the field, and Make desk stays off.
     click_id "form.path" > /dev/null
     sleep 0.4
     tool type "Development/garden" > /dev/null
-    expect_value "a refused path says why under the field" "form.path.help" "A path is full, starting with /, or starts with ~." 3
+    expect_value "a refused path says why under the field" "form.path.help" "Type a full path, starting with / or with ~." 3
     snap bad-path
     clear_field "form.path"
     if gone_id "form.path.help" 3; then
@@ -1592,6 +1687,21 @@ forms_older_script() {
     expect_row "with an older script tmux names the window" "shop" "shop, zsh, "
     sleep 1
     snap older-script-after
+    # Look step 4: Escape still closes the sheet with Cancel in the look's style, and sends nothing.
+    if click_id "button.newDesk" && wait_id "form.newDesk" 6; then
+        since=$(moment)
+        tool keys 53 1 100 > /dev/null
+        if gone_id "form.newDesk" 3; then
+            sleep 1
+            v=$(applog "$since" | grep -cF " desk-new ")
+            result "$([ "$v" -eq 0 ] && echo PASS || echo FAIL)" "Escape closes the New desk sheet and sends nothing" \
+                "the sheet closed; $v desk-new line(s) since Escape"
+        else
+            result FAIL "Escape closes the New desk sheet and sends nothing" "form.newDesk is still there 3 s after Escape"
+        fi
+    else
+        result FAIL "Escape closes the New desk sheet and sends nothing" "New desk… did not open the sheet again"
+    fi
     stop_app
 }
 
@@ -1770,6 +1880,7 @@ window_names_sample() {
     result "$([ "$v" = "enabled false" ] && echo PASS || echo FAIL)" "Name is off while the name is unchanged" "${v:-no answer}"
     expect_value "the line under the field is the rule" "form.windowName.help" \
         "A window name is 1 to 32 letters, digits, spaces, -, _ and full stops. It can't start with a space or -, or end with a space." 3
+    expect_value "the sheet's other button says what it does" "form.useProgramsName" "Name it after the program running in it" 3
     snap sheet
 
     # Typing with nothing clicked: the selected name is replaced. A finding; the field is cleared after either way.
@@ -1954,6 +2065,8 @@ ended_sample() {
     else
         result FAIL "an ended desk has its three buttons" "missing or wrong:$missing"
     fi
+    expect_value "Start again and keep it says what keep it means" "ended.recipes.keepHelp" \
+        "Kept: the desk stays, closed, when its last shell exits." 3
     v=$(val "ended.recipes.second")
     # shellcheck disable=SC2016,SC2088 # the row's text, a tilde and $HOME as shown
     want='~/Development/my recipes · started with claude --continue "fix it" $HOME'
@@ -1986,6 +2099,8 @@ ended_sample() {
     result "$([ "$v" = "$want" ] && echo PASS || echo DIFFERS)" "a long command is whole behind its cut line" "it reads: ${v:-nothing}"
 
     # Start again on recipes: one call, the same desk, its folder with a space and its command as one argument.
+    # Look step 4: the Kept line under each row's buttons pushes recipes' below the window's bottom at the default size.
+    into_view ended.recipes.startAgain
     since=$(moment)
     click_id "ended.recipes.startAgain" > /dev/null
     sleep 0.6
@@ -2012,6 +2127,7 @@ ended_sample() {
 
     # Start again and keep it on garden: its own flags (no reopen, keep running) and --permanent.
     since=$(moment)
+    into_view ended.garden.keep
     click_id "ended.garden.keep" > /dev/null
     expect_log "Start again and keep it sends --permanent with the desk's flags" "$since" \
         "sample ssh: to=alex@192.168.1.20 batch=yes stdin=closed limit=15s run=~/.macmosh/macmosh-host desk-new garden /Users/alex/Development/garden --no-reopen --keep --permanent --command claude"
@@ -2026,6 +2142,7 @@ ended_sample() {
 
     # Forget on blog: the line goes and nothing is sent.
     since=$(moment)
+    into_view ended.blog.forget
     click_id "ended.blog.forget" > /dev/null
     if gone_id "ended.blog" 5; then
         result PASS "Forget removes the line" "ended.blog gone"
@@ -2177,7 +2294,7 @@ type_and() {
 # Name field, a click or key press on the page sets off the menu-open signal, or the window opened again does not
 # show the saved values. How a picture looks never fails it.
 settings_sample() {
-    local page_since v want file
+    local page_since v want file deadline
     start_app window-settings || return
     if ! open_window; then stop_app; return; fi
     sleep 1
@@ -2199,6 +2316,24 @@ settings_sample() {
     sleep 1
     result PASS "Settings in the sidebar opens the page" "settings.heading found"
     snap page
+    # Look step 4: the saving line under the heading, and Remove apart, last in Attic's panel, with its grey line.
+    expect_value "under the heading the page says changes save themselves" "settings.howSaved" \
+        "Each change is saved as you make it." 3
+    expect_value "Remove MacMosh from this workhorse… has its grey line" "settings.attic.remove.about" \
+        "Opens a terminal tab that lists what goes and asks first." 3
+    local kb rmb ab rr
+    kb=$(box settings.attic.checklist); rmb=$(box settings.attic.remove); ab=$(box settings.attic.remove.about)
+    rr=$(wax find "settings.attic.remove" | grep '^found' | tail -n 1 | awk '{ print $NF }')
+    if [ "$rr" = AXButton ] && awk -v k="$kb" -v r="$rmb" -v a="$ab" 'BEGIN {
+            split(k, x, " "); split(r, y, " "); split(a, z, " ")
+            if (x[4] == "" || y[4] == "" || z[4] == "") exit 1
+            exit !(y[2] >= x[2] + x[4] && z[2] >= y[2] + y[4]) }'; then
+        result PASS "Remove MacMosh… is last in its panel, on a line of its own, and still a button" \
+            "checklist $kb, Remove $rmb ($rr), its line $ab"
+    else
+        result FAIL "Remove MacMosh… is last in its panel, on a line of its own, and still a button" \
+            "checklist ${kb:-?}, Remove ${rmb:-?} (${rr:-not found}), its line ${ab:-?}"
+    fi
     v="$(val settings.attic.heading)|$(val settings.spare.heading)"
     result "$([ "$v" = "Attic|Spare" ] && echo PASS || echo FAIL)" "one section per workhorse, in saved order" "headings: $v"
     v="$(chosen settings.thisMac.terminal)|$(chosen settings.attic.connection)|$(chosen settings.attic.prediction)|$(chosen settings.spare.connection)|$(chosen settings.spare.prediction)"
@@ -2210,7 +2345,23 @@ settings_sample() {
 
     # The terminal: each choice saves settings.json's one field and nothing in the saved list.
     settings_step "Terminal: iTerm2 is saved" settings.json "terminal=iterm2" ok click_radio settings.thisMac.terminal "iTerm2"
+    if gone_id "settings.spare.connection.inTerminal" 3; then
+        result PASS "with tabs in iTerm2 Spare's Tabs has no Mosh line" "no settings.spare.connection.inTerminal"
+    else
+        result FAIL "with tabs in iTerm2 Spare's Tabs has no Mosh line" "it reads: $(val settings.spare.connection.inTerminal)"
+    fi
     settings_step "Terminal: Terminal is saved" settings.json "terminal=appleTerminal" ok click_radio settings.thisMac.terminal "Terminal"
+    deadline=$((SECONDS + 3))
+    while v=$(val "settings.spare.connection.inTerminal"); [ "$v" != "This Mac opens tabs in Terminal, so Mosh is used instead." ] \
+            && [ "$SECONDS" -lt "$deadline" ]; do sleep 0.5; done
+    want=$(wax find "settings.attic.connection.inTerminal" | grep -E '^(found|notfound)' | tail -n 1)
+    result "$([ "$v" = "This Mac opens tabs in Terminal, so Mosh is used instead." ] && [ "$want" = notfound ] && echo PASS || echo FAIL)" \
+        "with tabs in Terminal Spare's Tabs says Mosh is used instead, and Mosh's Attic says nothing" \
+        "settings.spare.connection.inTerminal reads: ${v:-nothing}; settings.attic.connection.inTerminal: ${want:-no answer}"
+    into_view settings.spare.remove.about
+    rest_on_title
+    snap spare-panel
+    into_view settings.thisMac.terminal
     settings_step "Terminal: Pick for me is saved" settings.json "terminal=(gone)" ok click_radio settings.thisMac.terminal "Pick for me"
     expect_value "the terminal's line says what uses it next" "settings.thisMac.terminal.line" "Saved. Used by the next tab MacMosh opens." 3
 
@@ -2273,8 +2424,10 @@ settings_sample() {
     else
         result PASS "Advanced is closed at first" "no settings.attic.keyFile"
     fi
+    into_view settings.attic.advanced
     if click_id "settings.attic.advanced" && wait_id "settings.attic.keyFile" 4; then
         result PASS "Advanced opens with a click" "settings.attic.keyFile found"
+        into_view settings.attic.keyFile
         v=$(val settings.attic.keyFile)
         result "$([ -z "$v" ] && echo PASS || echo FAIL)" "the key file is empty for MacMosh's own key" "it reads: ${v:-nothing}"
         snap advanced-open
@@ -2287,7 +2440,8 @@ settings_sample() {
         settings_step "a key file that is not a full path is refused" workhorses.json "" failed \
             type_and settings.attic.keyFile "keys/work" return
         expect_value "a relative key file says what is wrong" "settings.attic.keyFile.line" \
-            "A key file's path is full, starting with /, or starts with ~." 3
+            "Type a full path, starting with / or with ~." 3
+        snap relative-key
         # An empty file in ~/.ssh, on a GitHub runner only: never in a person's own ~/.ssh.
         if [ -n "${GITHUB_ACTIONS:-}" ]; then
             mkdir -p "$HOME/.ssh" && : > "$HOME/.ssh/sample_work_key"
@@ -2307,10 +2461,12 @@ settings_sample() {
 
     # The two buttons open today's tabs through the menu's path.
     local since
+    into_view settings.attic.checklist
     since=$(moment)
     click_id "settings.attic.checklist" > /dev/null
     expect_ran "Run the checklist… opens the checklist's tab" "$since" "tab prepare attic --pause"
     sleep 1
+    into_view settings.attic.remove
     since=$(moment)
     click_id "settings.attic.remove" > /dev/null
     expect_ran "Remove MacMosh from this workhorse… opens remove's tab" "$since" "tab remove attic"
@@ -2329,8 +2485,11 @@ settings_sample() {
     local typed_since cx cy rest_since signals
     typed_since=$(moment)
     rest_since=$typed_since
+    into_view settings.spare.name
     clear_field "settings.spare.name" && tool type "Typed" > /dev/null
     sleep 0.5
+    v=$(val settings.spare.name)
+    result "$([ "$v" = "Typed" ] && echo PASS || echo FAIL)" "the typed text reached Spare's name" "the field reads: ${v:-nothing}"
     click_id "sidebar.attic" > /dev/null
     sleep 1.5
     v=$(val page.headline)
@@ -2347,9 +2506,13 @@ settings_sample() {
     # Text typed and not left, then the window closed and opened again: the saved values, and the typed text only
     # if it was saved.
     typed_since=$(moment)
+    into_view settings.spare.projectsFolder
     # shellcheck disable=SC2088 # the text typed, a tilde and all
     clear_field "settings.spare.projectsFolder" && tool type "~/Typed" > /dev/null
     sleep 0.5
+    v=$(val settings.spare.projectsFolder)
+    # shellcheck disable=SC2088 # the text expected, a tilde and all
+    result "$([ "$v" = "~/Typed" ] && echo PASS || echo FAIL)" "the typed text reached Spare's projects folder" "the field reads: ${v:-nothing}"
     # The menu-open signal, counted up to the close: opening the window again goes through the menu.
     signals=$(applog "$rest_since" | grep -cE "menu opened|menu tracking")
     read -r _ cx cy <<< "$(wax close | grep '^close' | tail -n 1)"
@@ -2407,8 +2570,10 @@ PY
 
     # A key file typed and not sent, then another sidebar line chosen: it is refused as focus leaves, and the page
     # opened again still says why, under the field, with Advanced open by itself.
+    into_view settings.attic.advanced
     if click_id "settings.attic.advanced" && wait_id "settings.attic.keyFile" 4; then
         typed_since=$(moment)
+        into_view settings.attic.keyFile
         # shellcheck disable=SC2088 # the text typed, a tilde and all
         clear_field "settings.attic.keyFile" && tool type "~/.ssh/still_no_key" > /dev/null
         sleep 0.5
@@ -2440,7 +2605,13 @@ PY
 
 ############################################################ the run
 say "driving the window of $APP on $os ($(sw_vers -productVersion))"
-tool preflight > /dev/null
+# The bottom of the main screen's visible part, above the Dock, from menutool's "display main bounds=(0.0, 0.0, 1024.0,
+# 768.0) screens=["(…) visible=(0.0, 62.0, 1024.0, 681.0) …"]": the screen's height less the visible part's lowest y
+# (AppKit counts y up from the bottom); 768 less 63 when not read.
+preflight=$(tool preflight)
+screen_bottom=$(sed -n 's/.*display main bounds=([0-9.]*, [0-9.]*, [0-9.]*, \([0-9]*\).*/\1/p' <<< "$preflight" | head -n 1)
+visible_low=$(sed -n 's/.*visible=([0-9.]*, \([0-9]*\).*/\1/p' <<< "$preflight" | head -n 1)
+visible_bottom=$(( ${screen_bottom:-768} - ${visible_low:-63} ))
 lim 10 "$TOOL" move 600 500 > /dev/null
 
 forms_sample

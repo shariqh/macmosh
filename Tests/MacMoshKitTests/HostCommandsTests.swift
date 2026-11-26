@@ -304,7 +304,7 @@ private func desksListing(_ names: [String]) -> FakeRunner {
         let permanent = try NewDeskRequest.fromFlags(name: "web", folder: "/a", reopen: false, noReopen: false,
                                                      keep: true, permanent: true, command: "npm run dev")
         #expect(permanent == NewDeskRequest(name: "web", folder: "/a", reopen: true, keep: true, permanent: true,
-                                            command: "npm run dev"))
+                                            command: "npm run dev", firstWindowAfterDesk: true))
     }
 
     @Test func reopenAndNoReopenTogetherIsAMistake() {

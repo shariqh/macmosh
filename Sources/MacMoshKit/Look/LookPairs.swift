@@ -52,9 +52,9 @@ extension Look {
     public static let pairs: [LookPair] = [
         // The page name, the Desks heading, a desk's name, the hint, a set-apart button's words.
         LookPair(text: .primary, background: .ground),
-        // A secondary button's words.
+        // A secondary button's words, a done result.
         LookPair(text: .primary, background: .surface),
-        // Window names, the summary, "No tab", "Closed", "Updating…", a done result, the notice.
+        // Window names, the summary, "No tab", "Closed", "Updating…", the notice.
         LookPair(text: .secondary, background: .ground),
         // The "Made by hand" tag.
         LookPair(text: .secondary, background: .surface),

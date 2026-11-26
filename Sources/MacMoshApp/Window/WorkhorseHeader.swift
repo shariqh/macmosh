@@ -41,8 +41,9 @@ struct WorkhorseHeader: View {
                     .foregroundStyle(LookColor.text(.secondary, on: .ground))
                     .fixedSize(horizontal: false, vertical: true)
             }
+            // The slot keeps its two lines; its own 4 points above went in look step 4, so the band from the summary to
+            // Desks is 4 points shorter and the list still never moves.
             ResultSlotView(slot: page.resultSlot(notice: notice))
-                .padding(.top, 4)
         }
         .font(.system(size: LookSize.bodyFont))
     }

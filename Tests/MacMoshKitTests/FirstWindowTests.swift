@@ -32,7 +32,7 @@ private func form(_ version: String = "0.12.0", name: String = "web") -> NewDesk
 }
 
 @Suite struct FirstWindowTests {
-    static let question = "Name for its first window (Enter for web, - to name it after its program): "
+    static let question = "First window's name (Enter: same name as the desk, web; -: named after the program running in it): "
 
     // MARK: the rule
 
@@ -293,10 +293,10 @@ private func form(_ version: String = "0.12.0", name: String = "web") -> NewDesk
         #expect(result.code == 0)
         #expect(ui.asked.isEmpty)
         #expect(runner.calls.map { $0.argv.last } == ["~/.macmosh/macmosh-host desk-new web /Users/alex/web --reopen --window-name 'build logs'"])
-        // Without the flag, as before: nothing is asked and nothing about the window is sent.
+        // Without the flag: nothing is asked, and the desk's name is sent when the script can take it (look step 4).
         let plain = try NewDeskRequest.fromFlags(name: "web", folder: "/Users/alex/web", reopen: false, noReopen: false,
                                                  keep: false, permanent: false, command: nil)
-        #expect(plain.firstWindow == nil)
+        #expect(plain.firstWindow == nil && plain.firstWindowAfterDesk)
         // The interactive form with the flag given asks every other question but this one.
         let asking = try NewDeskRequest.fromFlags(name: nil, folder: nil, reopen: false, noReopen: false, keep: false,
                                                   permanent: false, command: nil, windowName: "build logs")
@@ -305,5 +305,58 @@ private func form(_ version: String = "0.12.0", name: String = "web") -> NewDesk
         _ = await flow(r2).newDesk(checked(), request: asking, ui: askingUI)
         #expect(!askingUI.asked.contains(Self.question))
         #expect(r2.calls.map { $0.argv.last } == ["~/.macmosh/macmosh-host desk-new web /Users/alex/web --reopen --window-name 'build logs'"])
+    }
+    // MARK: the one-line command (look step 4, design 7 "One behaviour change")
+
+    private func oneLine(_ windowName: String? = nil) throws -> NewDeskRequest {
+        try NewDeskRequest.fromFlags(name: "web", folder: "/Users/alex/web", reopen: false, noReopen: false, keep: false,
+                                     permanent: false, command: nil, windowName: windowName)
+    }
+
+    @Test func theOneLineCommandNamesTheFirstWindowAfterTheDesk() async throws {
+        let runner = ok(), ui = ScriptedInteraction(answers: ["should not be read"])
+        let result = await flow(runner).newDesk(checked(), request: try oneLine(), ui: ui)
+        #expect(result.code == 0 && ui.asked.isEmpty)
+        #expect(runner.calls.map { $0.argv.last } == ["~/.macmosh/macmosh-host desk-new web /Users/alex/web --reopen --window-name web"])
+    }
+
+    @Test func aDashLeavesTheFirstWindowToItsProgram() async throws {
+        #expect(try oneLine("-").firstWindow == .afterItsProgram)
+        for version in ["0.12.0", "0.11.0"] {
+            let runner = ok()
+            let result = await flow(runner).newDesk(checked(version), request: try oneLine("-"), ui: ScriptedInteraction())
+            #expect(result.code == 0, "\(version)")
+            #expect(runner.calls.map { $0.argv.last } == ["~/.macmosh/macmosh-host desk-new web /Users/alex/web --reopen"], "\(version)")
+        }
+    }
+
+    /// Review Focus 1: with a script older than 0.12.0 (or one whose version is not known) the desk is made, nothing
+    /// about the window is sent, and nothing is refused.
+    @Test func theOneLineCommandWithAnOlderScriptSendsNothingAboutTheWindow() async throws {
+        for version in ["0.11.0", ""] {
+            let runner = ok()
+            let result = await flow(runner).newDesk(checked(version), request: try oneLine(), ui: ScriptedInteraction())
+            #expect(result.code == 0 && result.reason == nil, "\(version)")
+            #expect(runner.calls.map { $0.argv.last } == ["~/.macmosh/macmosh-host desk-new web /Users/alex/web --reopen"], "\(version)")
+        }
+    }
+
+    /// Review Focus 2: Start again and the window's form build a request with no first window and ask nothing; they
+    /// do not pick up the one-line command's default.
+    @Test func onlyTheOneLineCommandDefaultsToTheDesksName() async {
+        let request = NewDeskRequest(name: "web", folder: "/Users/alex/web", permanent: true, command: "claude")
+        #expect(!request.firstWindowAfterDesk && request.firstWindow == nil)
+        let runner = ok()
+        _ = await flow(runner, .window).newDesk(checked(), request: request, ui: QuietInteraction())
+        #expect(runner.calls.map { $0.argv.last } == ["~/.macmosh/macmosh-host desk-new web /Users/alex/web --reopen --permanent --command claude"])
+    }
+
+    @Test func theQuestionAndTheHelpUseTheFormsWords() {
+        #expect(DeskFlow.firstWindowQuestion(DeskName("website")!)
+                == "First window's name (Enter: same name as the desk, website; -: named after the program running in it): ")
+        #expect(NewDeskRequest.windowNameHelp == "A name for the desk's first window, or - to name it after the program running in it. "
+                + WindowName.rule + " Left out with the desk's name and folder given, the window gets the desk's name; when the "
+                + "questions run, they ask for it. With a workhorse script older than 0.12.0, only - or leaving it out works, and "
+                + "the window is named after the program running in it.")
     }
 }

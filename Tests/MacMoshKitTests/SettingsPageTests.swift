@@ -123,6 +123,42 @@ import Testing
         #expect(p.none == "No workhorses yet. Add a Mac… in the sidebar adds one.")
     }
 
+    // MARK: look step 4 (design 6.9 and 7, issue 160 items 1 to 4)
+
+    @Test func theHeadingSaysChangesSaveThemselvesAndRemoveSaysWhatItOpens() {
+        let p = page([attic])
+        #expect(p.howSaved == "Each change is saved as you make it.")
+        #expect(p.workhorses[0].removeHelp == "Opens a terminal tab that lists what goes and asks first.")
+        #expect(ButtonKind.of(p.workhorses[0].remove.action) == .destructive
+                && ButtonKind.of(p.workhorses[0].checklist.action) == .secondary)
+        #expect(SettingsWords.keyFileNotAPath == "Type a full path, starting with / or with ~."
+                && SettingsWords.keyFileNotAPath == NewDeskForm.Words.typeAFullPath)
+    }
+
+    /// Review Focus 5: the line follows the terminal tabs open in: the setting, else Pick for me's, also when the
+    /// settings file can't be read.
+    @Test func theTabsLineFollowsWhereThisMacOpensTabs() {
+        let line = "This Mac opens tabs in Terminal, so Mosh is used instead."
+        let cases: [(AppSettings?, TerminalApp, String?)] = [
+            (AppSettings(terminal: .appleTerminal), .iterm2, line), (AppSettings(terminal: .iterm2), .appleTerminal, nil),
+            (AppSettings(), .appleTerminal, line), (AppSettings(), .iterm2, nil), (nil, .appleTerminal, line), (nil, .iterm2, nil)]
+        for (settings, pick, want) in cases {
+            let p = page([attic, spare], settings: settings, settingsProblem: settings == nil ? "unreadable" : nil, pick: pick)
+            #expect(p.workhorses[1].connectionNote == want, "\(String(describing: settings)) \(pick)")
+            #expect(p.workhorses[0].connectionNote == nil)   // Attic is on Mosh
+        }
+    }
+
+    @Test func onlyASavedLineHasTheTick() {
+        for field in SettingField.allCases {
+            for w in [attic, spare] {
+                #expect(SettingLine(field: field, words: SettingsWords.saved(field, w), isProblem: false).showsTick, "\(field)")
+            }
+        }
+        #expect(page([spare]).workhorses[0].under(.projectsFolder)?.showsTick == false)
+        #expect(!SettingLine(field: .name, words: "Saved. but refused", isProblem: true).showsTick)
+    }
+
     @Test func anUnreadableListGivesTheStoresSentenceAndKeepsTheTerminal() {
         let p = page([], listProblem: "Can't read MacMosh's saved settings: workhorses.json: not JSON",
                      settings: AppSettings(terminal: .iterm2))
@@ -234,7 +270,7 @@ import Testing
     @Test func aRelativeKeyFileIsRefusedWithoutLooking() {
         let seen = Box<[String]>([])
         #expect(plan(.keyFile, ".ssh/id_work", exists: { seen.value.append($0); return true })
-                == .refused("A key file's path is full, starting with /, or starts with ~."))
+                == .refused("Type a full path, starting with / or with ~."))
         #expect(seen.value.isEmpty)
     }
 

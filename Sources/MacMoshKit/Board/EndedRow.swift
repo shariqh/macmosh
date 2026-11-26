@@ -33,6 +33,17 @@ public struct EndedRow: Sendable, Equatable, Identifiable {
     public static let starting = "Starting…"
     /// Never on screen: Forget takes the line away at once.
     public static let forgetting = "Forgetting…"
+    /// Beside Start again and keep it, or under the buttons when the row has no room (issue 156 item 2, look design 7).
+    public static let keptMeans = "Kept: the desk stays, closed, when its last shell exits."
+
+    /// What keep it means, while the row has Start again and keep it (script 0.5.0 or newer); nil otherwise.
+    public var keepHelp: String? {
+        let hasKeepIt = buttons.contains { b in
+            if case .window(.startAgain(_, _, let keepIt)) = b.action { return keepIt }
+            return false
+        }
+        return hasKeepIt ? Self.keptMeans : nil
+    }
 
     /// `activity` turns the three buttons off while an action for that name runs (one per desk name at a time);
     /// without `canKeep` (a script older than 0.5.0) there is no Start again and keep it.
