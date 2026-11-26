@@ -84,6 +84,10 @@ private func pixelSize(_ relativePath: String) throws -> [Int] {
             (l["hidden-specializations"] as? [[String: Any]] ?? []).map { "\($0["appearance"] as? String ?? "default")=\($0["value"] as? Bool ?? false)" } }
         #expect(hidden(layers[0]) == ["default=false", "dark=true"] && hidden(layers[1]) == ["default=true", "dark=false"])
         #expect((json["supported-platforms"] as? [String: Any])?["squares"] as? [String] == ["macOS"])
+        // Round 2, decision 6: with the group's translucency on (the default), ictool's renders lightened the light
+        // M's lower rows and darkened the dark M's; with it off they match the layer pictures.
+        let translucency = (json["groups"] as? [[String: Any]])?.first?["translucency"] as? [String: Any]
+        #expect(translucency?["enabled"] as? Bool == false)
         #expect(try pixelSize("App/AppIcon.icon/Assets/m-light.png") == [1024, 1024])
         #expect(try pixelSize("App/AppIcon.icon/Assets/m-dark.png") == [1024, 1024])
         #expect(try pixelSize("App/AppIcon-16.png") == [16, 16]) }
@@ -110,13 +114,41 @@ private func pixelSize(_ relativePath: String) throws -> [Int] {
         #expect(sampleCheck.lowerBound < resources.lowerBound && resources.lowerBound < firstSign.lowerBound)
         #expect(script.components(separatedBy: "codesign --verify --deep --strict").count == 2) }
 
-    @Test func theFallbackIconsetHasEverySize() throws {
+    /// Round 2, decision 3: scripts/make-icon.sh is the one written way to make the icon's files again, by hand,
+    /// with Xcode 26 or newer. It writes only under App/ and in its own work folder, and deletes nothing.
+    @Test func theIconIsMadeAgainOnlyByMakeIcon() throws {
+        let url = repoRoot().appendingPathComponent("scripts/make-icon.sh")
+        let script = try String(contentsOf: url, encoding: .utf8)
+        #expect(script.filter { $0 == "\n" }.count <= 70)
+        #expect(FileManager.default.isExecutableFile(atPath: url.path))
+        for part in ["xcrun actool \"$PWD/App/AppIcon.icon\"", "--platform macosx", "--minimum-deployment-target 15.0",
+                     "--app-icon AppIcon", "--target-device mac", "--standalone-icon-behavior all", "DEVELOPER_DIR",
+                     "scripts/draw-icon/main.swift Sources/MacMoshKit/Look/IconArt.swift", "iconutil -c iconset -o",
+                     "icon_16x16.png", "App/AppIcon-16.png", "App/Assets.car", "App/AppIcon.iconset", "mktemp -d"] {
+            #expect(script.contains(part), "\(part)") }
+        for line in script.split(separator: "\n") where line.trimmingCharacters(in: .whitespaces).hasPrefix("cp ") {
+            let target = String(line.split(separator: " ").last ?? "")
+            #expect(target.hasPrefix("\"App/") || target.hasPrefix("App/") || target.hasPrefix("\"$work"), "\(line)") }
+        #expect(script.range(of: #"(^|[\s;|&(])rm\s"#, options: .regularExpression) == nil)
+        let check = try String(contentsOf: repoRoot().appendingPathComponent("scripts/check.sh"), encoding: .utf8)
+        #expect(check.contains("shellcheck scripts/make-icon.sh"))
+        let workflow = try String(contentsOf: repoRoot().appendingPathComponent(".github/workflows/icon-pictures.yml"),
+                                  encoding: .utf8)
+        #expect(workflow.contains("'scripts/make-icon.sh'"))
+        let build = try String(contentsOf: repoRoot().appendingPathComponent("scripts/build-app.sh"), encoding: .utf8)
+        // The build only names it, in comments and in its stop message; it never runs it.
+        #expect(!build.split(separator: "\n").contains { line in
+            let code = line.trimmingCharacters(in: .whitespaces)
+            return code.contains("make-icon.sh") && !code.hasPrefix("#") && !code.hasPrefix("echo ") }) }
+
+    /// The iconset that build-app.sh packs into AppIcon.icns: actool's light render, every size, with the solid M at 16.
+    @Test func theIconsetHasEverySize() throws {
         let sizes = [("icon_16x16.png", 16), ("icon_16x16@2x.png", 32), ("icon_32x32.png", 32), ("icon_32x32@2x.png", 64),
                      ("icon_128x128.png", 128), ("icon_128x128@2x.png", 256), ("icon_256x256.png", 256),
                      ("icon_256x256@2x.png", 512), ("icon_512x512.png", 512), ("icon_512x512@2x.png", 1024)]
         for (name, side) in sizes {
             #expect(try pixelSize("App/AppIcon.iconset/\(name)") == [side, side], "\(name)") }
-        // The 16-pixel picture is the solid M, not a shrunk render of the tiles (Task 6).
+        // The 16-pixel picture is the solid M, not a shrunk render of the tiles (design 8.1).
         let root = repoRoot()
         #expect(try Data(contentsOf: root.appendingPathComponent("App/AppIcon.iconset/icon_16x16.png"))
             == Data(contentsOf: root.appendingPathComponent("App/AppIcon-16.png"))) }

@@ -4,7 +4,7 @@ name: Icon pictures
 # The Remove confirmation's pictures, where an alert may show the icon, come from the Menu pictures workflow.
 on:
   pull_request:
-    paths: ['App/**', 'scripts/build-app.sh', 'scripts/draw-icon/**', 'scripts/ci/icontool.swift',
+    paths: ['App/**', 'scripts/build-app.sh', 'scripts/make-icon.sh', 'scripts/draw-icon/**', 'scripts/ci/icontool.swift',
             'scripts/ci/icon-pictures.sh', 'Sources/MacMoshKit/Look/IconArt.swift', '.github/workflows/icon-pictures.yml']
   workflow_dispatch:
 permissions:

@@ -38,6 +38,9 @@ shellcheck scripts/embed-host-script.sh
 echo "check.sh: shellcheck scripts/build-app.sh"
 shellcheck scripts/build-app.sh
 
+echo "check.sh: shellcheck scripts/make-icon.sh"
+shellcheck scripts/make-icon.sh
+
 echo "check.sh: shellcheck scripts/ci"
 shellcheck scripts/ci/drive-menu.sh scripts/ci/drive-window.sh scripts/ci/try-select.sh scripts/ci/try-title.sh
 shellcheck scripts/ci/icon-pictures.sh
