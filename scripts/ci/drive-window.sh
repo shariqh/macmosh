@@ -652,6 +652,10 @@ details_beside_and_under() {
         result FAIL "at the smallest window Remove… stays in the window" "Remove… ends at ${rr:-?}, the window at $((fx + fw))"
     fi
     if [ -n "$sign" ]; then
+        # The pointer rested on the page for the scroll, where a fact's help tag would cover the picture: the title
+        # bar has none.
+        lim 10 "$TOOL" move "$px" "$((fy + 12))" >> "$LOG" 2>&1
+        sleep 1
         snap website-windows-minimum-size
         tool scroll "$px" "$py" "$((-sign))" > /dev/null
         sleep 1
