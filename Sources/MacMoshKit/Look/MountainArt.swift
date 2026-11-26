@@ -23,8 +23,22 @@ public struct MountainDot: Sendable, Equatable {
 public enum MountainArt {
     /// The table read four numbers at a time. Each is divided, never multiplied by 0.1 or 0.01: a product can differ
     /// from the literal the drawing writes, and the tests compare exactly.
-    public static let dots: [MountainDot] = stride(from: 0, to: table.count - 3, by: 4).map { i in
-        MountainDot(x: Double(table[i]) / 10, y: Double(table[i + 1]) / 10, radius: Double(table[i + 2]) / 100,
-                    strength: Int(table[i + 3]))
+    public static let dots: [MountainDot] = readTable()
+
+    /// A plain loop with every type written out: the compiler on CI's macOS 26 runner could not type-check a
+    /// `stride(...).map` closure over the table in reasonable time (pull request 179's first run).
+    private static func readTable() -> [MountainDot] {
+        var dots: [MountainDot] = []
+        dots.reserveCapacity(table.count / 4)
+        var i = 0
+        while i + 3 < table.count {
+            let x: Double = Double(table[i]) / 10
+            let y: Double = Double(table[i + 1]) / 10
+            let radius: Double = Double(table[i + 2]) / 100
+            let strength: Int = Int(table[i + 3])
+            dots.append(MountainDot(x: x, y: y, radius: radius, strength: strength))
+            i += 4
+        }
+        return dots
     }
 }

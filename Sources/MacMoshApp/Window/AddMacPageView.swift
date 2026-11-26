@@ -114,15 +114,18 @@ struct LetterMTile: View {
 /// context and fills the outlined region."
 struct MountainArtView: View {
     var body: some View {
-        let scale = LookSize.mountainScale
+        let scale: Double = LookSize.mountainScale
         Canvas { context, _ in
             for strength in MountainArt.strengths.indices {
                 var path = Path()
                 for dot in MountainArt.dots where dot.strength == strength {
-                    let r = dot.radius * scale
-                    path.addEllipse(in: CGRect(x: dot.x * scale - r, y: dot.y * scale - r, width: 2 * r, height: 2 * r))
+                    let r: Double = dot.radius * scale
+                    let x: Double = dot.x * scale - r
+                    let y: Double = dot.y * scale - r
+                    path.addEllipse(in: CGRect(x: x, y: y, width: 2 * r, height: 2 * r))
                 }
-                context.fill(path, with: .color(LookColor.mark(.clayArt).opacity(MountainArt.strengths[strength])))
+                let opacity: Double = MountainArt.strengths[strength]
+                context.fill(path, with: .color(LookColor.mark(.clayArt).opacity(opacity)))
             }
         }
         .frame(width: MountainArt.width * scale, height: MountainArt.height * scale)
