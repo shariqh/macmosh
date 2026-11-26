@@ -322,8 +322,22 @@ private func locked(_ w: Workhorse = attic) -> Gathered {
         let (refresher, screen) = make(Script([[ready()]]), saved: SavedList([attic]))
         await screen.reloadList()
         await refresher.refresh()
-        refresher.finishWindowAction(id: "attic", result: "Removed the desk website from Attic.")
+        refresher.finishWindowAction(id: "attic", result: "Removed the desk website from Attic.", kind: .done)
         #expect(screen.board.workhorses.first?.result == "Removed the desk website from Attic.")
         #expect(screen.notice == "Removed the desk website from Attic.")
+    }
+
+    /// Whether it worked reaches the board with the sentence (look design 6.3).
+    @Test func aWindowActionsResultKindIsOnTheBoard() async {
+        let (refresher, screen) = make(Script([[ready()]]), saved: SavedList([attic]))
+        await screen.reloadList(); await refresher.refresh()
+        refresher.finishWindowAction(id: "attic", result: "Removed the desk website from Attic.", kind: .done)
+        #expect(screen.board.workhorses.first?.resultKind == .done)
+        refresher.finishWindowAction(id: "attic", result: "website wasn't removed. It didn't work.", kind: .failed)
+        let w = screen.board.workhorses.first
+        #expect(w?.result == "website wasn't removed. It didn't work." && w?.resultKind == .failed)
+        refresher.finishWindowAction(id: "attic", result: "MacMosh didn't hear back from Attic about website within 15 seconds.",
+                                     kind: .unknown)
+        #expect(screen.board.workhorses.first?.resultKind == .unknown)
     }
 }

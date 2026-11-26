@@ -22,11 +22,11 @@ private func result(_ state: WorkhorseState, workhorse: Workhorse = attic, statu
 
 private func board(_ latest: [CheckResult], lastReady: [CheckResult] = [], checking: Set<String> = [],
                    order: [Workhorse]? = nil, waiting: Set<String> = [], ended: [String: [EndedDesk]] = [:],
-                   results: [String: String] = [:]) -> Board {
+                   results: [String: String] = [:], resultKinds: [String: ResultKind] = [:]) -> Board {
     BoardModel.build(latest: Dictionary(latest.map { ($0.workhorse.id, $0) }, uniquingKeysWith: { a, _ in a }),
                      lastReady: Dictionary(lastReady.map { ($0.workhorse.id, $0) }, uniquingKeysWith: { a, _ in a }),
                      checking: checking, order: order ?? latest.map(\.workhorse),
-                     waitingForDeskServer: waiting, ended: ended, results: results,
+                     waitingForDeskServer: waiting, ended: ended, results: results, resultKinds: resultKinds,
                      now: formatNow, timeZone: formatZone)
 }
 
@@ -340,9 +340,11 @@ private func titles(_ buttons: [BoardButton]) -> [String] { buttons.map(\.title)
                              keep: false, endedAt: utcDate(2027, 1, 15, 15, 10))
         let b = board([result(.ready(signIns: true), status: try boardReport())],
                       ended: ["attic": [shop], "den": [shop]],
-                      results: ["attic": "Created the desk garden on Attic.", "den": "x"])
+                      results: ["attic": "Created the desk garden on Attic.", "den": "x"], resultKinds: ["attic": .failed])
         let w = try #require(b.workhorses.first)
         #expect(w.result == "Created the desk garden on Attic.")
+        #expect(w.resultKind == .failed)
+        #expect(try #require(board([result(.ready(signIns: true), status: try boardReport())]).workhorses.first).resultKind == nil)
         let ended = try #require(w.ended.first)
         #expect(w.ended.count == 1)
         #expect(ended.name == "shop" && ended.folder == "/Users/alex/Development/shop")

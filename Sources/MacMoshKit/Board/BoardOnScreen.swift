@@ -35,6 +35,7 @@ public final class BoardOnScreen: ObservableObject {
         var waitingForDeskServer: Set<String>
         var tabs: TabsSeen?
         var results: [String: String] = [:]
+        var resultKinds: [String: ResultKind] = [:]
         var ended: [String: [EndedDesk]] = [:]
     }
 
@@ -84,14 +85,16 @@ public final class BoardOnScreen: ObservableObject {
                     guard let self else { return }
                     self.take(Inputs(latest: latest, lastReady: lastReady, checking: checking,
                                      waitingForDeskServer: waiting, tabs: tabs, results: self.inputs.results,
-                                     ended: self.inputs.ended))
+                                     resultKinds: self.inputs.resultKinds, ended: self.inputs.ended))
                 }
             })
-        // The result line of the window's last action on each workhorse (step 4).
-        watches.append(refresher.$results.sink { [weak self] results in
+        // The result line of the window's last action on each workhorse (step 4), and whether it worked, joined as
+        // above.
+        watches.append(refresher.$results.combineLatest(refresher.$resultKinds).sink { [weak self] results, kinds in
             MainActor.assumeIsolated {
-                guard let self, self.inputs.results != results else { return }
+                guard let self, self.inputs.results != results || self.inputs.resultKinds != kinds else { return }
                 self.inputs.results = results
+                self.inputs.resultKinds = kinds
                 self.rebuild()
             }
         })
@@ -163,7 +166,8 @@ public final class BoardOnScreen: ObservableObject {
     private func rebuild() {
         let next = BoardModel.build(latest: inputs.latest, lastReady: inputs.lastReady, checking: inputs.checking,
                                     order: order, waitingForDeskServer: inputs.waitingForDeskServer, tabs: inputs.tabs,
-                                    ended: inputs.ended, results: inputs.results, now: now(), timeZone: timeZone)
+                                    ended: inputs.ended, results: inputs.results, resultKinds: inputs.resultKinds,
+                                    now: now(), timeZone: timeZone)
         if next != board { board = next }
     }
 }

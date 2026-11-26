@@ -32,6 +32,8 @@ public final class MenuRefresher: ObservableObject {
     /// By workhorse id, what the window's last desk action on it said (main window design, section 7.2): its
     /// result line. Set only by `finishWindowAction`.
     @Published public private(set) var results: [String: String] = [:]
+    /// By workhorse id, whether that action worked (look design 6.3): beside `results`, set with it.
+    @Published public private(set) var resultKinds: [String: ResultKind] = [:]
     /// How many checks have ended since the app started, whatever they found. The window waits on it for the
     /// check after its action (`WindowActionRunner`), which a steady stream of checks can't hold up.
     @Published public private(set) var checksDone = 0
@@ -242,8 +244,10 @@ public final class MenuRefresher: ObservableObject {
 
     /// A window action on that workhorse ended (main window design, section 7.2): `result` becomes its result
     /// line in the window and the menu's notice, so the menu says it too if the window was closed meanwhile.
-    /// This and `perform` are the only places the notice is set.
-    public func finishWindowAction(id: String, result: String) {
+    /// This and `perform` are the only places the notice is set. `kind` says whether it worked; it is set first, so
+    /// the window has it by the time the sentence arrives.
+    public func finishWindowAction(id: String, result: String, kind: ResultKind) {
+        resultKinds[id] = kind
         results[id] = result
         notice = result
     }

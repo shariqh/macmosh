@@ -168,6 +168,7 @@ private func ok() -> FakeRunner { FakeRunner { _ in FakeRunner.ok() } }
         #expect(rig.tabs.opened.count == 1)
         #expect(rig.tabs.opened.first?.line.hasSuffix("connect attic recipes") == true)
         #expect(rig.refresher.results["attic"] == "Started recipes again on Attic.")
+        #expect(rig.refresher.resultKinds["attic"] == .done)
         #expect(rig.refresher.notice == "Started recipes again on Attic.")
         #expect(rig.refresher.latest["attic"]?.status?.desks.contains { $0.name.value == "recipes" } == true)
         #expect(rig.ended == ["blog", "garden"])
@@ -188,6 +189,7 @@ private func ok() -> FakeRunner { FakeRunner { _ in FakeRunner.ok() } }
         #expect(entry.problem == reason)
         await rig.runner.idle()
         #expect(rig.refresher.results["attic"] == "recipes wasn't started again. " + reason)
+        #expect(rig.refresher.resultKinds["attic"] == .failed)
         #expect(rig.actionLines == ["window action: startAgain failed"])
         #expect(rig.tabs.opened.isEmpty)
         #expect(rig.runner.activity("attic").arriving.isEmpty)
@@ -216,6 +218,7 @@ private func ok() -> FakeRunner { FakeRunner { _ in FakeRunner.ok() } }
         #expect(rig.refresher.ended["attic"]?.first { $0.name == "recipes" }?.problem == unsure)
         await rig.runner.idle()
         #expect(rig.refresher.results["attic"] == unsure)
+        #expect(rig.refresher.resultKinds["attic"] == .unknown)
         #expect(rig.actionLines == ["window action: startAgain failed"])
         // It had worked: the next check shows recipes open, and the entry goes.
         rig.desks.open("recipes")

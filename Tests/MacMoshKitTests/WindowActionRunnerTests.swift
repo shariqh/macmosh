@@ -200,6 +200,7 @@ private func ok(_ stdout: String = "") -> FakeRunner { FakeRunner { _ in FakeRun
         #expect(result == .failed("Attic already has a desk with that name. Pick another name."))
         await rig.runner.idle()
         #expect(rig.refresher.results["attic"] == "The desk garden-planner wasn't made. Attic already has a desk with that name. Pick another name.")
+        #expect(rig.refresher.resultKinds["attic"] == .failed)
         #expect(rig.refresher.notice == rig.refresher.results["attic"])
         #expect(rig.lines.all.contains("window action: newDesk failed"))
         #expect(try rig.store.load().first?.lastDeskCommand == nil)
@@ -239,6 +240,7 @@ private func ok(_ stdout: String = "") -> FakeRunner { FakeRunner { _ in FakeRun
         #expect(await rig.runner.rename(rename) == .failed("Attic has no desk with that name now."))
         await rig.runner.idle()
         #expect(rig.refresher.results["attic"] == "api wasn't renamed. Attic has no desk with that name now.")
+        #expect(rig.refresher.resultKinds["attic"] == .failed)
         #expect(rig.lines.all.contains("window action: rename failed"))
     }
 
@@ -270,6 +272,8 @@ private func ok(_ stdout: String = "") -> FakeRunner { FakeRunner { _ in FakeRun
         await rig.runner.idle()
         #expect(rig.runner.activity("attic").updating.isEmpty)
         #expect(rig.refresher.results["attic"] == unsure)
+        // Neither done nor failed: the next check shows which.
+        #expect(rig.refresher.resultKinds["attic"] == .unknown)
         #expect(rig.refresher.notice == unsure)
         #expect(rig.lines.all.contains("window action: remove failed"))
         #expect(try rig.store.load().first?.lastDeskCommand == nil)
@@ -314,6 +318,7 @@ private func ok(_ stdout: String = "") -> FakeRunner { FakeRunner { _ in FakeRun
         #expect(result == .failed("website changed after you asked to remove it, so nothing was removed. Look at it again first."))
         #expect(ssh.calls.isEmpty)
         #expect(rig.lines.all.contains("window action: remove failed"))
+        #expect(rig.refresher.resultKinds["attic"] == .failed)
     }
 
     @Test func removeRefusesWhenAnotherDeskHasTakenTheName() async throws {
@@ -377,6 +382,7 @@ private func ok(_ stdout: String = "") -> FakeRunner { FakeRunner { _ in FakeRun
         #expect(rig.runner.activity("attic").arriving.isEmpty)
         #expect(rig.checks.done > before)
         #expect(rig.refresher.results["attic"] == "Created the desk garden-planner on Attic.")
+        #expect(rig.refresher.resultKinds["attic"] == .done)
         #expect(rig.refresher.notice == "Created the desk garden-planner on Attic.")
         #expect(rig.lines.all.contains("window action: newDesk ok"))
         // Fixed words only: no desk name, no command.
@@ -498,6 +504,7 @@ private func ok(_ stdout: String = "") -> FakeRunner { FakeRunner { _ in FakeRun
         #expect(r.runner.activity("attic").updating.isEmpty)
         #expect(r.checks.done > before)
         #expect(r.refresher.results["attic"] == "Named window 2 of website \"front end\" on Attic.")
+        #expect(r.refresher.resultKinds["attic"] == .done)
         #expect(r.refresher.notice == r.refresher.results["attic"])
         #expect(r.lines.all.contains("window action: nameWindow ok"))
         #expect(!r.lines.all.contains { $0.contains("front") || $0.contains("website") || $0.contains("@3") })
@@ -510,6 +517,7 @@ private func ok(_ stdout: String = "") -> FakeRunner { FakeRunner { _ in FakeRun
         #expect(await r.runner.nameWindow(f, to: try #require(f.naming)) == .failed("That window has closed."))
         await r.runner.idle()
         #expect(r.refresher.results["attic"] == "The window of website wasn't named. That window has closed.")
+        #expect(r.refresher.resultKinds["attic"] == .failed)
         #expect(r.lines.all.contains("window action: nameWindow failed"))
     }
 
@@ -522,6 +530,7 @@ private func ok(_ stdout: String = "") -> FakeRunner { FakeRunner { _ in FakeRun
         #expect(r.runner.activity("attic").updating == ["website"])
         await r.runner.idle()
         #expect(r.refresher.results["attic"] == unsure)
+        #expect(r.refresher.resultKinds["attic"] == .unknown)
         #expect(r.lines.all.contains("window action: nameWindow failed"))
     }
 

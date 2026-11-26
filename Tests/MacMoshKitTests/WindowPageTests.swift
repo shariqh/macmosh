@@ -488,4 +488,43 @@ private func titles(_ buttons: [BoardButton]) -> [String] { buttons.map(\.title)
         #expect(p.notice("Created the desk garden-planner on Attic.") == nil)
         #expect(p.notice("The tab didn't open.") == "The tab didn't open.")
     }
+
+    // MARK: The result slot (look design 6.3)
+
+    /// Attic's Ready page with that result line and kind.
+    private func pageWithResult(_ sentence: String, kind: ResultKind) throws -> WorkhorsePage {
+        let board = BoardModel.build(latest: ["attic": result(.ready(signIns: true), status: try report())], lastReady: [:],
+                                     checking: [], order: [attic], waitingForDeskServer: [],
+                                     results: ["attic": sentence], resultKinds: ["attic": kind], now: formatNow,
+                                     timeZone: formatZone)
+        return WorkhorsePage(try #require(board.workhorses.first), now: formatNow, timeZone: formatZone)
+    }
+
+    @Test func theResultSlotHoldsTheResultOrTheNotice() throws {
+        let made = "Created the desk garden-planner on Attic.", tab = "The tab didn't open."
+        let p = try pageWithResult(made, kind: .done)
+        #expect(p.resultKind == .done && p.result == made)
+        let alone = ResultSlot(sentence: made, kind: .done, isResult: true, notice: nil, sentenceLines: 2)
+        #expect(p.resultSlot(notice: nil) == alone && p.resultSlot(notice: made) == alone)
+        #expect(p.resultSlot(notice: tab) == ResultSlot(sentence: made, kind: .done, isResult: true, notice: tab, sentenceLines: 1))
+        let none = try page(result(.ready(signIns: true), status: try report()))
+        #expect(none.resultKind == nil)
+        #expect(none.resultSlot(notice: nil) == nil)
+        #expect(none.resultSlot(notice: tab) == ResultSlot(sentence: tab, kind: nil, isResult: false, notice: nil, sentenceLines: 2))
+    }
+
+    @Test func aLongFailedResultKeepsItsWholeSentenceInTwoLines() throws {   // Review Focus 5
+        let long = "The desk garden-planner wasn't made. Attic already has a desk with that name. Pick another name."
+        let slot = try #require(try pageWithResult(long, kind: .failed).resultSlot(notice: long))
+        #expect(slot.sentence == long && slot.kind == .failed && slot.sentenceLines == 2 && slot.notice == nil)
+        #expect(ResultKind.failed.textRole == .cannot && ResultKind.done.textRole == .secondary)
+    }
+
+    /// A call that passed the time limit may still have worked: neither done nor failed, in secondary words.
+    @Test func aTimedOutResultIsNeitherDoneNorFailed() throws {
+        let unsure = "MacMosh didn't hear back from Attic about website within 15 seconds. The next check shows whether it was removed."
+        let slot = try #require(try pageWithResult(unsure, kind: .unknown).resultSlot(notice: unsure))
+        #expect(slot == ResultSlot(sentence: unsure, kind: .unknown, isResult: true, notice: nil, sentenceLines: 2))
+        #expect(ResultKind.unknown.textRole == .secondary)
+    }
 }

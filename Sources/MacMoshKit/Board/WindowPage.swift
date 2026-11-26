@@ -109,6 +109,8 @@ public struct WorkhorsePage: Sendable, Equatable {
     public var home: String?
     /// What the last action on it said (set from step 4 on).
     public var result: String?
+    /// Whether it worked, beside `result` (look design 6.3); nil without one.
+    public var resultKind: ResultKind?
     /// "Keep it, closed" can be offered in its New desk form: script 0.5.0 or newer (section 7.2).
     public var canKeepClosed: Bool
 
@@ -163,6 +165,7 @@ public struct WorkhorsePage: Sendable, Equatable {
         stale = StaleDesks(w, now: now, timeZone: timeZone)
         home = w.homeReachable.map(WorkhorseBlock.homeLine)
         result = w.result
+        resultKind = w.resultKind
     }
 
     /// The foot's buttons at the left, in order: every foot button but Restart… (design 6.4).
