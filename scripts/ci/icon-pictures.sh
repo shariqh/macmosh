@@ -109,9 +109,9 @@ else
     result "Info.plist names the icon" FAIL "CFBundleIconFile reads ${icon_file:-nothing}, CFBundleIconName reads ${icon_name:-nothing}"
 fi
 
-# 3. Assets.car holds a light and a dark icon. assetutil writes one JSON object per asset, its keys in order, so an
-# object's "Appearance" line comes before its "AssetType" line at the same depth (four spaces). The stacks' own
-# layers sit deeper and are not read.
+# 3. Assets.car holds a light and a dark icon. assetutil writes one JSON object per asset, opened and closed at a
+# depth of two spaces, with its own keys at four; an object's "Appearance" and "AssetType" are read in either order
+# and judged when it closes. The stacks' own layers sit deeper and are not read.
 check="Assets.car holds a light and a dark icon"
 info="$OUT/$os-assetutil.json"
 if ! command -v assetutil >/dev/null 2>&1; then
@@ -119,12 +119,13 @@ if ! command -v assetutil >/dev/null 2>&1; then
 elif ! lim 60 assetutil --info "$resources/Assets.car" > "$info" 2>&1; then
     result "$check" NOT-SHOWN "assetutil --info could not read it: $(head -c 300 "$info" | tr '\n' ' ')"
 else
-    stacks=$(awk '/^  \{/ { appearance = "" }
-        /^    "Appearance" : / { appearance = $3 }
-        /^    "AssetType" : "IconImageStack"/ { gsub(/[",]/, "", appearance); print appearance }' "$info" | sort | tr '\n' ' ')
+    stacks=$(awk '/^  \{/ { appearance = ""; stack = 0 }
+        /^    "Appearance" : / { appearance = $3; gsub(/[",]/, "", appearance) }
+        /^    "AssetType" : "IconImageStack"/ { stack = 1 }
+        /^  \}/ { if (stack) print (appearance == "" ? "no-appearance" : appearance); stack = 0 }' "$info" | sort | tr '\n' ' ')
     say "assetutil lists icon stacks for: ${stacks:-nothing}"
     if [ -z "$stacks" ]; then
-        result "$check" NOT-SHOWN "assetutil read it ($(grep -c '"AssetType"' "$info") assets) but lists no IconImageStack; $(grep -m1 '"DumpToolVersion"' "$info" | tr -d ' ,')"
+        result "$check" NOT-SHOWN "assetutil read it ($(grep -c '"AssetType"' "$info") assets) but lists no IconImageStack ($(grep -c '"AssetType" : "Unknown"' "$info") of type Unknown); $(grep -m1 '"DumpToolVersion"' "$info" | tr -d ' ,')"
     elif [[ " $stacks" == *" NSAppearanceNameAqua "* && " $stacks" == *" NSAppearanceNameDarkAqua "* ]]; then
         result "$check" PASS "IconImageStack for: $stacks(in $os-assetutil.json)"
     else
@@ -162,10 +163,11 @@ else
     result "the icon sheet was drawn" FAIL "icontool drew $drawn of the 2 sheets; icon.log has what it said"
 fi
 # Which M the system's icon shows: icontool's "tile" lines, from the 1x run (the 2x run reads the same images).
-# The light M's unlit tiles are near white and the dark M's near #34322F, so 0.35 splits them.
+# The light M's unlit tiles are near white and the dark M's near #34322F, so 0.35 splits them. A sample that is not
+# opaque (icontool prints "transparent") is no reading: it missed the icon.
 which_m() {
     local line
-    line=$(grep -m1 "^tile $1 " "$LOG") || { echo "no reading"; return; }
+    line=$(grep -m1 "^tile $1 #" "$LOG") || { echo "no reading"; return; }
     awk -v l="$line" 'BEGIN { split(l, f, " "); printf "%s, the %s M", f[3], (f[4] < 0.35 ? "dark" : "light") }'
 }
 say "reading: the system's icon drawn under aqua shows $(which_m light); under darkAqua $(which_m dark)"
@@ -199,7 +201,8 @@ if [ "$appearance" = light ]; then
     ictool=""
     tried=""
     candidates=$( (xcode-select -p 2>/dev/null | sed 's|/Contents/Developer$||'; find /Applications -maxdepth 1 -name 'Xcode_26*.app' | sort -t_ -k2 -r) | while read -r xcode; do (cd -P "$xcode" 2>/dev/null && pwd); done | awk '!seen[$0]++')
-    for xcode in $candidates; do
+    while IFS= read -r xcode; do
+        [ -n "$xcode" ] || continue
         tool="$xcode/Contents/Applications/Icon Composer.app/Contents/Executables/ictool"
         if [ ! -x "$tool" ]; then
             tried="$tried $(basename "$xcode") (no ictool);"
@@ -213,7 +216,7 @@ if [ "$appearance" = light ]; then
             break
         fi
         tried="$tried $(basename "$xcode") (ictool did not render Default);"
-    done
+    done <<< "$candidates"
     if [ -z "$ictool" ]; then
         result "$check" NOT-SHOWN "no ictool rendered the document; tried:${tried:- no Xcode found}"
     else

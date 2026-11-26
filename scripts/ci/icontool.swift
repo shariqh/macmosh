@@ -20,7 +20,8 @@
 // is drawn alone at 256 by 256 pixels for it, and the 7 by 7 pixels at (128, 162) are averaged: the grid fills
 // about 80 percent of the icon's 1024 (the layer's 820) and the system's margin about 10 percent, which puts the
 // tile's middle at 162 of 256 and its sides 14 pixels away. The light M's unlit tiles are near white, the dark
-// M's near #34322F, so the luminance tells which M the system drew.
+// M's near #34322F, so the luminance tells which M the system drew. When the sample is not opaque it missed the
+// icon (a margin, or nothing drawn), and the line reads "tile <light|dark> transparent <alpha>" instead.
 //
 //   icontool --styles <out.png> <scale> <Default.png> <Dark.png> <ClearLight.png> <ClearDark.png> <TintedLight.png>
 //            <TintedDark.png>
@@ -69,11 +70,15 @@ func write(_ rep: NSBitmapImageRep, _ url: URL, _ label: String) {
 /// The middle of an unlit tile of the icon, drawn alone at 256 pixels (see the header).
 func tile(_ name: String, _ image: NSImage) {
     let rep = bitmap(256, 256, 1) { image.draw(in: NSRect(x: 0, y: 0, width: 256, height: 256)) }
-    var sum: [CGFloat] = [0, 0, 0]
+    var sum: [CGFloat] = [0, 0, 0, 0]
     for x in 125...131 { for y in 159...165 {
         guard let c = rep.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else { continue }
-        sum[0] += c.redComponent; sum[1] += c.greenComponent; sum[2] += c.blueComponent } }
+        sum[0] += c.redComponent; sum[1] += c.greenComponent; sum[2] += c.blueComponent; sum[3] += c.alphaComponent } }
     let mean = sum.map { $0 / 49 }
+    if mean[3] < 0.95 {
+        print(String(format: "tile %@ transparent %.2f", name, mean[3]))
+        return
+    }
     let luminance = 0.2126 * mean[0] + 0.7152 * mean[1] + 0.0722 * mean[2]
     print(String(format: "tile %@ #%02X%02X%02X %.2f", name, Int((mean[0] * 255).rounded()),
                  Int((mean[1] * 255).rounded()), Int((mean[2] * 255).rounded()), luminance))
