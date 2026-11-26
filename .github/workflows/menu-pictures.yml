@@ -24,6 +24,10 @@ name: Menu pictures
 # first window (issue 163) it fails when the New desk form's "Same name as the desk" line does not work or Make desk
 # does not send exactly the window's name, and, in the "window-forms-0.11" sample, when an older script is shown the
 # line or sent the name.
+# Look step 1 (issue 170): both jobs turn on keyboard navigation before the app starts, for drive-window.sh's Tab
+# check (Tab reaches Check now, New desk… and a desk's Open), and the window's run takes a picture at its smallest
+# size. A second job, window-dark, switches the runner to dark and drives every window sample again, never the menu;
+# it stops with a clear error when the switch did not take, rather than take light pictures.
 # scripts/ci/drive-menu.sh says what it checks.
 on:
   pull_request:
@@ -71,6 +75,16 @@ jobs:
           swiftc -O -o dist/debug/windowtool scripts/ci/windowtool.swift
           codesign --force --sign - dist/debug/windowtool
 
+      # AppleKeyboardUIMode 2 is keyboard navigation on in macOS 14 and later (the pull request that added this
+      # step cites its sources). Read back before anything runs: without it the Tab check would only fail.
+      - name: Turn on keyboard navigation
+        timeout-minutes: 2
+        run: |
+          defaults write -g AppleKeyboardUIMode -int 2
+          v=$(defaults read -g AppleKeyboardUIMode 2>/dev/null || true)
+          echo "AppleKeyboardUIMode reads: ${v:-nothing}"
+          [ "$v" = 2 ] || { echo "::error::Keyboard navigation did not turn on; the Tab check cannot run."; exit 1; }
+
       - name: Drive the menu
         id: menu
         timeout-minutes: 12
@@ -93,4 +107,61 @@ jobs:
         with:
           name: menu-pictures-${{ matrix.os }}
           path: ${{ runner.temp }}/menu-pictures
+          retention-days: 14
+
+  # Every window sample again in dark (look step 1, issue 170). The menu is not driven here.
+  window-dark:
+    name: window-dark (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-26]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: About the runner
+        timeout-minutes: 2
+        run: |
+          sw_vers
+          xcodebuild -version | head -n 1
+          system_profiler SPDisplaysDataType | grep -E 'Resolution|UI Looks like' || true
+
+      - name: Build the debug app and the driver
+        timeout-minutes: 15
+        run: |
+          set -euo pipefail
+          scripts/build-app.sh --debug
+          swiftc -O -o dist/debug/menutool scripts/ci/menutool.swift
+          codesign --force --sign - dist/debug/menutool
+          swiftc -O -o dist/debug/windowtool scripts/ci/windowtool.swift
+          codesign --force --sign - dist/debug/windowtool
+
+      # The switch is read back: a run that stayed light is a setup failure, not a set of light pictures.
+      - name: Turn on keyboard navigation and dark
+        timeout-minutes: 3
+        run: |
+          defaults write -g AppleKeyboardUIMode -int 2
+          v=$(defaults read -g AppleKeyboardUIMode 2>/dev/null || true)
+          echo "AppleKeyboardUIMode reads: ${v:-nothing}"
+          [ "$v" = 2 ] || { echo "::error::Keyboard navigation did not turn on; the Tab check cannot run."; exit 1; }
+          osascript -e 'tell application "System Events" to tell appearance preferences to set dark mode to true'
+          style=$(defaults read -g AppleInterfaceStyle 2>/dev/null || true)
+          echo "AppleInterfaceStyle reads: ${style:-nothing}"
+          [ "$style" = Dark ] || { echo "::error::The runner did not switch to dark; no dark pictures were taken."; exit 1; }
+
+      - name: Drive the window in dark
+        timeout-minutes: 24
+        env:
+          WINDOW_APPEARANCE: dark
+          MENU_OUT: ${{ runner.temp }}/window-dark
+        run: scripts/ci/drive-window.sh
+
+      - name: Upload the pictures and logs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: window-dark-${{ matrix.os }}
+          path: ${{ runner.temp }}/window-dark
           retention-days: 14

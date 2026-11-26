@@ -11,9 +11,10 @@ public enum SampleWindow: String, CaseIterable, Sendable {
     /// The six-desk workhorse of `SampleMenu.sixDesks`, Ready at the first check and Locked after a
     /// restart from the second on, so the window shows the greyed list of its last Ready check.
     case readyThenLocked = "ready-then-locked"
-    /// A Ready workhorse with two desks: `website-redesign`, made by MacMosh in a long folder, kept when
+    /// A Ready workhorse with three desks: `website-redesign`, made by MacMosh in a long folder, kept when
     /// it exits and not brought back after a restart, and `notes`, made by hand. Their second lines carry
-    /// every unusual fact, whatever the folder's length.
+    /// every unusual fact, whatever the folder's length. And (look step 1) a desk with a very long name and nine
+    /// windows, two of them in a tab: its name is cut, never wrapped, and its tile shows five cells and the plus.
     case longFolder = "long-folder"
     /// A saved list that can't be read: the menu shows the store's sentence, and so does the window, in
     /// place of the Add a Mac page.
@@ -74,16 +75,25 @@ public enum SampleWindow: String, CaseIterable, Sendable {
         }
     }
 
-    /// A workhorse script 0.8.0 report with the two desks of `longFolder`. The `def` fields are the
-    /// name, reopen, keep, permanent and the folder.
-    static let longFolderReport = [
+    /// The long-named desk of `longFolder`: 45 characters.
+    static let longName = "garden-planner-for-the-allotment-by-the-river"
+
+    /// A workhorse script 0.8.0 report with the three desks of `longFolder`. The `def` fields are the
+    /// name, reopen, keep, permanent and the folder. The long-named desk has nine windows and two tabs, and no
+    /// `windowinfo` lines, so its cells light from the first.
+    static let longFolderReport = ([
         "macmosh-host\t1\t0.8.0", "os\t26.1\tarm64", "console\tsample", "server\tup", "signins\tok",
         "agent\tinstalled", "power\tsleep=0\twomp=1", "battery\tpresent\tac\t82",
         "desk\twebsite-redesign\t1\t1", "window\twebsite-redesign\t0\tzsh",
         "desk\tnotes\t1\t0", "window\tnotes\t0\tzsh",
+        "desk\t\(longName)\t9\t2",
+    ] + ["zsh", "server", "tests", "logs", "notes", "vim", "claude", "db", "web"].enumerated().map {
+        "window\t\(longName)\t\($0.offset)\t\($0.element)"
+    } + [
         "def\twebsite-redesign\t0\t0\t1\t/Users/sample/Development/clients/acme/website-redesign",
+        "def\t\(longName)\t1\t1\t1\t/Users/sample/Development/\(longName)",
         "end",
-    ].joined(separator: "\n") + "\n"
+    ]).joined(separator: "\n") + "\n"
 
     /// The real refresher, with the saved list and the checks replaced.
     @MainActor public func refresher() -> MenuRefresher {

@@ -6,7 +6,12 @@
 # --debug and the built menutool and windowtool first. Kept apart from drive-menu.sh, which another branch changes;
 # the small helpers at the top are copies of that script's.
 #
-#   MENU_OUT=<folder> scripts/ci/drive-window.sh
+#   MENU_OUT=<folder> [WINDOW_APPEARANCE=dark] scripts/ci/drive-window.sh
+#
+# The workflow runs it twice per macOS version: in the "pictures" job in light, after the menu, and in the
+# "window-dark" job with WINDOW_APPEARANCE=dark, after the job has switched the runner to dark (look step 1). In dark
+# every name carries "-dark" after the version ("macos15-dark"), so pictures and results say which they are. Both
+# jobs turn on keyboard navigation first, for the Tab check.
 #
 # What it leaves in MENU_OUT:
 #   pictures/<os>-window-<sample>-<nn>-<step>.png   a picture of the window (or the screen) at each step
@@ -31,6 +36,10 @@
 # sheet does not open, refuse a name or name its window, Name or Use its program's name does not send its exact
 # arguments, or the row does not show the name after the check.
 # The Settings page (issue 157, the "window-settings" sample) fails as settings_sample says.
+# Look step 1 adds two checks to the "six-desks" sample: Tab moves keyboard focus across the page's buttons (it fails
+# when Check now, New desk… or a desk's Open is never reached in 25 presses of Tab, or a press sets off the menu-open
+# signal), and a picture of the window at its smallest, 700 by 440 (DIFFERS when the window is not 700 wide). In the
+# "long-folder" sample it fails when the row of a desk with a 45-character name does not read that name whole.
 # A new desk's first window (issue 163) fails when the New desk form's "Same name as the desk" box is not there and
 # ticked at script 0.12.0, clearing it does not show the field and its line, a bad name is not refused with the
 # rule's sentence, Make desk does not send exactly the window's name (the desk's, its own, or none), or the new
@@ -50,6 +59,9 @@ RESULTS="$OUT/results.tsv"
 mkdir -p "$OUT/pictures" "$OUT/ax"
 : > "$RESULTS"
 os="macos$(sw_vers -productVersion | cut -d. -f1)"
+# light, or dark in the window-dark job, which switched the runner to dark before this started.
+appearance=${WINDOW_APPEARANCE:-light}
+[ "$appearance" = dark ] && os="$os-dark"
 failures=0
 sample=""
 shotn=0
@@ -358,6 +370,9 @@ six_desks() {
     sleep 1
     snap after-clicks
 
+    tab_check
+    smallest_window
+
     # Closing the window keeps the app and its menu.
     local close cx cy
     close=$(wax close | grep '^close' | tail -n 1)
@@ -396,6 +411,53 @@ six_desks() {
         result FAIL "the menu still opens after the window closed" "no menu window within 6 s of the click"
     fi
     stop_app
+}
+
+# The Tab check (look step 1): with keyboard navigation on (the workflow turns it on), Tab moves keyboard focus across
+# the page's buttons as it does across stock buttons. Up to 25 presses of Tab, reading the focused element after each;
+# it passes once Check now, New desk… and a desk's Open have each had focus. A picture shows the focus on Check now and
+# on New desk…, for the focus ring. A press that sets off the menu-open signal fails it.
+tab_check() {
+    local since seen="" f id i shot_check="" shot_new=""
+    since=$(moment)
+    for i in $(seq 1 25); do
+        tool keys 48 1 150 > /dev/null
+        sleep 0.3
+        f=$(wax focused | grep '^focused' | tail -n 1)
+        id=$(awk '{ print $2 }' <<< "$f")
+        say "Tab $i: ${f:-no answer}"
+        seen="$seen ${id:-?}"
+        if [ "$id" = "button.checkNow" ] && [ -z "$shot_check" ]; then snap focus-check-now; shot_check=1; fi
+        if [ "$id" = "button.newDesk" ] && [ -z "$shot_new" ]; then snap focus-new-desk; shot_new=1; fi
+        if [[ " $seen " == *" button.checkNow "* && " $seen " == *" button.newDesk "* && " $seen " == *" desk.website.open "* ]]; then
+            break
+        fi
+    done
+    if [[ " $seen " == *" button.checkNow "* && " $seen " == *" button.newDesk "* && " $seen " == *" desk.website.open "* ]]; then
+        result PASS "Tab moves focus across the page's buttons" "focus went to:$seen"
+    else
+        result FAIL "Tab moves focus across the page's buttons" "Check now, New desk… and website's Open not all reached; focus went to:$seen"
+    fi
+    f=$(applog "$since" | grep -cE "menu opened|menu tracking")
+    result "$([ "$f" -eq 0 ] && echo PASS || echo FAIL)" "Tab sets off no menu-open signal" \
+        "$f 'menu opened' or 'menu tracking' line(s) since the first Tab"
+}
+
+# The window at its smallest (look step 1): asked for 600 by 300, the window's minimum keeps it at 700 points wide (its
+# content is 700 by 440). A picture of it, then the window back at its default size for the steps after.
+smallest_window() {
+    local s f
+    s=$(wax size 600 300 | grep '^size' | tail -n 1)
+    sleep 1
+    f=$(wax frame | grep '^frame' | tail -n 1)
+    if [ "$(awk '{ print $4 }' <<< "$f")" = 700 ]; then
+        result PASS "the window's smallest size is 700 wide" "asked for 600 by 300: ${s:-no answer}; ${f:-no frame}"
+    else
+        result DIFFERS "the window's smallest size is 700 wide" "asked for 600 by 300: ${s:-no answer}; ${f:-no frame}"
+    fi
+    snap minimum-size
+    wax size 880 680 > /dev/null
+    sleep 1
 }
 
 ready_then_locked() {
@@ -451,6 +513,14 @@ long_folder() {
         result PASS "a long folder's row still shows its facts" "${t#value }"
     else
         result DIFFERS "a long folder's row still shows its facts" "the row reads: ${t:-not found}"
+    fi
+    # A 45-character name is cut on screen, never wrapped, and read whole.
+    local long="garden-planner-for-the-allotment-by-the-river"
+    t=$(val "desk.$long")
+    if [[ "$t" == "$long, "* ]]; then
+        result PASS "a long name's row reads the name whole" "desk.$long reads: $t"
+    else
+        result FAIL "a long name's row reads the name whole" "desk.$long reads: ${t:-nothing}"
     fi
     snap long-folder
     if click_id "desk.notes"; then
@@ -1482,7 +1552,7 @@ ended_sample() {
     fi
     # website is permanent: it stays among the desks as closed, and is not under Ended.
     v=$(val "desk.website")
-    if [[ "$v" == *"(closed)"* ]] && ! wax find "ended.website" | grep -q '^found'; then
+    if [[ "$v" == *"Closed"* ]] && ! wax find "ended.website" | grep -q '^found'; then
         result PASS "a permanent desk that closed stays among the desks" "desk.website reads: $v; no ended.website"
     else
         result FAIL "a permanent desk that closed stays among the desks" "desk.website reads: ${v:-nothing}"
