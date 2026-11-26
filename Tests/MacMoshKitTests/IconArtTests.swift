@@ -25,8 +25,15 @@ import Testing
         #expect(IconArt.lit(.light) == [IconStop(0, 0xF29A55), IconStop(1, 0xD2481F)])
         #expect(IconArt.unlit(.light) == [IconStop(0, 0xFFFFFF), IconStop(1, 0xF4EEE7)])
         #expect(IconArt.ground(.dark) == [IconStop(0, 0x2A2928), IconStop(1, 0x1D1C1A)])
-        #expect(IconArt.lit(.dark) == [IconStop(0, 0xFAD566), IconStop(1.0 / 3, 0xF7C948), IconStop(2.0 / 3, 0xF29343), IconStop(1, 0xE4572E)])
         #expect(IconArt.unlit(.dark) == [IconStop(0, 0x3B3835), IconStop(1, 0x2F2D2A)]) }
+    /// Design 8.1 gives the dark colours in order. The picture the owner chose places them: #FAD566 at the top of
+    /// the grid, then #F7C948, #F29343 and #E4572E at the centres of rows 0, 2 and 4, so rows 1 and 3 fall half
+    /// way between. Spaced evenly instead, every row of the built dark M came out about one row yellower.
+    @Test func theDarkColoursSitWhereThePictureHasThem() {
+        #expect(IconArt.rowCentre(0) == 70.0 / 820 && IconArt.rowCentre(2) == 0.5 && IconArt.rowCentre(4) == 750.0 / 820)
+        #expect(IconArt.lit(.dark) == [
+            IconStop(0, 0xFAD566), IconStop(IconArt.rowCentre(0), 0xF7C948), IconStop(IconArt.rowCentre(2), 0xF29343),
+            IconStop(IconArt.rowCentre(4), 0xE4572E), IconStop(1, 0xE4572E)]) }
     /// At 16 pixels a solid M with no gaps, on whole pixels: light #E2552C on #F3EEE8; dark lit cells on #24221F.
     @Test func theSmallMIsSolid() {
         #expect(IconArt.small == 16 && IconArt.smallCell == 2 && IconArt.smallMOrigin == 3)

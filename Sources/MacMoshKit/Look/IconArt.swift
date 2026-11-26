@@ -80,12 +80,19 @@ public enum IconArt {
 
     /// The M's colour, from `litTop` to `litBottom`, seen through the M's tiles: one gradient over the
     /// whole grid, so each row of the M is a slice of it. Design 8.1 gives the dark colours in order but
-    /// no positions, so they are spaced evenly.
+    /// no positions. They sit where the picture the owner chose has them: the first at the top of the
+    /// grid, the others at the centres of rows 0, 2 and 4, so rows 1 and 3 fall half way between.
     public static func lit(_ appearance: IconAppearance) -> [IconStop] {
         switch appearance {
         case .light: [IconStop(0, 0xF29A55), IconStop(1, 0xD2481F)]
-        case .dark: [IconStop(0, 0xFAD566), IconStop(1.0 / 3, 0xF7C948), IconStop(2.0 / 3, 0xF29343), IconStop(1, 0xE4572E)]
+        case .dark: [IconStop(0, 0xFAD566), IconStop(rowCentre(0), 0xF7C948), IconStop(rowCentre(2), 0xF29343),
+                     IconStop(rowCentre(4), 0xE4572E), IconStop(1, 0xE4572E)]
         }
+    }
+
+    /// Where the centre of a row of tiles falls between `litTop` (0) and `litBottom` (1).
+    public static func rowCentre(_ row: Int) -> Double {
+        Double(row * (tile + gap) + tile / 2) / Double(litBottom - litTop)
     }
 
     public static let litTop = 102
