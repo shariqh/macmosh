@@ -296,17 +296,18 @@ open_window() {
         close_menu
         return 1
     fi
-    # Look step 4: with the window-sidebar sample's seven Macs the menu is taller than the runner's screen (768 points)
-    # and Open MacMosh lies below its bottom. The menu is scrolled with the pointer at the screen's bottom edge, where
-    # a menu too tall for the screen scrolls, and one posted scroll there; the sign is tried both ways, as for the page.
+    # Look step 4: with the window-sidebar sample's seven Macs the menu is taller than the runner's screen allows, and
+    # Open MacMosh lies below the bottom of the screen's visible part (above the Dock), where the menu ends. The menu is
+    # scrolled with one posted scroll, the pointer on the menu near that bottom; the sign is tried both ways, as for the
+    # page (on pull request 185's second run, 30 scrolled it on macOS 26 and -30 did not).
     local try
-    for try in -30 30; do
-        [ "$y" -le $((screen_bottom - 12)) ] && break
-        say "Open MacMosh is at $x,$y, below the screen's bottom ($screen_bottom): scroll the menu by $try lines"
-        tool scroll "$x" $((screen_bottom - 4)) "$try" > /dev/null
+    for try in 30 -30; do
+        [ "$y" -le $((visible_bottom - 12)) ] && break
+        say "Open MacMosh is at $x,$y, below the visible bottom ($visible_bottom): scroll the menu by $try lines"
+        tool scroll "$x" $((visible_bottom - 20)) "$try" > /dev/null
         sleep 1.5
         read -r idx x y name <<< "$(max find top "Open MacMosh" | grep '^found' | tail -n 1 | cut -d' ' -f2-)"
-        [ -z "${y:-}" ] && y=$((screen_bottom + 1))
+        [ -z "${y:-}" ] && y=$((visible_bottom + 1))
     done
     since=$(moment)
     say "click on line $idx [$name] at $x,$y"
@@ -2602,9 +2603,13 @@ PY
 
 ############################################################ the run
 say "driving the window of $APP on $os ($(sw_vers -productVersion))"
-# The main screen's height, from menutool's "display main bounds=(0.0, 0.0, 1024.0, 768.0)"; 768 when not read.
-screen_bottom=$(tool preflight | sed -n 's/.*display main bounds=([0-9.]*, [0-9.]*, [0-9.]*, \([0-9]*\).*/\1/p' | head -n 1)
-screen_bottom=${screen_bottom:-768}
+# The bottom of the main screen's visible part, above the Dock, from menutool's "display main bounds=(0.0, 0.0, 1024.0,
+# 768.0) screens=["(…) visible=(0.0, 62.0, 1024.0, 681.0) …"]": the screen's height less the visible part's lowest y
+# (AppKit counts y up from the bottom); 768 less 63 when not read.
+preflight=$(tool preflight)
+screen_bottom=$(sed -n 's/.*display main bounds=([0-9.]*, [0-9.]*, [0-9.]*, \([0-9]*\).*/\1/p' <<< "$preflight" | head -n 1)
+visible_low=$(sed -n 's/.*visible=([0-9.]*, \([0-9]*\).*/\1/p' <<< "$preflight" | head -n 1)
+visible_bottom=$(( ${screen_bottom:-768} - ${visible_low:-63} ))
 lim 10 "$TOOL" move 600 500 > /dev/null
 
 forms_sample
