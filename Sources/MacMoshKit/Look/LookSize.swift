@@ -63,4 +63,13 @@ public enum LookSize {
     /// Window names beside a desk's name are cut with "…" only while at least this many letters stay; below that they
     /// are left out. A count of letters, so a whole number.
     public static let windowNamesFewest = 4
+    /// The dotted mountain on the Add a Mac page is drawn at this share of its drawing's 560 by 420 points (look step 3,
+    /// Open point 1): as the approved picture draws it, so at the default window the whole art shows, its peak included.
+    public static let mountainScale = 0.79
+    /// The M in the Add a Mac page's tile (design 8.1): a cell, the gap between cells, and its corners.
+    public static let mCell = 4.0
+    public static let mCellGap = 2.0
+    public static let mCellRadius = 1.0
+    /// A sidebar row's second line wraps to at most this many lines. A count of lines, so a whole number.
+    public static let sidebarSecondLines = 2
 }
