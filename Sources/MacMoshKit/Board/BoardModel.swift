@@ -17,11 +17,12 @@ public enum BoardModel {
     ///   With no `tabs` (no menu built yet), no desk has the menu's line per window.
     /// - `order`: the saved list of workhorses. Only these are on the board, in this order, each once.
     /// - `ended`: the ended desks by workhorse id (`MenuRefresher.ended`, from `EndedDeskTracker`).
-    /// - `results`: the last action's sentence by workhorse id.
+    /// - `results`: the last action's sentence by workhorse id; `resultKinds`, whether it worked
+    ///   (`MenuRefresher.resultKinds`).
     public static func build(latest: [String: CheckResult], lastReady: [String: CheckResult], checking: Set<String>,
                              order: [Workhorse], waitingForDeskServer: Set<String>, tabs: TabsSeen? = nil,
                              ended: [String: [EndedDesk]] = [:], results: [String: String] = [:],
-                             now: Date, timeZone: TimeZone) -> Board {
+                             resultKinds: [String: ResultKind] = [:], now: Date, timeZone: TimeZone) -> Board {
         if order.isEmpty { return Board(workhorses: [], symbol: MenuModel.noWorkhorsesSymbol) }
         var seen: Set<String> = []
         var workhorses: [BoardWorkhorse] = []
@@ -68,7 +69,8 @@ public enum BoardModel {
                 },
                 lastReadyDesks: lastReadyDesks, lastReadyAt: lastReadyAt,
                 buttons: buttons(block, desks: lines, workhorse: id), result: results[id],
-                scriptVersion: r?.status?.scriptVersion))
+                scriptVersion: r?.status?.scriptVersion, pill: StatePill.of(block, state: r?.state),
+                resultKind: results[id] == nil ? nil : resultKinds[id]))
         }
         return Board(workhorses: workhorses, symbol: MenuModel.symbol(forAll: states))
     }
@@ -148,8 +150,9 @@ public enum BoardModel {
             windows: all.map { w in
                 let mine = w.id.flatMap { id in lines.first { $0.key == "win:\(id)" } }
                 let name = canName && all.count > 1 ? w.id.map { naming($0, WindowWords.nameWindow) } : nil
-                return BoardWindow(index: w.index, name: w.name, id: w.id, tabs: w.tabs, button: mine.map(BoardButton.init),
-                                   nameButton: name)
+                return BoardWindow(index: w.index, name: w.name, id: w.id, tabs: w.tabs,
+                                   inTabs: w.id.flatMap { perWindow?.tabsByWindow[$0] },
+                                   button: mine.map(BoardButton.init), nameButton: name)
             },
             windowCount: session?.windowCount ?? 0,
             tabsOpen: session == nil ? 0 : perWindow?.tabs ?? session?.attached ?? 0,

@@ -70,9 +70,12 @@ public struct DeskWindows: Sendable, Equatable {
     /// The `connect` arguments of a tab on each window that no tab shows, in the desk's order; none for a closed
     /// desk. The window's "Open the N not in a tab" opens these (issue #134).
     public var notInATab: [[String]]
+    /// By window id, how many tabs show that window, findable or not, counted as `tabs` counts them; empty for a
+    /// closed desk. The window's desk tile lights a cell for each window above 0 (look design 6.5).
+    public var tabsByWindow: [String: Int]
 
     public init(title: String, first: ActionButton, windows: [ActionButton], newWindow: ActionButton?, flags: String?,
-                tabs: Int = 0, notInATab: [[String]] = []) {
+                tabs: Int = 0, notInATab: [[String]] = [], tabsByWindow: [String: Int] = [:]) {
         self.title = title
         self.first = first
         self.windows = windows
@@ -80,6 +83,7 @@ public struct DeskWindows: Sendable, Equatable {
         self.flags = flags
         self.tabs = tabs
         self.notInATab = notInATab
+        self.tabsByWindow = tabsByWindow
     }
 
     /// The shape for one desk of workhorse `id`, with this Mac's live records and the time. nil for an open
@@ -163,6 +167,8 @@ public struct DeskWindows: Sendable, Equatable {
         return DeskWindows(title: title, first: first, windows: lines,
                            newWindow: ActionButton(key: "window", title: "New window", action: .tab(connect(["--new-window"]))),
                            flags: flagsLine, tabs: tabs.reduce(0) { $0 + $1.labels.count + $1.others },
-                           notInATab: noTab.map(onWindow))
+                           notInATab: noTab.map(onWindow),
+                           tabsByWindow: Dictionary(tabs.map { ($0.windowId, $0.labels.count + $0.others) },
+                                                    uniquingKeysWith: { a, b in a + b }))
     }
 }

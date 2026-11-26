@@ -240,7 +240,8 @@ public final class WindowActionRunner: ObservableObject {
         guard let check = refresher.latest[id], let name = DeskName(desk), confirmation.stillMatches(check) else {
             busy[id]?[desk] = nil
             log(MenuLog.windowAction(.remove, ok: false))
-            refresher.finishWindowAction(id: id, result: DeskFormat.windowFailed(.remove, desk: desk, reason: confirmation.changed))
+            refresher.finishWindowAction(id: id, result: DeskFormat.windowFailed(.remove, desk: desk, reason: confirmation.changed),
+                                         kind: .failed)
             return .failed(confirmation.changed)
         }
         refresher.expectGone(id: id, desk: desk)
@@ -330,13 +331,14 @@ public final class WindowActionRunner: ObservableObject {
         let marked = kind == .rename || kind == .remove ? desk : nil
         if why == HostCommands.noAnswer {
             let unsure = DeskFormat.windowUnsure(kind, desk: desk, on: w)
-            refresher.finishWindowAction(id: id, result: unsure)
+            // It may have worked there: neither done nor failed until the next check shows which.
+            refresher.finishWindowAction(id: id, result: unsure, kind: .unknown)
             // A desk made by New desk or Start again has no row to mark until a check brings it.
             follow(id, marking: kind == .newDesk || kind == .startAgain ? nil : desk, line: nil, expecting: marked)
             return .failed(unsure)
         }
         if let marked { refresher.stopExpecting(id: id, desk: marked) }
-        refresher.finishWindowAction(id: id, result: DeskFormat.windowFailed(kind, desk: desk, reason: why))
+        refresher.finishWindowAction(id: id, result: DeskFormat.windowFailed(kind, desk: desk, reason: why), kind: .failed)
         follow(id, marking: nil, line: nil)
         return .failed(why)
     }
@@ -359,7 +361,7 @@ public final class WindowActionRunner: ObservableObject {
                     await refresher.perform(open, title: title, from: .window, using: menuActions)
                     if let note = refresher.notice { said += " " + note }
                 }
-                refresher.finishWindowAction(id: id, result: said)
+                refresher.finishWindowAction(id: id, result: said, kind: .done)
             }
             await checkAndWait()
             if let gone { refresher.stopExpecting(id: id, desk: gone) }

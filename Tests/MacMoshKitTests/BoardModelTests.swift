@@ -22,11 +22,11 @@ private func result(_ state: WorkhorseState, workhorse: Workhorse = attic, statu
 
 private func board(_ latest: [CheckResult], lastReady: [CheckResult] = [], checking: Set<String> = [],
                    order: [Workhorse]? = nil, waiting: Set<String> = [], ended: [String: [EndedDesk]] = [:],
-                   results: [String: String] = [:]) -> Board {
+                   results: [String: String] = [:], resultKinds: [String: ResultKind] = [:]) -> Board {
     BoardModel.build(latest: Dictionary(latest.map { ($0.workhorse.id, $0) }, uniquingKeysWith: { a, _ in a }),
                      lastReady: Dictionary(lastReady.map { ($0.workhorse.id, $0) }, uniquingKeysWith: { a, _ in a }),
                      checking: checking, order: order ?? latest.map(\.workhorse),
-                     waitingForDeskServer: waiting, ended: ended, results: results,
+                     waitingForDeskServer: waiting, ended: ended, results: results, resultKinds: resultKinds,
                      now: formatNow, timeZone: formatZone)
 }
 
@@ -257,6 +257,31 @@ private func titles(_ buttons: [BoardButton]) -> [String] { buttons.map(\.title)
         #expect(off.symbol == "wrench.and.screwdriver")
     }
 
+    // MARK: The state pill (look design 6.3)
+
+    @Test func eachStateHasItsPillWordAndTone() {
+        let cases: [(WorkhorseState, String, PillTone)] = [
+            (.ready(signIns: true), "Ready", .ready), (.ready(signIns: false), "Ready, sign-ins off", .needsYou),
+            (.waitingForLogin, "Waiting for login", .needsYou), (.locked, "Locked after a restart", .needsYou),
+            (.cantVerify, "Can't verify it", .cannot), (.cantReach(.nothingAnswers), "Can't reach it", .cannot),
+            (.notSetUp(.notPaired), "Not paired", .needsYou), (.notSetUp(.identityUnusable), "Your ssh key is locked", .needsYou),
+            (.notSetUp(.hostScriptMissing), "Needs setting up", .needsYou),
+            (.notSetUp(.unreadableReport), "Couldn't read its status", .needsYou), (.notSetUp(.deskServerDown), "Desk server is off", .needsYou)]
+        for (s, word, tone) in cases { #expect(StatePill.of(s) == StatePill(word: word, tone: tone), "\(s)") }
+        #expect(PillTone.ready.textRole == .good && PillTone.checking.textRole == .tertiary)
+        #expect(PillTone.needsYou.textRole == .needsYou && PillTone.cannot.textRole == .cannot)
+    }
+
+    /// Built outside the state's title (design 6.3): the pill comes from the block, never from the headline.
+    @Test func theWaitAndStillCheckingHaveTheirOwnPills() throws {
+        let waiting = try #require(board([result(.notSetUp(.deskServerDown), status: try boardReport())], waiting: ["attic"]).workhorses.first)
+        #expect(waiting.headline == "Attic · Waiting for the desk server")
+        #expect(waiting.pill == StatePill(word: "Waiting for the desk server", tone: .needsYou))
+        #expect(try #require(board([], order: [attic]).workhorses.first).pill == StatePill(word: "Still checking…", tone: .checking))
+        #expect(WorkhorseBlock.waitingForDeskServerTitle == "Waiting for the desk server")
+        #expect(WorkhorseBlock.stillCheckingTitle == "Still checking…")
+    }
+
     // MARK: Checking
 
     @Test func aWorkhorseThatHasNeverAnsweredIsStillChecking() throws {
@@ -315,9 +340,11 @@ private func titles(_ buttons: [BoardButton]) -> [String] { buttons.map(\.title)
                              keep: false, endedAt: utcDate(2027, 1, 15, 15, 10))
         let b = board([result(.ready(signIns: true), status: try boardReport())],
                       ended: ["attic": [shop], "den": [shop]],
-                      results: ["attic": "Created the desk garden on Attic.", "den": "x"])
+                      results: ["attic": "Created the desk garden on Attic.", "den": "x"], resultKinds: ["attic": .failed])
         let w = try #require(b.workhorses.first)
         #expect(w.result == "Created the desk garden on Attic.")
+        #expect(w.resultKind == .failed)
+        #expect(try #require(board([result(.ready(signIns: true), status: try boardReport())]).workhorses.first).resultKind == nil)
         let ended = try #require(w.ended.first)
         #expect(w.ended.count == 1)
         #expect(ended.name == "shop" && ended.folder == "/Users/alex/Development/shop")
@@ -355,6 +382,28 @@ private func titles(_ buttons: [BoardButton]) -> [String] { buttons.map(\.title)
 
     /// Some windows in tabs this Mac can find, one in none: Open runs the menu's first line, and each window
     /// carries the menu's words and action for it. New window opens a tab of its own.
+    /// Look design 6.5: each window carries how many tabs show it, as the menu counts them, past the menu's gate.
+    @Test func pastTheGateEachWindowCarriesItsTabsCountedAsTheMenuCountsThem() throws {
+        let w = try withTabs()
+        #expect(try deskOf(w, "website").windows.map(\.inTabs) == [1, 1, 0])
+        #expect(try deskOf(w, "shop").windows.map(\.inTabs) == [1, 0])   // web is in a tab this Mac can't find
+        var checked = 0
+        for d in w.desks where d.isOpen && d.windows.allSatisfy({ $0.inTabs != nil }) {
+            #expect(d.windows.compactMap(\.inTabs).reduce(0, +) == d.tabsOpen, "\(d.name)")
+            checked += 1
+        }
+        #expect(checked == 5)
+        // A tab opened a minute ago on the second window, on no view line yet, counts for that window.
+        let fresh = try withTabs(records: windowsRecords + [atticRecord("9f3a1c2e5b7d4a60", asked: "@6", minutesAgo: 1)])
+        #expect(try deskOf(fresh, "api").windows.map(\.inTabs) == [0, 1])
+        let plain = try #require(board([result(.ready(signIns: true), status: try boardReport())]).workhorses.first)
+        #expect(try deskOf(plain, "website").windows.map(\.inTabs) == [nil, nil, nil])   // today's equality tests hold
+        // An older script, and the Tabs connection, are not past the gate.
+        for older in [try withTabs(windowsReport(version: "0.7.0")), try withTabs(mode: .tabs)] {
+            #expect(older.desks.flatMap(\.windows).allSatisfy { $0.inTabs == nil })
+        }
+    }
+
     @Test func aDeskWithAWindowNotInATabOpensThatOneAndListsItsWindows() throws {
         let website = try deskOf(try withTabs(), "website")
         #expect(website.open == BoardButton(title: "Open the 1 window not in a tab",

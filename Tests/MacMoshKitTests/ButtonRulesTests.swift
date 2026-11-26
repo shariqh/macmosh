@@ -291,6 +291,19 @@ import Testing
         #expect(named > 10 && namedOne > 5)
     }
 
+    /// Look design 6.3: the pill's word is the headline's after the name, for every sample state, though it is never cut
+    /// from the headline.
+    @Test func everyHeadlineIsTheNameThenThePillsWord() {
+        var seen = 0
+        for input in everySampleInput() + moreSampleInputs() + windowSampleInputs() {
+            for w in boardFor(input).workhorses {
+                #expect(w.headline == "\(w.name) · \(w.pill.word)")
+                seen += 1
+            }
+        }
+        #expect(seen > 20)
+    }
+
     @Test func theNamedDifferencesAreTheOnlyOnes() {
         // The menu's three terminal-tab forms, and what the window does instead.
         #expect(windowSide(.tab(["desk", "new", "mbp"])) == .window(.newDesk(workhorse: "mbp")))

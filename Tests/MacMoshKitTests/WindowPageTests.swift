@@ -86,6 +86,17 @@ private func titles(_ buttons: [BoardButton]) -> [String] { buttons.map(\.title)
         #expect(p.home == "Home address reachable from here: yes")
         #expect(p.desks.map(\.name) == ["api", "blog", "garden", "notes", "recipes", "website"])
         #expect(p.noDesks == nil && p.stale == nil && p.result == nil)
+        #expect(p.name == "Attic" && p.pill == StatePill(word: "Ready", tone: .ready))
+    }
+
+    /// Design 6.4: the foot keeps its buttons at the left in order, and Restart… alone at the right; one primary
+    /// button on the page.
+    @Test func theFootPutsRestartAloneAtTheRight() throws {
+        let p = try page(result(.ready(signIns: true), status: try report()))
+        #expect(titles(p.footLeft) == ["Share screen", "Turn off lid-closed mode…", "Run the checklist…"] && p.footRight?.title == "Restart…")
+        #expect((p.underHint + p.deskButtons + p.foot).filter { ButtonKind.of($0.action) == .primary }.count == 1)
+        let locked = try page(result(.locked, status: nil))
+        #expect(titles(locked.footLeft) == ["Run the checklist…"] && locked.footRight == nil)
     }
 
     /// Every button of the board is on the page once, in the board's order.
@@ -225,10 +236,11 @@ private func titles(_ buttons: [BoardButton]) -> [String] { buttons.map(\.title)
     }
 
     /// The rows of the menu design's example, with the records and the time the menu's last build had.
-    private func rowsWithTabs() throws -> [String: DeskRow] {
-        let r = CheckResult.sample(.ready(signIns: true), workhorse: attic, status: windowsReport(), homeReachable: true,
+    private func rowsWithTabs(_ status: HostStatus = windowsReport(), mode: ConnectionMode = .mosh) throws -> [String: DeskRow] {
+        let w = Workhorse.sample(id: "attic", name: "Attic", user: "alex", mode: mode)
+        let r = CheckResult.sample(.ready(signIns: true), workhorse: w, status: status, homeReachable: true,
                                    checkedAt: checkedAt)
-        let board = BoardModel.build(latest: ["attic": r], lastReady: [:], checking: [], order: [attic],
+        let board = BoardModel.build(latest: ["attic": r], lastReady: [:], checking: [], order: [w],
                                      waitingForDeskServer: [],
                                      tabs: TabsSeen(tabs: TabsOnThisMac(records: windowsRecords, terminal: .iterm2), at: windowsNow),
                                      now: formatNow, timeZone: formatZone)
@@ -278,6 +290,134 @@ private func titles(_ buttons: [BoardButton]) -> [String] { buttons.map(\.title)
         let website = try #require(try rows()["website"])
         #expect(website.open == BoardButton(title: "Open", action: .menu(.tab(["connect", "attic", "website"]))))
         #expect(website.openWords == "Open website" && website.windowLines.isEmpty)
+    }
+
+    // MARK: The cells on a desk's tile (look design 6.5)
+
+    /// An open desk "shop" made by hand, with `windows` windows w0… (ids @1…), each in `inTabs` tabs when given.
+    private func desk(windows: Int, inTabs: [Int]?, tabsOpen: Int) -> BoardDesk {
+        BoardDesk(name: "shop", isOpen: true,
+                  windows: (0..<windows).map { i in
+                      BoardWindow(index: i, name: "w\(i)", id: "@\(i + 1)", tabs: inTabs?[i], inTabs: inTabs?[i])
+                  },
+                  windowCount: windows, tabsOpen: tabsOpen, folder: nil, command: nil, reopen: nil, keep: nil,
+                  permanent: nil, madeByMacMosh: false, open: nil, buttons: [])
+    }
+
+    @Test func eachWindowInATabLightsItsCell() throws {
+        let r = try rowsWithTabs()
+        #expect(r["website"]?.cells == DeskCells(cells: [.lit, .lit, .unlit], more: false) && r["garden"]?.cells.cells == [.hollow])
+        #expect(r["api"]?.cells.cells == [.unlit, .unlit] && r["shop"]?.cells.cells == [.lit, .unlit])
+        #expect(r["notes"]?.cells.cells == [.lit] && r["blog"]?.cells.cells == [.unlit])
+        #expect(DeskCells.most == 6 && DeskCells.shownWithMore == 5)
+    }
+
+    @Test func withoutPerWindowCountsTheCellsLightFromTheFirst() throws {   // Review Focus 3
+        let r = try rows()   // no menu tabs
+        #expect(r["website"]?.cells == DeskCells(cells: [.lit, .lit, .unlit], more: false))
+        #expect(r["blog"]?.cells == DeskCells(cells: [.lit, .unlit], more: false) && r["notes"]?.cells.cells == [.hollow])
+        var seen = 0
+        for (status, mode) in [(windowsReport(version: "0.1.0"), ConnectionMode.mosh), (windowsReport(), .tabs)] {
+            for row in try rowsWithTabs(status, mode: mode).values where row.cells.cells != [.hollow] {
+                let lit = row.cells.cells.prefix { $0 == .lit }.count
+                #expect(row.cells.cells.dropFirst(lit).allSatisfy { $0 == .unlit }, "\(row.name)")
+                seen += 1
+            }
+        }
+        #expect(seen == 10)
+        #expect(DeskCells(desk(windows: 3, inTabs: nil, tabsOpen: 12)) == DeskCells(cells: [.lit, .lit, .lit], more: false))
+        // Counts known for some windows only: the fallback, from the first.
+        var some = desk(windows: 3, inTabs: [0, 0, 1], tabsOpen: 1)
+        some.windows[0].inTabs = nil
+        #expect(DeskCells(some).cells == [.lit, .unlit, .unlit])
+    }
+
+    @Test func nineWindowsShowFiveCellsAndThePlus() {   // Review Focus 2
+        let nine = desk(windows: 9, inTabs: [0, 1, 0, 0, 0, 0, 0, 1, 0], tabsOpen: 2)
+        #expect(DeskCells(nine) == DeskCells(cells: [.unlit, .lit, .unlit, .unlit, .unlit], more: true) && DeskRow(nine).tabs == "In 2 tabs")
+        #expect(DeskRow(nine).state == DeskStateCell(word: "In 2 tabs", kind: .inTabs))
+        #expect(DeskCells(desk(windows: 9, inTabs: nil, tabsOpen: 7)) == DeskCells(cells: Array(repeating: .lit, count: 5), more: true))
+        #expect(DeskCells(desk(windows: 6, inTabs: nil, tabsOpen: 0)) == DeskCells(cells: Array(repeating: .unlit, count: 6), more: false))
+        #expect(DeskCells(desk(windows: 7, inTabs: nil, tabsOpen: 0)).cells.count == 5)
+    }
+
+    /// An open desk the report gives no window for has no cells; nor has the row of a desk just made.
+    @Test func noWindowsNoCells() throws {
+        #expect(DeskCells(desk(windows: 0, inTabs: nil, tabsOpen: 0)) == DeskCells(cells: [], more: false))
+        let arriving = try activePage(WindowActivity(arriving: ["garden-planner"]))
+        #expect(arriving.desks.first { $0.name == "garden-planner" }?.cells == DeskCells(cells: [], more: false))
+    }
+
+    // MARK: The row's state cell, second line, tag and spoken label (look design 6.5)
+
+    @Test func eachRowSaysItsStateInItsCell() throws {
+        #expect(WindowWords.madeByHand == "Made by hand" && WindowWords.closedState == "Closed")
+        let r = try rows()
+        #expect(r["website"]?.state == DeskStateCell(word: "In 2 tabs", kind: .inTabs))
+        #expect(r["garden"]?.state == DeskStateCell(word: "No tab", kind: .noTab))
+        #expect(r["notes"]?.state == DeskStateCell(word: "Closed", kind: .closed))
+        #expect(r["notes"]?.windowWords == "" && r["notes"]?.windows == "(closed)")   // today's field unchanged
+        #expect(r["website"]?.windowWords == "claude, zsh, vim" && r["blog"]?.windowWords == r["blog"]?.windows)
+        let busy = try activePage(WindowActivity(busy: ["api": .rename], arriving: ["garden-planner"]))
+        #expect(busy.desks.first { $0.name == "api" }?.state == DeskStateCell(word: "Renaming…", kind: .busy))
+        let arriving = try #require(busy.desks.first { $0.name == "garden-planner" })
+        #expect(arriving.state == DeskStateCell(word: "Updating…", kind: .busy) && arriving.cells.cells.isEmpty)
+        #expect(arriving.windowWords == "" && arriving.secondLine.whole == "" && arriving.spokenLabel == "garden-planner, Updating…")
+        let updating = try activePage(WindowActivity(updating: ["website"]))
+        #expect(updating.desks.first { $0.name == "website" }?.state == DeskStateCell(word: "Updating…", kind: .busy))
+        #expect(DeskStateKind.inTabs.textRole == .good && DeskStateKind.closed.textRole == .secondary)
+        #expect(DeskStateKind.noTab.textRole == .secondary && DeskStateKind.busy.textRole == .secondary)
+    }
+
+    @Test func anOpenDeskWithNoWindowNamesSaysHowManyWindows() {
+        let one = BoardDesk(name: "x", isOpen: true, windows: [BoardWindow(index: 0, name: "", id: nil, tabs: nil)],
+                            windowCount: 1, tabsOpen: 0, folder: nil, command: nil, reopen: nil, keep: nil, permanent: nil,
+                            madeByMacMosh: false, open: nil, buttons: [])
+        #expect(DeskRow(one).windowWords == "1 window" && DeskRow(one).spokenLabel == "x, 1 window, Made by hand, No tab")
+    }
+
+    @Test func aHandMadeDeskHasTheTagWithTodaysSentenceAsHelp() throws {
+        let blog = try #require(try rows()["blog"])
+        #expect(blog.secondLine.tag == "Made by hand" && blog.secondLine.whole == "Made by hand" && blog.secondLine.fitted(4) == "Made by hand")
+        #expect(blog.secondLine.help == "Not made with MacMosh: folder and restart not known")
+        #expect(blog.secondLine.folder == nil && blog.secondLine.facts.isEmpty)
+        #expect(blog.second == "Not made with MacMosh: folder and restart not known")   // today's field unchanged
+    }
+
+    @Test func theFolderIsCutInTheMiddleAndTheFactsStay() throws {
+        let recipes = try #require(try rows()["recipes"]).secondLine
+        #expect(recipes.folder == "/opt/projects/recipes" && recipes.facts == ["Doesn't come back after a restart"] && recipes.tag == nil)
+        #expect(recipes.whole == "/opt/projects/recipes · Doesn't come back after a restart" && recipes.fitted(57) == recipes.whole)
+        #expect(recipes.fitted(46) == "/opt…cipes · Doesn't come back after a restart")
+        #expect(recipes.fitted(10) == "/o…es · Doesn't come back after a restart")
+        #expect(recipes.help == recipes.whole)
+        let website = try #require(try rows()["website"]).secondLine
+        #expect(website.fitted(12) == "~/Dev…ebsite" && website.help == "~/Development/website")
+        #expect(SecondLine.widths == [.max, 96, 80, 64, 48, 32, 0])
+        #expect(SecondLine.widths.map(website.fitted).first == website.whole)
+    }
+
+    @Test func theSpokenLabelIsNameWindowsSecondLineThenState() throws {
+        let r = try rows()
+        #expect(r["website"]?.spokenLabel == "website, claude, zsh, vim, ~/Development/website, In 2 tabs")
+        #expect(r["blog"]?.spokenLabel == "blog, claude, zsh, Made by hand, In 1 tab")
+        #expect(r["notes"]?.spokenLabel == "notes, ~/notes · Kept when it exits, Closed")
+        // CI reads a row's label from its start: the name, then the window names (look design 3).
+        for row in r.values where !row.windowWords.isEmpty {
+            #expect(row.spokenLabel.hasPrefix("\(row.name), \(row.windowWords), "), "\(row.name)")
+        }
+    }
+
+    @Test func aLongNameStaysWholeAndTheSecondLineKeepsItsFacts() {   // Review Focus 1
+        let long = "garden-planner-for-the-allotment-by-the-river"
+        let d = BoardDesk(name: long, isOpen: true, windows: [BoardWindow(index: 0, name: "zsh", id: "@1", tabs: 1)],
+                          windowCount: 1, tabsOpen: 1, folder: "~/Development/\(long)", command: nil, reopen: true,
+                          keep: false, permanent: true, madeByMacMosh: true, open: nil, buttons: [])
+        let row = DeskRow(d)
+        #expect(row.spokenLabel == "\(long), zsh, ~/Development/\(long) · Kept when it exits, In 1 tab")
+        #expect(row.secondLine.fitted(40).hasSuffix(" · Kept when it exits") && row.secondLine.fitted(40).count == 40)
+        #expect(row.secondLine.help == "~/Development/\(long) · Kept when it exits")
+        #expect(LookSize.nameMaxWidth == 200)
     }
 
     // MARK: The greyed list under a workhorse that is not Ready
@@ -476,5 +616,44 @@ private func titles(_ buttons: [BoardButton]) -> [String] { buttons.map(\.title)
         // The menu's notice is the same sentence: the page shows it once.
         #expect(p.notice("Created the desk garden-planner on Attic.") == nil)
         #expect(p.notice("The tab didn't open.") == "The tab didn't open.")
+    }
+
+    // MARK: The result slot (look design 6.3)
+
+    /// Attic's Ready page with that result line and kind.
+    private func pageWithResult(_ sentence: String, kind: ResultKind) throws -> WorkhorsePage {
+        let board = BoardModel.build(latest: ["attic": result(.ready(signIns: true), status: try report())], lastReady: [:],
+                                     checking: [], order: [attic], waitingForDeskServer: [],
+                                     results: ["attic": sentence], resultKinds: ["attic": kind], now: formatNow,
+                                     timeZone: formatZone)
+        return WorkhorsePage(try #require(board.workhorses.first), now: formatNow, timeZone: formatZone)
+    }
+
+    @Test func theResultSlotHoldsTheResultOrTheNotice() throws {
+        let made = "Created the desk garden-planner on Attic.", tab = "The tab didn't open."
+        let p = try pageWithResult(made, kind: .done)
+        #expect(p.resultKind == .done && p.result == made)
+        let alone = ResultSlot(sentence: made, kind: .done, isResult: true, notice: nil, sentenceLines: 2)
+        #expect(p.resultSlot(notice: nil) == alone && p.resultSlot(notice: made) == alone)
+        #expect(p.resultSlot(notice: tab) == ResultSlot(sentence: made, kind: .done, isResult: true, notice: tab, sentenceLines: 1))
+        let none = try page(result(.ready(signIns: true), status: try report()))
+        #expect(none.resultKind == nil)
+        #expect(none.resultSlot(notice: nil) == nil)
+        #expect(none.resultSlot(notice: tab) == ResultSlot(sentence: tab, kind: nil, isResult: false, notice: nil, sentenceLines: 2))
+    }
+
+    @Test func aLongFailedResultKeepsItsWholeSentenceInTwoLines() throws {   // Review Focus 5
+        let long = "The desk garden-planner wasn't made. Attic already has a desk with that name. Pick another name."
+        let slot = try #require(try pageWithResult(long, kind: .failed).resultSlot(notice: long))
+        #expect(slot.sentence == long && slot.kind == .failed && slot.sentenceLines == 2 && slot.notice == nil)
+        #expect(ResultKind.failed.textRole == .cannot && ResultKind.done.textRole == .secondary)
+    }
+
+    /// A call that passed the time limit may still have worked: neither done nor failed, in secondary words.
+    @Test func aTimedOutResultIsNeitherDoneNorFailed() throws {
+        let unsure = "MacMosh didn't hear back from Attic about website within 15 seconds. The next check shows whether it was removed."
+        let slot = try #require(try pageWithResult(unsure, kind: .unknown).resultSlot(notice: unsure))
+        #expect(slot == ResultSlot(sentence: unsure, kind: .unknown, isResult: true, notice: nil, sentenceLines: 2))
+        #expect(ResultKind.unknown.textRole == .secondary)
     }
 }
