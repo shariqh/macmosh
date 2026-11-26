@@ -1,6 +1,6 @@
 # The look of MacMosh: soft tiles, the M icon, and one pass over the window's words
 
-Status: a proposal for the owner to approve. Nothing here is built until he does, and each step after that is rolled out to his daily Mac only with his go-ahead. Written: 2026-11-25; revised the same day after a builder's read. Issues: #34 (Task 31: icon, About box and wording), with the open wording questions of #156, #160 and #166.
+Status: approved by the owner on 2026-11-25 at 16:10 ("Approve the design"), with every item of section 0, after he chose the M mark for the menu bar. Each step is rolled out to his daily Mac only with his go-ahead. Written: 2026-11-25; revised the same day after a builder's read. Issues: #34 (Task 31: icon, About box and wording), with the open wording questions of #156, #160 and #166.
 
 This document adds to the v1 design (`docs/superpowers/specs/2026-11-18-macmosh-v1-design.md`, "the v1 design") and the main-window design (`docs/superpowers/specs/2026-11-23-main-window-design.md`, "the window design"). It changes how the window looks and some of its words, and one small behaviour, named in section 7: `macmosh desk new` with a name and a folder and no `--window-name` names the first window after the desk. Section 3 names the one sentence of the window design it amends. The pictures are mockups (drawings made to look like the app), not the built app; where a picture and the text differ, the text says so.
 
