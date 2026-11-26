@@ -65,8 +65,12 @@ if args[1] == "zoom" {
           let bytes = made.bitmapData else { fail("bartool: cannot make a bitmap") }
     for py in py0..<py1 { for px in px0..<px1 {
         let c = rep.colorAt(x: px, y: py)?.usingColorSpace(.sRGB)
-        let rgba = [c?.redComponent ?? 0, c?.greenComponent ?? 0, c?.blueComponent ?? 0, c?.alphaComponent ?? 0]
-            .map { UInt8((min(max($0, 0), 1) * 255).rounded()) }
+        // Typed step by step: macOS 15's compiler could not type-check this as one expression in time.
+        let parts: [CGFloat] = [c?.redComponent ?? 0, c?.greenComponent ?? 0, c?.blueComponent ?? 0, c?.alphaComponent ?? 0]
+        let rgba: [UInt8] = parts.map { (v: CGFloat) -> UInt8 in
+            let clamped: CGFloat = min(max(v, 0), 1)
+            return UInt8((clamped * 255).rounded())
+        }
         for dy in 0..<k { for dx in 0..<k {
             let i = (((py - py0) * k + dy) * width + (px - px0) * k + dx) * 4
             for j in 0..<4 { bytes[i + j] = rgba[j] }
@@ -95,5 +99,10 @@ for py in py0..<py1 { for px in px0..<px1 {
     minX = min(minX, px); maxX = max(maxX, px); minY = min(minY, py); maxY = max(maxY, py)
 } }
 let mean = ink > 0 ? sum / Double(ink) : bar
-let box = ink > 0 ? String(format: "%gx%g", Double(maxX - minX + 1) / scale, Double(maxY - minY + 1) / scale) : "0x0"
+var box = "0x0"
+if ink > 0 {
+    let boxW: Double = Double(maxX - minX + 1) / scale
+    let boxH: Double = Double(maxY - minY + 1) / scale
+    box = String(format: "%gx%g", boxW, boxH)
+}
 print(String(format: "read bar=%.3f far=%.3f mean=%.3f inkpx=%d box=%@", bar, far, mean, ink, box))

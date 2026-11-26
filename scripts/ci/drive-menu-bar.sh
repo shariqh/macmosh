@@ -135,7 +135,9 @@ recolour_check() {
     result "$verdict" "the system recolours the mark" "$detail; ours far-bar=$od, theirs far-bar=$td"
 }
 
-# barinfo: the item's "x y w h", and its words into $spoken_record and $description.
+# barinfo: reads the item into $item ("x y w h"), $spoken_record (its four attributes) and $description (its
+# AXDescription). Called directly, never in $(...), so the three reach the caller.
+item=""
 spoken_record=""
 description=""
 barinfo() {
@@ -146,8 +148,9 @@ barinfo() {
     size=$(sed -n 's/.*size=\([0-9-]*,[0-9-]*\).*/\1/p' <<< "$b")
     spoken_record=$(sed -n 's/.* \(axdescription=\[.*\]\)$/\1/p' <<< "$b")
     description=$(sed -n 's/.* axdescription=\[\(.*\)\] axtitle=\[.*$/\1/p' <<< "$b")
+    item=""
     [ -z "$pos" ] || [ -z "$size" ] && return 1
-    echo "${pos%,*} ${pos#*,} ${size%,*} ${size#*,}"
+    item="${pos%,*} ${pos#*,} ${size%,*} ${size#*,}"
 }
 
 # shoot <name> <x> <y> <w> <h>: the strip around the item and its zoom; prints our reading and theirs, a line each.
@@ -174,7 +177,7 @@ stop_app() {
 # one_sample <sample>
 one_sample() {
     sample=$1
-    local since support line item x y w h ours theirs both open_ours n want ob of
+    local since support line x y w h ours theirs both open_ours n want ob of
     since=$(moment)
     support=$(mktemp -d)
     say "== $sample: start the app"
@@ -194,7 +197,7 @@ one_sample() {
         result FAIL "the log names the state" "no '$line' line within 20 s"
     fi
     sleep 1
-    if ! item=$(barinfo); then
+    if ! barinfo; then
         result NOT-SHOWN "the menu-bar item's spoken name" "System Events gave no position for the item"
         result NOT-SHOWN "the system recolours the mark" "System Events gave no position for the item"
         stop_app
