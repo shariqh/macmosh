@@ -296,6 +296,18 @@ open_window() {
         close_menu
         return 1
     fi
+    # Look step 4: with the window-sidebar sample's seven Macs the menu is taller than the runner's screen (768 points)
+    # and Open MacMosh lies below its bottom. The menu is scrolled with the pointer at the screen's bottom edge, where
+    # a menu too tall for the screen scrolls, and one posted scroll there; the sign is tried both ways, as for the page.
+    local try
+    for try in -30 30; do
+        [ "$y" -le $((screen_bottom - 12)) ] && break
+        say "Open MacMosh is at $x,$y, below the screen's bottom ($screen_bottom): scroll the menu by $try lines"
+        tool scroll "$x" $((screen_bottom - 4)) "$try" > /dev/null
+        sleep 1.5
+        read -r idx x y name <<< "$(max find top "Open MacMosh" | grep '^found' | tail -n 1 | cut -d' ' -f2-)"
+        [ -z "${y:-}" ] && y=$((screen_bottom + 1))
+    done
     since=$(moment)
     say "click on line $idx [$name] at $x,$y"
     tool click "$x" "$y" > /dev/null
@@ -2085,6 +2097,8 @@ ended_sample() {
     result "$([ "$v" = "$want" ] && echo PASS || echo DIFFERS)" "a long command is whole behind its cut line" "it reads: ${v:-nothing}"
 
     # Start again on recipes: one call, the same desk, its folder with a space and its command as one argument.
+    # Look step 4: the Kept line under each row's buttons pushes recipes' below the window's bottom at the default size.
+    into_view ended.recipes.startAgain
     since=$(moment)
     click_id "ended.recipes.startAgain" > /dev/null
     sleep 0.6
@@ -2111,6 +2125,7 @@ ended_sample() {
 
     # Start again and keep it on garden: its own flags (no reopen, keep running) and --permanent.
     since=$(moment)
+    into_view ended.garden.keep
     click_id "ended.garden.keep" > /dev/null
     expect_log "Start again and keep it sends --permanent with the desk's flags" "$since" \
         "sample ssh: to=alex@192.168.1.20 batch=yes stdin=closed limit=15s run=~/.macmosh/macmosh-host desk-new garden /Users/alex/Development/garden --no-reopen --keep --permanent --command claude"
@@ -2125,6 +2140,7 @@ ended_sample() {
 
     # Forget on blog: the line goes and nothing is sent.
     since=$(moment)
+    into_view ended.blog.forget
     click_id "ended.blog.forget" > /dev/null
     if gone_id "ended.blog" 5; then
         result PASS "Forget removes the line" "ended.blog gone"
@@ -2586,7 +2602,9 @@ PY
 
 ############################################################ the run
 say "driving the window of $APP on $os ($(sw_vers -productVersion))"
-tool preflight > /dev/null
+# The main screen's height, from menutool's "display main bounds=(0.0, 0.0, 1024.0, 768.0)"; 768 when not read.
+screen_bottom=$(tool preflight | sed -n 's/.*display main bounds=([0-9.]*, [0-9.]*, [0-9.]*, \([0-9]*\).*/\1/p' | head -n 1)
+screen_bottom=${screen_bottom:-768}
 lim 10 "$TOOL" move 600 500 > /dev/null
 
 forms_sample
