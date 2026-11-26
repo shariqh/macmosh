@@ -57,7 +57,7 @@ struct MainWindow: View {
                             Task { await settings.reload() }
                         }
                 case .unreadableList:
-                    UnreadableListPageView(problem: screen.listProblem ?? "")
+                    UnreadableListPageView(page: ListProblemPage(problem: screen.listProblem ?? ""))
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -175,6 +175,13 @@ enum WindowMarks {
     static func window(_ name: String, _ id: String) -> String { "desk.\(name).win.\(id)" }
     /// A window's Name… button in its desk's strip: `desk.website.name.@3` (issue 144).
     static func nameWindow(_ name: String, _ id: String) -> String { "desk.\(name).name.\(id)" }
+    /// A window's name in its desk's details, a static text: `desk.website.line.@3` (look step 2).
+    static func windowLine(_ name: String, _ id: String) -> String { "desk.\(name).line.\(id)" }
+    /// A window's state in its desk's details, a static text: `desk.website.state.@3` (look step 2).
+    static func windowState(_ name: String, _ id: String) -> String { "desk.\(name).state.\(id)" }
+    /// The window lines and the facts in a desk's details, each a group (look step 2).
+    static func lines(_ name: String) -> String { "desk.\(name).lines" }
+    static func facts(_ name: String) -> String { "desk.\(name).facts" }
     /// A button by what it does: `button.openAllWithoutTab`, `button.menu.connect.attic.api`.
     static func button(_ b: BoardButton) -> String {
         switch b.action {
@@ -199,6 +206,9 @@ enum WindowMarks {
     static let headline = "page.headline"
     static let addMac = "page.addMac"
     static let listProblem = "page.listProblem"
+    /// The unreadable-list page's heading and next step (look step 2).
+    static let listProblemHeading = "page.listProblemHeading"
+    static let listProblemNext = "page.listProblemNext"
 }
 
 /// Each workhorse with its state's symbol, then Add a Mac….
@@ -232,9 +242,11 @@ struct NoticeLine: View {
     }
 }
 
-/// A row of buttons, each with the board's title, in the look's style for what it does (`ButtonKind`).
+/// A row of buttons, each with the board's title, in the look's style for what it does (`ButtonKind`); small inside a
+/// desk's opened details.
 struct ButtonRow: View {
     let buttons: [BoardButton]
+    var small = false
     let run: (BoardButton) -> Void
 
     var body: some View {
@@ -242,7 +254,7 @@ struct ButtonRow: View {
             ForEach(Array(buttons.enumerated()), id: \.offset) { _, button in
                 Button { run(button) } label: { Text(verbatim: button.title) }
                     .buttonStyle(LookButtonStyle(kind: ButtonKind.of(button.action),
-                                                 glyph: LookButtonStyle.glyph(for: button.action)))
+                                                 glyph: LookButtonStyle.glyph(for: button.action), small: small))
                     .disabled(!button.isEnabled)
                     .accessibilityIdentifier(WindowMarks.button(button))
             }

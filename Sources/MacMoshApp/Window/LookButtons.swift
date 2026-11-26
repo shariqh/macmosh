@@ -3,7 +3,8 @@ import SwiftUI
 
 /// The look's four buttons (look design 6.4), by `ButtonKind`: primary (an ink fill), secondary (a surface tile),
 /// set apart (a hairline outline, no fill) and destructive (a surface tile with red words). Titles stay the board's;
-/// a glyph is decoration, hidden from VoiceOver.
+/// a glyph is decoration, hidden from VoiceOver. A small button (look step 2) is 24 points high with the second
+/// line's type: every button inside a desk's opened details is one.
 ///
 /// Apple, ButtonStyle (macOS 10.15, https://developer.apple.com/documentation/swiftui/buttonstyle): "A type that
 /// applies standard interaction behavior and a custom appearance to all buttons within a view hierarchy." Apple,
@@ -13,9 +14,10 @@ import SwiftUI
 struct LookButtonStyle: ButtonStyle {
     let kind: ButtonKind
     var glyph: String? = nil
+    var small = false
 
     func makeBody(configuration: Configuration) -> some View {
-        LookButtonBody(kind: kind, glyph: glyph, label: configuration.label, isPressed: configuration.isPressed)
+        LookButtonBody(kind: kind, glyph: glyph, small: small, label: configuration.label, isPressed: configuration.isPressed)
     }
 
     /// The small leading glyph: New desk… and Restart… have one (look design 6.4 and 15).
@@ -28,6 +30,7 @@ struct LookButtonStyle: ButtonStyle {
 private struct LookButtonBody: View {
     let kind: ButtonKind
     let glyph: String?
+    let small: Bool
     let label: ButtonStyleConfiguration.Label
     let isPressed: Bool
     /// Apple, EnvironmentValues.isEnabled (macOS 10.15, https://developer.apple.com/documentation/swiftui/environmentvalues/isenabled):
@@ -46,14 +49,19 @@ private struct LookButtonBody: View {
             }
             label.lineLimit(1)
         }
-        .font(.system(size: LookSize.bodyFont))
+        .font(.system(size: small ? LookSize.secondFont : LookSize.bodyFont))
         .fixedSize()
         .foregroundStyle(LookColor.text(words.text, on: words.background))
-        .padding(.horizontal, 12)
-        .frame(minHeight: LookSize.buttonHeight)
-        .background { fill }
-        // Pressed: the fill darkened 8 per cent.
-        .overlay { if isPressed { shape.fill(.black.opacity(0.08)) } }
+        .padding(.horizontal, small ? 8 : 12)
+        .frame(minHeight: small ? LookSize.smallButtonHeight : LookSize.buttonHeight)
+        // Pressed: black at `LookSize.pressedOverlay` over the fill and under the words, so the words keep their pair's
+        // contrast on the darkened fill (`LookTests.aPressedButtonKeepsItsContrast`).
+        .background {
+            ZStack {
+                fill
+                if isPressed { shape.fill(.black.opacity(LookSize.pressedOverlay)) }
+            }
+        }
         .opacity(isEnabled ? 1 : 0.45)
         .contentShape(shape)
     }

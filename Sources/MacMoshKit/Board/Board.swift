@@ -105,9 +105,12 @@ public struct BoardWindow: Sendable, Equatable {
     /// a desk with more than one window, past `WindowNameGate`; nil otherwise (a desk with one window has "Name its
     /// window…" in its strip instead).
     public var nameButton: BoardButton?
+    /// The window's name and state from the menu's facts (`DeskWindows.namesAndStates`), for its line in the opened
+    /// details (look design 6.6): set for a desk past the menu's gate, with buttons; nil otherwise and in the greyed list.
+    public var nameAndState: WindowNameAndState?
 
     public init(index: Int, name: String, id: String?, tabs: Int?, inTabs: Int? = nil, button: BoardButton? = nil,
-                nameButton: BoardButton? = nil) {
+                nameButton: BoardButton? = nil, nameAndState: WindowNameAndState? = nil) {
         self.index = index
         self.name = name
         self.id = id
@@ -115,6 +118,7 @@ public struct BoardWindow: Sendable, Equatable {
         self.inTabs = inTabs
         self.button = button
         self.nameButton = nameButton
+        self.nameAndState = nameAndState
     }
 }
 

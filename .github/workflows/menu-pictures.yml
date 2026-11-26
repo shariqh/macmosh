@@ -28,6 +28,10 @@ name: Menu pictures
 # check (Tab reaches Check now, New desk… and a desk's Open), and the window's run takes a picture at its smallest
 # size. A second job, window-dark, switches the runner to dark and drives every window sample again, never the menu;
 # it stops with a clear error when the switch did not take, rather than take light pictures.
+# Look step 2 (issue 174): drive-window.sh reads a window's line in a desk's details as its name and its state, reads
+# the selected trait of an open desk's row (windowtool isselected), scrolls the page at the smallest window to picture
+# the details stacked (menutool scroll), and checks the unreadable-list page's heading and next step and that Forget
+# stands apart.
 # scripts/ci/drive-menu.sh says what it checks.
 on:
   pull_request:

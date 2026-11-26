@@ -34,4 +34,33 @@ public enum LookSize {
     public static let bodyFont = 13.0
     public static let secondFont = 12.0
     public static let tagFont = 11.0
+    /// A pressed button: black at 8 per cent over its fill, under its words.
+    public static let pressedOverlay = 0.08
+    /// A small button, inside a desk's opened details only.
+    public static let smallButtonHeight = 24.0
+    /// Around the workhorse page.
+    public static let pagePadding = 20.0
+    /// Inside the details panel and the greyed panel.
+    public static let panelPadding = 12.0
+    /// The details panel starts under the desk's tile: the chevron's 10 points and the row's 12-point gap.
+    public static let detailsInset = 22.0
+    /// Below about this much page width the facts in the details go under the window lines (design 6.6).
+    public static let detailsStackBelowPageWidth = 620.0
+    /// The same rule as the width the details' columns are offered: the page less its padding, the inset and the
+    /// panel's padding. A scroll bar, when the system shows one, is not counted.
+    public static var detailsStackBelowColumnsWidth: Double {
+        detailsStackBelowPageWidth - 2 * pagePadding - detailsInset - 2 * panelPadding
+    }
+    /// Between each of the details' columns and the one-point hairline that parts them.
+    public static let detailsColumnGap = 12.0
+    /// Side by side (offered at least `detailsStackBelowColumnsWidth`), the width the details' window lines take: their
+    /// own while the facts keep theirs, so a long window name is cut with "…" and the facts are not. Never less than
+    /// half of what is offered, so long facts cannot squeeze the lines to nothing. When to stack stays the fixed rule.
+    public static func detailsLinesWidth(offered: Double, lines: Double, facts: Double) -> Double {
+        let room = offered - 2 * detailsColumnGap - 1 - facts
+        return min(lines, max(room, offered / 2))
+    }
+    /// Window names beside a desk's name are cut with "…" only while at least this many letters stay; below that they
+    /// are left out. A count of letters, so a whole number.
+    public static let windowNamesFewest = 4
 }
