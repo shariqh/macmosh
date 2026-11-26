@@ -31,12 +31,17 @@ public enum SampleWindow: String, CaseIterable, Sendable {
     /// Issue 157: Attic and Spare, Ready, whose settings the Settings page saves into a stand-in store of its own
     /// (`SampleSettings`).
     case settings = "window-settings"
+    /// Look step 3: five Macs in five states, for the sidebar's pictures and checks. Workhorse, Ready with six desks;
+    /// Attic, Ready with one; Spare, Locked after a restart; Den, Can't reach it; Loft, which never answers, so it is
+    /// still checking.
+    case sidebar = "window-sidebar"
 
     var workhorses: [Workhorse] {
         switch self {
         case .unreadableList: return []
         case .forms, .formsOlderScript, .ended: return [SampleForms.attic]
         case .settings: return [SampleSettings.attic, SampleSettings.spare]
+        case .sidebar: return [SampleMenu.main, Self.attic, SampleMenu.spare, Self.den, Self.loft]
         default: return [SampleMenu.main]
         }
     }
@@ -72,8 +77,24 @@ public enum SampleWindow: String, CaseIterable, Sendable {
             return [.checked(SampleEnded.result(SampleForms.attic))]
         case .settings:
             return workhorses.map { .checked(SampleForms.result($0)) }
+        case .sidebar:
+            // Loft has no entry, so it never answers.
+            return [.checked(SampleMenu.result(SampleMenu.main, .ready(signIns: true), report: SampleMenu.report(change: nil),
+                                               home: true)),
+                    .checked(SampleMenu.result(Self.attic, .ready(signIns: true), report: Self.oneDeskReport, home: true)),
+                    .checked(SampleMenu.result(SampleMenu.spare, .locked, report: nil, home: nil)),
+                    .checked(SampleMenu.result(Self.den, .cantReach(.nothingAnswers), report: nil, home: nil))]
         }
     }
+
+    /// The `sidebar` sample's other three Macs, made as `SampleMenu.main` is, with the id as the address.
+    private static func sample(_ id: String, _ name: String) -> Workhorse {
+        Workhorse(id: id, name: name, user: "sample", mainAddress: id, hostKey: "ssh-ed25519 SAMPLE-KEY-NOT-REAL",
+                  paired: true, osVersion: "26.1", arch: "arm64")
+    }
+    private static let attic = sample("attic", "Attic")
+    private static let den = sample("den", "Den")
+    private static let loft = sample("loft", "Loft")
 
     /// The long-named desk of `longFolder`: 45 characters.
     static let longName = "garden-planner-for-the-allotment-by-the-river"
@@ -94,6 +115,12 @@ public enum SampleWindow: String, CaseIterable, Sendable {
         "def\t\(longName)\t1\t1\t1\t/Users/sample/Development/\(longName)",
         "end",
     ]).joined(separator: "\n") + "\n"
+
+    /// A workhorse script 0.8.0 report with one desk, notes, and no `def` line: Attic's in the `sidebar` sample ("Ready ·
+    /// 1 desk"). A report that failed to parse would read "Ready · No desks".
+    static let oneDeskReport = ["macmosh-host\t1\t0.8.0", "os\t26.1\tarm64", "console\tsample", "server\tup", "signins\tok",
+        "agent\tinstalled", "power\tsleep=0\twomp=1", "battery\tpresent\tac\t82",
+        "desk\tnotes\t1\t0", "window\tnotes\t0\tzsh", "end"].joined(separator: "\n") + "\n"
 
     /// The real refresher, with the saved list and the checks replaced.
     @MainActor public func refresher() -> MenuRefresher {

@@ -65,6 +65,15 @@ public enum WindowWords {
         return open
     }
 
+    /// "No desks", "1 desk", "6 desks": a Ready Mac's count in the sidebar (look design 6.2), closed desks counted.
+    public static func deskCount(_ count: Int) -> String {
+        switch count {
+        case ...0: return "No desks"
+        case 1: return "1 desk"
+        default: return "\(count) desks"
+        }
+    }
+
     /// "1 window", "2 windows": for an open desk whose windows have no names.
     public static func windows(_ count: Int) -> String {
         count == 1 ? "1 window" : "\(count) windows"
@@ -256,11 +265,16 @@ public struct DeskRow: Sendable, Equatable, Identifiable {
     /// Its window names ("claude, zsh, vim"), or "1 window" when they have none; "" for a closed desk and for a desk
     /// just made (look design 6.5).
     public var windowWords: String
+    /// True when `windowWords` is a count ("1 window", "2 windows", `WindowWords.windows(_:)`), not names; false in the
+    /// row of a desk just made.
+    public var windowWordsAreACount: Bool
     /// The window names as the row shows them when little room is left: cut to `LookSize.windowNamesFewest` letters
-    /// and "…", or whole when no longer than that and one; "" when there are none. Below this the row leaves them out
-    /// (the spoken label keeps them).
+    /// and "…", or whole when no longer than that and one; "" when there are none. A count is never cut: it is whole
+    /// here, so the row shows it whole or leaves it out (look step 3). Below this the row leaves them out (the spoken
+    /// label keeps them).
     public var windowWordsAtFewest: String {
         let fewest = LookSize.windowNamesFewest
+        if windowWordsAreACount { return windowWords }
         return windowWords.count <= fewest + 1 ? windowWords : String(windowWords.prefix(fewest)) + "…"
     }
     /// The state cell: the running action's words first ("Renaming…", "Updating…"); else "In 2 tabs", "No tab" or
@@ -312,6 +326,7 @@ public struct DeskRow: Sendable, Equatable, Identifiable {
         // after it lands: shown in the state cell in place of the tab count.
         let status = running?.progress ?? (marked ? WindowActivity.updatingWords : nil)
         cells = DeskCells(desk)
+        windowWordsAreACount = desk.isOpen && desk.windowNames.isEmpty
         if !desk.isOpen {
             windowWords = ""
         } else if desk.windowNames.isEmpty {
@@ -369,6 +384,7 @@ public struct DeskRow: Sendable, Equatable, Identifiable {
         detailButtons = []
         cells = DeskCells(cells: [], more: false)
         windowWords = ""
+        windowWordsAreACount = false
         state = DeskStateCell(word: WindowActivity.updatingWords, kind: .busy)
         secondLine = SecondLine(folder: nil, facts: [], tag: nil)
         spokenLabel = Self.spoken(name: name, windowWords: windowWords, second: secondLine, state: state)
@@ -470,39 +486,95 @@ public enum WindowSelection: Sendable, Hashable {
 }
 
 /// One line of the sidebar: each workhorse with its state's symbol (the menu icon's), then Add a Mac…, then Settings.
+/// A workhorse's row has a second line under its name (look design 6.2), from its pill only: "Checking…" before the
+/// first answer; "Ready · 6 desks" when plainly Ready (closed desks counted, ended ones not); otherwise the pill's word
+/// alone ("Locked after a restart", "Ready, sign-ins off", "Waiting for the desk server"). Its symbol takes the pill's
+/// tone.
 public struct SidebarItem: Sendable, Equatable, Identifiable {
     public var id: WindowSelection { selection }
     public var selection: WindowSelection
     public var title: String
     public var symbol: String
+    /// Under the name; nil for Add a Mac… and Settings.
+    public var second: String?
+    /// The symbol's colour (`PillTone.textRole.token`); nil: drawn in ink.
+    public var tone: PillTone?
 
-    public init(selection: WindowSelection, title: String, symbol: String) {
+    public init(selection: WindowSelection, title: String, symbol: String, second: String? = nil, tone: PillTone? = nil) {
         self.selection = selection
         self.title = title
         self.symbol = symbol
+        self.second = second
+        self.tone = tone
+    }
+
+    /// What VoiceOver says for the row, and what CI reads: the name, then the second line when there is one.
+    public var spokenLabel: String {
+        second.map { "\(title), \($0)" } ?? title
     }
 
     public static func list(_ board: Board) -> [SidebarItem] {
-        board.workhorses.map { SidebarItem(selection: .workhorse($0.id), title: $0.name, symbol: $0.symbol) }
+        board.workhorses.map { w in
+            SidebarItem(selection: .workhorse(w.id), title: w.name, symbol: w.symbol, second: secondLine(w), tone: w.pill.tone)
+        }
             + [SidebarItem(selection: .addMac, title: ButtonRules.addAMac.title, symbol: "plus"),
                SidebarItem(selection: .settings, title: SettingsWords.heading, symbol: "gearshape")]
     }
+
+    private static func secondLine(_ w: BoardWorkhorse) -> String {
+        switch w.pill.tone {
+        case .checking: return WindowWords.checking
+        case .ready: return "\(w.pill.word) · \(WindowWords.deskCount(w.desks.count))"
+        case .needsYou, .cannot: return w.pill.word
+        }
+    }
+}
+
+/// One of the two settings on the Add a Mac page (look design 6.10): its number on the card, the setting's name, drawn
+/// semibold, and the rest of today's sentence.
+public struct AddMacStep: Sendable, Equatable {
+    public var number: Int
+    public var name: String
+    public var rest: String
+
+    public init(number: Int, name: String, rest: String) {
+        self.number = number
+        self.name = name
+        self.rest = rest
+    }
+
+    /// The name and the rest: today's sentence, "Remote Login, so MacMosh can reach it."
+    public var sentence: String { name + rest }
 }
 
 /// The Add a Mac page (main window design, section 7.1 E): what to switch on at the other Mac, and the
-/// menu's own Add a Mac… button, which opens the terminal tab that pairs.
+/// menu's own Add a Mac… button, which opens the terminal tab that pairs. Look step 3 holds each setting as its name
+/// and the rest of its sentence (`AddMacStep`); the words are today's.
 public struct AddMacPage: Sendable, Equatable {
     public var heading: String
-    public var lines: [String]
+    public var intro: String
+    public var steps: [AddMacStep]
+    public var closing: String
     public var button: BoardButton
+
+    public init(heading: String, intro: String, steps: [AddMacStep], closing: String, button: BoardButton) {
+        self.heading = heading
+        self.intro = intro
+        self.steps = steps
+        self.closing = closing
+        self.button = button
+    }
+
+    /// The intro, each setting's sentence, then the closing paragraph: today's four lines.
+    public var lines: [String] { [intro] + steps.map(\.sentence) + [closing] }
 
     public static let standard = AddMacPage(
         heading: "Add a Mac",
-        lines: [
-            "At the other Mac, turn on these two in System Settings > General > Sharing:",
-            "Remote Login, so MacMosh can reach it.",
-            "Screen Sharing, so you can log in to it after a restart.",
-            "The button below opens a terminal tab, where the first connection asks for the other Mac's password. MacMosh never sees it.",
+        intro: "At the other Mac, turn on these two in System Settings > General > Sharing:",
+        steps: [
+            AddMacStep(number: 1, name: "Remote Login", rest: ", so MacMosh can reach it."),
+            AddMacStep(number: 2, name: "Screen Sharing", rest: ", so you can log in to it after a restart."),
         ],
+        closing: "The button below opens a terminal tab, where the first connection asks for the other Mac's password. MacMosh never sees it.",
         button: BoardButton(ButtonRules.addAMac))
 }

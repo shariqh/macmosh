@@ -40,7 +40,7 @@ public enum LookAppearance: Sendable, CaseIterable {
 }
 
 /// A named colour of the look (design 5.1). The views use these, never a raw value, so each appearance is one table.
-/// The art's colour (`clayArt`) comes with the art in step 3.
+/// The art's colour (`clayArt`) came with the art in step 3.
 public enum LookToken: String, Sendable, CaseIterable {
     /// Names, headings, body text; the primary button's fill.
     case ink
@@ -66,6 +66,8 @@ public enum LookToken: String, Sendable, CaseIterable {
     case clayCell
     /// The outline of a closed desk's hollow cell.
     case clayOutline
+    /// The dotted mountain on the Add a Mac page (design 6.10); decoration, never text.
+    case clayArt
     /// Ready, "In 1 tab".
     case green
     /// States that need the person.
@@ -109,6 +111,9 @@ public enum Look {
         case .glow: return (0xF7C948, 0xF7C948, 0xF7C948, 0xF7C948)
         case .clayCell: return (0xD5D2CD, 0x4A4744, 0xD5D2CD, 0x4A4744)
         case .clayOutline: return (0xA9A49D, 0x8A867F, 0xA9A49D, 0x8A867F)
+        // Light is the design's. Dark, "proposed" in the design, is look step 3's: the light hue made darker, 2.76:1 on
+        // the dark ground against light's 2.49:1, so the art is as quiet in dark as in light.
+        case .clayArt: return (0xD4846F, 0x8A5142, 0xD4846F, 0x8A5142)
         case .green: return (0x2A7230, 0x7BC67E, 0x225B26, 0x7BC67E)
         case .amber: return (0x8A5300, 0xF0B44C, 0x804D00, 0xF0B44C)
         // Light increased: #9A211A was 7.01:1 on the ground but 6.76:1 on a pressed tile (#EBEBEB, look step 2); moved

@@ -14,10 +14,11 @@ if matches=$(grep -rnF --include='*.swift' 'Paths.standard(' Tests); then
     exit 1
 fi
 
-echo "check.sh: the built-in copy of the host script is up to date"
+echo "check.sh: the built-in copies of the host script and the dotted mountain are up to date"
 # The macmosh binary carries its own copy of host/macmosh-host (Sources/MacMoshKit/Host/HostScriptSource.swift).
 # This fails, naming scripts/embed-host-script.sh, when the script changed and the copy was not regenerated.
 scripts/embed-host-script.sh --check
+scripts/embed-dot-art.sh --check
 
 echo "check.sh: the icon's drawing script compiles with IconArt alone"
 swiftc -typecheck scripts/draw-icon/main.swift Sources/MacMoshKit/Look/IconArt.swift
@@ -32,8 +33,8 @@ if [ -f host/macmosh-host ]; then
     echo "check.sh: shellcheck host/macmosh-host"
     shellcheck host/macmosh-host
 fi
-echo "check.sh: shellcheck scripts/embed-host-script.sh"
-shellcheck scripts/embed-host-script.sh
+echo "check.sh: shellcheck scripts/embed-host-script.sh scripts/embed-dot-art.sh"
+shellcheck scripts/embed-host-script.sh scripts/embed-dot-art.sh
 
 echo "check.sh: shellcheck scripts/build-app.sh"
 shellcheck scripts/build-app.sh

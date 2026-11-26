@@ -1,0 +1,142 @@
+#!/bin/bash
+# Turns the dotted mountain of the Add a Mac page (look design 6.10) into a table of dots: reads
+# docs/superpowers/specs/look-2026-11-25/dotted-mountain.svg and writes Sources/MacMoshKit/Look/MountainArtTable.swift.
+# The same drawing gives the same bytes. Built like scripts/embed-host-script.sh.
+#
+#   scripts/embed-dot-art.sh           write the generated file
+#   scripts/embed-dot-art.sh --check   write nothing; exit 1 if the file is missing or out of date
+#
+# The drawing is read as pieces between '>' signs. After leading blanks, a piece is one of: '<svg …' (its width and
+# height), '<g fill="#…" fill-opacity="0.dd"' (the next strength), '<circle cx="…" cy="…" r="…"/' (one dot), '</g',
+# '</svg' or nothing. Anything else stops the script with a message naming the drawing, as does a cx or cy without
+# exactly one digit after the point, an r without exactly two, an opacity not of the form 0.dd, or no circle at all.
+# Each dot is one line of the table, "x, y, r, s,": x and y in tenths of a point (112.5 is 1125) and r in hundredths
+# (1.35 is 135), made by joining the digits around the point, never by multiplying; s is its group, 0, 1 or 2.
+# A group's fill colour is not kept and not checked: the app colours every dot with the clayArt token.
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+svg=docs/superpowers/specs/look-2026-11-25/dotted-mountain.svg
+out=Sources/MacMoshKit/Look/MountainArtTable.swift
+me=scripts/embed-dot-art.sh
+
+mode='write'
+case "${1:-}" in
+    "") ;;
+    --check) mode='check' ;;
+    *)
+        echo "usage: $me [--check]" >&2
+        exit 2
+        ;;
+esac
+
+if [ ! -f "$svg" ]; then
+    echo "$me: $svg not found" >&2
+    exit 1
+fi
+
+generate() {
+    # Uses only awk's split, substr and sprintf among its functions.
+    tr '>' '\n' < "$svg" | awk -v svg="$svg" -v me="$me" '
+        function refuse(why) {
+            printf "%s: %s, piece %d: %s\n", me, svg, NR, why > "/dev/stderr"
+            bad = 1
+            exit 1
+        }
+        # "112.5" to "1125" with exactly one digit after the point; "1.35" to "135" with exactly two.
+        function tenths(v, what,   p) {
+            if (v !~ /^[0-9]+\.[0-9]$/) refuse(what " is not a number with one digit after the point: " v)
+            split(v, p, ".")
+            return sprintf("%d", p[1] p[2])
+        }
+        function hundredths(v, what,   p) {
+            if (v !~ /^[0-9]+\.[0-9][0-9]$/) refuse(what " is not a number with two digits after the point: " v)
+            split(v, p, ".")
+            return sprintf("%d", p[1] p[2])
+        }
+        BEGIN { strength = -1; ingroup = 0; dots = 0; width = ""; height = ""; strengths = ""; table = "" }
+        {
+            piece = $0
+            while (substr(piece, 1, 1) == " " || substr(piece, 1, 1) == "\t") piece = substr(piece, 2)
+            if (piece == "" || piece == "</svg") next
+            n = split(piece, a, "\"")
+            if (substr(piece, 1, 5) == "<svg ") {
+                if (width != "") refuse("a second <svg")
+                for (i = 1; i < n; i += 2) {
+                    if (a[i] ~ / width=$/) width = a[i + 1]
+                    if (a[i] ~ / height=$/) height = a[i + 1]
+                }
+                if (width !~ /^[0-9]+$/ || height !~ /^[0-9]+$/) refuse("no whole width and height in <svg")
+                next
+            }
+            if (substr(piece, 1, 3) == "<g ") {
+                if (width == "") refuse("<g before <svg")
+                if (ingroup) refuse("<g inside <g")
+                if (n != 5 || a[1] != "<g fill=" || a[2] !~ /^#/ || a[3] != " fill-opacity=" || a[5] != "") {
+                    refuse("not <g fill=\"#…\" fill-opacity=\"0.dd\": " piece)
+                }
+                if (a[4] !~ /^0\.[0-9][0-9]$/) refuse("an opacity not of the form 0.dd: " a[4])
+                strength++
+                ingroup = 1
+                strengths = strengths (strengths == "" ? "" : ", ") a[4]
+                next
+            }
+            if (piece == "</g") {
+                if (!ingroup) refuse("</g with no <g")
+                ingroup = 0
+                next
+            }
+            if (substr(piece, 1, 8) == "<circle ") {
+                if (!ingroup) refuse("a circle outside a group")
+                if (n != 7 || a[1] != "<circle cx=" || a[3] != " cy=" || a[5] != " r=" || a[7] != "/") {
+                    refuse("not <circle cx=\"…\" cy=\"…\" r=\"…\"/: " piece)
+                }
+                x = tenths(a[2], "cx"); y = tenths(a[4], "cy"); r = hundredths(a[6], "r")
+                table = table sprintf("        %s, %s, %s, %d,\n", x, y, r, strength)
+                dots++
+                next
+            }
+            refuse("not a piece of this drawing: " piece)
+        }
+        END {
+            if (bad) exit 1
+            if (width == "") refuse("no <svg")
+            if (dots == 0) refuse("no circle")
+            if (ingroup) refuse("a group left open")
+            print "// GENERATED by " me " from " svg ". Do not edit by hand."
+            print "// After any change to the drawing, regenerate it with: " me
+            print "// (scripts/check.sh fails when this file is out of date.)"
+            print ""
+            print "extension MountainArt {"
+            printf "    public static let width: Double = %d.0\n", width
+            printf "    public static let height: Double = %d.0\n", height
+            print "    public static let strengths: [Double] = [" strengths "]"
+            print "    /// x and y in tenths of a point, the radius in hundredths, then the group: four numbers per dot."
+            print "    static let table: [Int16] = ["
+            printf "%s", table
+            print "    ]"
+            print "}"
+        }
+    '
+}
+
+# Into a variable first: a drawing the generator refuses stops the script here, with awk's message, before anything
+# is compared or written.
+text=$(generate)
+
+if [ "$mode" = 'check' ]; then
+    if [ ! -f "$out" ]; then
+        echo "$me: $out is missing. Run $me to write it." >&2
+        exit 1
+    fi
+    if ! cmp -s <(printf '%s\n' "$text") "$out"; then
+        echo "$me: $out is out of date with $svg. Run $me to regenerate it." >&2
+        exit 1
+    fi
+    exit 0
+fi
+
+mkdir -p "$(dirname "$out")"
+printf '%s\n' "$text" > "$out"
+echo "$me: wrote $out"

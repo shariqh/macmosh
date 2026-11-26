@@ -27,14 +27,14 @@ import Testing
     }
 
     /// The design's values; a value the contrast tests move is changed here too, and listed in the pull request.
-    /// No light or dark value moved. `clayArt` waits for the art (step 3).
+    /// No light or dark value moved. `clayArt`'s dark value is look step 3's (the design marks it "proposed").
     @Test func theTokensAreTheDesigns() {
         let design: [(LookToken, UInt32, UInt32)] = [
             (.ink, 0x1D1C1A, 0xF3F1EE), (.ink2, 0x55524E, 0xB9B5AE), (.ink3, 0x6B6762, 0x9D9992),
             (.ground, 0xF0EFED, 0x1B1A19), (.surface, 0xFFFFFF, 0x2A2928), (.surface2, 0xF7F6F4, 0x222120),
             (.hairline, 0xE0DEDA, 0x3A3836), (.ember, 0xE4572E, 0xFF7A4D), (.emberText, 0xB93F12, 0xFF7A4D),
             (.glow, 0xF7C948, 0xF7C948), (.clayCell, 0xD5D2CD, 0x4A4744), (.clayOutline, 0xA9A49D, 0x8A867F),
-            (.green, 0x2A7230, 0x7BC67E), (.amber, 0x8A5300, 0xF0B44C),
+            (.clayArt, 0xD4846F, 0x8A5142), (.green, 0x2A7230, 0x7BC67E), (.amber, 0x8A5300, 0xF0B44C),
             (.red, 0xB3261E, 0xFF8A7A), (.onPrimary, 0xFFFFFF, 0x1B1A19)]
         #expect(design.map(\.0) == LookToken.allCases)
         for (t, light, dark) in design {
@@ -51,7 +51,8 @@ import Testing
                 where !(plain == .light && t == .ink3) {
                 #expect(Look.value(t, in: more) == Look.value(from, in: plain), "\(t)")
             }
-            for t in [LookToken.ink, .ground, .surface, .surface2, .ember, .glow, .clayCell, .clayOutline, .onPrimary] {
+            for t in [LookToken.ink, .ground, .surface, .surface2, .ember, .glow, .clayCell, .clayOutline, .clayArt,
+                      .onPrimary] {
                 #expect(Look.value(t, in: more) == Look.value(t, in: plain), "\(t)")
             }
         }
@@ -145,6 +146,10 @@ import Testing
         #expect(LookSize.detailsInset == 22)
         #expect(LookSize.detailsStackBelowPageWidth == 620 && LookSize.detailsStackBelowColumnsWidth == 534)
         #expect(LookSize.windowNamesFewest == 4)
+        #expect(LookSize.mountainScale == 0.79 && LookSize.sidebarSecondLines == 2)
+        #expect(LookSize.mCell == 4 && LookSize.mCellGap == 2 && LookSize.mCellRadius == 1)
+        // The M sits in the 40-point tile.
+        #expect(5 * LookSize.mCell + 4 * LookSize.mCellGap == 28 && 28 <= LookSize.deskTile - 12)
     }
 
     /// Side by side, the details' facts keep their own width and the window lines take the rest, so a long window name
@@ -185,6 +190,34 @@ import Testing
         for m in Look.marks {
             for a in LookAppearance.allCases { #expect(Look.ratio(m, in: a) >= Contrast.nonText, "\(m) in \(a)") }
         }
+    }
+
+    /// The art is decoration, not text (design 5.1, "not text"): its contrast to the ground is stated, not held to 4.5:1.
+    /// Dark #8A5142 (look step 3) is as quiet on the dark ground as the light value is on the light ground.
+    @Test func theArtIsAsQuietOnTheGroundInDarkAsInLight() {
+        let art = LookMark(token: .clayArt, background: .ground)
+        #expect(abs(Look.ratio(art, in: .light) - 2.49) < 0.01 && abs(Look.ratio(art, in: .dark) - 2.76) < 0.01)
+    }
+
+    /// A mark on a tile (look step 3): the sidebar tile's state symbol (on surface, or surface-2 on the chosen card), the
+    /// plus and the gear (ink), and the result's marks in their tile (green, red, ink-3).
+    @Test func everyMarkOnATileReachesThreeToOne() {
+        let tokens: [LookToken] = [.green, .amber, .red, .ink3, .ink]
+        #expect(Look.tileMarks == tokens.flatMap { t in
+            [LookMark(token: t, background: .surface), LookMark(token: t, background: .surface2)]
+        })
+        for m in Look.tileMarks {
+            for a in LookAppearance.allCases { #expect(Look.ratio(m, in: a) >= Contrast.nonText, "\(m) in \(a)") }
+        }
+    }
+
+    /// Design 8.1: column 0 and column 4 in full, plus row 1 column 1, row 1 column 3 and row 2 column 2.
+    @Test func theLetterMIsTheIconsThirteenCells() {
+        let lit = (0..<5).flatMap { r in (0..<5).filter { LetterM.isLit(row: r, column: $0) }.map { [r, $0] } }
+        #expect(lit.count == 13 && LetterM.size == 5)
+        #expect((0..<5).allSatisfy { LetterM.isLit(row: $0, column: 0) && LetterM.isLit(row: $0, column: 4) })
+        #expect(LetterM.isLit(row: 1, column: 1) && LetterM.isLit(row: 1, column: 3) && LetterM.isLit(row: 2, column: 2))
+        #expect(!LetterM.isLit(row: 0, column: 2) && !LetterM.isLit(row: 3, column: 2))
     }
 
     /// A pressed button lays black at 8 per cent over its fill, under its words; the words, not darkened, still reach

@@ -111,33 +111,47 @@ struct StatePillView: View {
 
 /// The result slot (look design 6.3): two lines, always reserved. The last action's sentence after a tick on a small
 /// green tile when it worked, a red warning mark when it failed, or a neutral mark when it is not known; the menu's
-/// notice under it in one line when it says something else; or the notice alone. The whole sentence is the help tag
-/// and, through `page.result`, the element's value; the marks are hidden from VoiceOver.
+/// notice under it in one line when it says something else; or the notice alone. A result sits in a small tile, as
+/// look-b-details.png draws it (look step 3), hugging its words up to the slot's width; a notice alone stays on the
+/// ground. The whole sentence is the help tag and, through `page.result`, the element's value; the marks are hidden
+/// from VoiceOver.
 struct ResultSlotView: View {
     let slot: ResultSlot?
 
     var body: some View {
-        // Two lines of body text, laid out and never shown, give the slot its height whatever it holds.
+        // Two lines of body text, laid out and never shown, give the slot its height whatever it holds, with the tile's
+        // 4 points above and below, so a two-line sentence in its tile never moves the list either.
         Text(verbatim: "A\nA")
             .lineLimit(LookSize.resultLines)
             .hidden()
             .accessibilityHidden(true)
+            .padding(.vertical, 4)
             .frame(maxWidth: .infinity, alignment: .leading)
             .overlay(alignment: .topLeading) {
-                if let slot { content(slot) }
+                if let slot {
+                    if slot.isResult {
+                        content(slot, on: .surface)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .lookTile(radius: LookSize.smallTileRadius)
+                    } else {
+                        content(slot, on: .ground)
+                            .padding(.vertical, 4)
+                    }
+                }
             }
     }
 
-    private func content(_ slot: ResultSlot) -> some View {
+    private func content(_ slot: ResultSlot, on background: BackgroundRole) -> some View {
         HStack(alignment: .top, spacing: 6) {
             if slot.isResult, let kind = slot.kind {
                 ResultMark(kind: kind)
             }
             VStack(alignment: .leading, spacing: 0) {
-                sentence(slot)
+                sentence(slot, on: background)
                 if let notice = slot.notice {
                     Text(verbatim: notice)
-                        .foregroundStyle(LookColor.text(.secondary, on: .ground))
+                        .foregroundStyle(LookColor.text(.secondary, on: background))
                         .lineLimit(1).truncationMode(.tail)
                         .help(Text(verbatim: notice))
                 }
@@ -145,9 +159,9 @@ struct ResultSlotView: View {
         }
     }
 
-    @ViewBuilder private func sentence(_ slot: ResultSlot) -> some View {
+    @ViewBuilder private func sentence(_ slot: ResultSlot, on background: BackgroundRole) -> some View {
         let text = Text(verbatim: slot.sentence)
-            .foregroundStyle(LookColor.text(slot.kind?.textRole ?? .secondary, on: .ground))
+            .foregroundStyle(LookColor.text(slot.kind?.textRole ?? .secondary, on: background))
             .lineLimit(slot.sentenceLines).truncationMode(.tail)
             .help(Text(verbatim: slot.sentence))
         if slot.isResult {
@@ -159,7 +173,7 @@ struct ResultSlotView: View {
 }
 
 /// The mark before a result: a round green tick, as the state cell draws it, a red warning triangle, or a neutral
-/// question mark.
+/// question mark, each on the result's tile (`Look.tileMarks`).
 private struct ResultMark: View {
     let kind: ResultKind
 

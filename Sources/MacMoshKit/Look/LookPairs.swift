@@ -114,6 +114,13 @@ extension Look {
         LookMark(token: .ink3, background: .ground), LookMark(token: .ink2, background: .ground),
     ]
 
+    /// Marks on a tile (look step 3): the sidebar tile's state symbol in its tone (on a surface tile, or a surface-2 tile
+    /// on the chosen card), the plus and the gear (ink), and the result's marks in their tile (green, red, ink-3). Each
+    /// token on surface, then on surface-2.
+    public static let tileMarks: [LookMark] = [LookToken.green, .amber, .red, .ink3, .ink].flatMap { t in
+        [LookMark(token: t, background: .surface), LookMark(token: t, background: .surface2)]
+    }
+
     /// The mark's contrast against what it sits on, in that appearance.
     public static func ratio(_ mark: LookMark, in appearance: LookAppearance) -> Double {
         Contrast.ratio(value(mark.token, in: appearance), value(mark.background.token, in: appearance))

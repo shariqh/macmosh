@@ -35,6 +35,20 @@ private func page(_ latest: CheckResult?, lastReady: CheckResult? = nil, checkin
 
 private func titles(_ buttons: [BoardButton]) -> [String] { buttons.map(\.title) }
 
+/// The fixture with only `desk`'s lines among its desk, window, windowinfo, def and view lines.
+private func onlyDesk(_ desk: String, in text: String) -> String {
+    text.split(separator: "\n", omittingEmptySubsequences: false).filter { line in
+        let f = line.split(separator: "\t", omittingEmptySubsequences: false)
+        return !["desk", "window", "windowinfo", "def", "view"].contains(String(f[0])) || (f.count > 1 && f[1] == desk)
+    }.joined(separator: "\n")
+}
+
+private func sidebar(_ latest: [String: CheckResult], order: [Workhorse], checking: Set<String> = [],
+                     waiting: Set<String> = []) -> [SidebarItem] {
+    SidebarItem.list(BoardModel.build(latest: latest, lastReady: [:], checking: checking, order: order,
+                                      waitingForDeskServer: waiting, now: formatNow, timeZone: formatZone))
+}
+
 @Suite struct WindowPageTests {
     // MARK: The words the window shows and the menu doesn't
 
@@ -476,6 +490,19 @@ private func titles(_ buttons: [BoardButton]) -> [String] { buttons.map(\.title)
         #expect(DeskRow(one).windowWordsAtFewest == "zsh")
     }
 
+    @Test func aWindowCountIsLeftOutNotCut() throws {   // Review Focus 5
+        let long = "garden-planner-for-the-allotment-by-the-river"
+        func unnamed(_ n: Int) -> BoardDesk {
+            BoardDesk(name: long, isOpen: true, windows: (0..<n).map { BoardWindow(index: $0, name: "", id: "@\($0 + 1)", tabs: 0) },
+                      windowCount: n, tabsOpen: 0, folder: nil, command: nil, reopen: nil, keep: nil, permanent: nil,
+                      madeByMacMosh: false, open: nil, buttons: [])
+        }
+        #expect(DeskRow(unnamed(2)).windowWords == "2 windows" && DeskRow(unnamed(2)).windowWordsAtFewest == "2 windows")
+        #expect(DeskRow(unnamed(1)).windowWordsAtFewest == "1 window" && DeskRow(unnamed(1)).windowWordsAreACount)
+        let website = try #require(try rows()["website"])
+        #expect(!website.windowWordsAreACount && website.windowWordsAtFewest == "clau…")   // names are still cut
+    }
+
     @Test func theSpokenLabelIsNameWindowsSecondLineThenState() throws {
         let r = try rows()
         #expect(r["website"]?.spokenLabel == "website, claude, zsh, vim, ~/Development/website, In 2 tabs")
@@ -558,11 +585,66 @@ private func titles(_ buttons: [BoardButton]) -> [String] { buttons.map(\.title)
             lastReady: [:], checking: [], order: [attic, den], waitingForDeskServer: [], now: formatNow,
             timeZone: formatZone)
         #expect(SidebarItem.list(board) == [
-            SidebarItem(selection: .workhorse("attic"), title: "Attic", symbol: "checkmark.circle"),
-            SidebarItem(selection: .workhorse("den"), title: "Den", symbol: "lock.circle"),
+            SidebarItem(selection: .workhorse("attic"), title: "Attic", symbol: "checkmark.circle", second: "Ready · 6 desks",
+                        tone: .ready),
+            SidebarItem(selection: .workhorse("den"), title: "Den", symbol: "lock.circle", second: "Locked after a restart",
+                        tone: .needsYou),
             SidebarItem(selection: .addMac, title: "Add a Mac…", symbol: "plus"),
             SidebarItem(selection: .settings, title: "Settings", symbol: "gearshape"),
         ])
+    }
+
+    /// Look design 6.2 and section 7: Ready with its desks, closed ones counted; "Checking…" before the first answer.
+    @Test func eachMacsSecondLineSaysItsStateAndItsDesks() throws {
+        let spare = Workhorse.sample(id: "spare", name: "Spare", user: "alex")
+        let den = Workhorse.sample(id: "den", name: "Den", user: "alex")
+        let loft = Workhorse.sample(id: "loft", name: "Loft", user: "alex")
+        let items = sidebar(["attic": result(.ready(signIns: true), status: try report()),
+                             "spare": result(.ready(signIns: true), status: try report { onlyDesk("website", in: $0) },
+                                             workhorse: spare),
+                             "den": result(.ready(signIns: true), status: try report { onlyDesk("none", in: $0) }, workhorse: den)],
+                            order: [attic, spare, den, loft])
+        #expect(items.map(\.second) == ["Ready · 6 desks", "Ready · 1 desk", "Ready · No desks", "Checking…", nil, nil])
+        #expect(items.map(\.tone) == [.ready, .ready, .ready, .checking, nil, nil])
+        #expect(items.map(\.spokenLabel) == ["Attic, Ready · 6 desks", "Spare, Ready · 1 desk", "Den, Ready · No desks",
+                                             "Loft, Checking…", "Add a Mac…", "Settings"])
+        #expect(items[3].symbol == MenuModel.stillCheckingSymbol)
+        // notes, closed, is one of the 6.
+        #expect([0, 1, 2, 6].map(WindowWords.deskCount) == ["No desks", "1 desk", "2 desks", "6 desks"])
+    }
+
+    @Test func aMacThatIsNotReadySaysItsStateAlone() throws {
+        let states: [WorkhorseState] = [.waitingForLogin, .locked, .cantVerify, .cantReach(.nothingAnswers),
+                                        .notSetUp(.notPaired), .notSetUp(.identityUnusable), .notSetUp(.hostScriptMissing),
+                                        .notSetUp(.unreadableReport), .notSetUp(.deskServerDown)]
+        for s in states {
+            let item = try #require(sidebar(["attic": result(s, status: nil)], order: [attic]).first)
+            #expect(item.second == StatePill.of(s).word && item.tone == StatePill.of(s).tone, "\(s)")
+        }
+    }
+
+    @Test func readyWithSignInsOffSaysItsStateWithoutACount() throws {   // Review Focus 3
+        let item = try #require(sidebar(["attic": result(.ready(signIns: false), status: try report())], order: [attic]).first)
+        #expect(item.second == "Ready, sign-ins off" && item.tone == .needsYou)
+    }
+
+    @Test func theWaitForTheDeskServerIsItsOwnSecondLine() throws {   // Review Focus 4
+        let item = try #require(sidebar(["attic": result(.notSetUp(.deskServerDown), status: try report())], order: [attic],
+                                        waiting: ["attic"]).first)
+        #expect(item.second == "Waiting for the desk server" && item.tone == .needsYou)
+    }
+
+    @Test func aCheckRunningKeepsTheLastAnswer() throws {
+        let item = try #require(sidebar(["attic": result(.ready(signIns: true), status: try report())], order: [attic],
+                                        checking: ["attic"]).first)
+        #expect(item.second == "Ready · 6 desks")
+    }
+
+    @Test func aLongMacNameStaysWholeInTheSpokenLabel() throws {   // Review Focus 2
+        let long = Workhorse.sample(id: "attic", name: "Workhorse-in-the-attic-by-the-window", user: "alex")
+        let item = try #require(sidebar(["attic": result(.ready(signIns: true), status: try report(), workhorse: long)],
+                                        order: [long]).first)
+        #expect(item.spokenLabel == "Workhorse-in-the-attic-by-the-window, Ready · 6 desks" && LookSize.sidebarSecondLines == 2)
     }
 
     @Test func theSelectionIsTheFirstWorkhorseUnlessOneIsChosenAndStillThere() throws {
@@ -638,6 +720,18 @@ private func titles(_ buttons: [BoardButton]) -> [String] { buttons.map(\.title)
         ])
         #expect(p.button == BoardButton(title: "Add a Mac…", action: .menu(.tab(["pair"]))))
         #expect(p.button.title == ButtonRules.addAMac.title)
+    }
+
+    /// Look design 6.10: each setting as its name, drawn semibold, and the rest of its sentence; together, today's words.
+    @Test func eachSettingIsItsNameThenTheRestOfTodaysSentence() {
+        let p = AddMacPage.standard
+        #expect(p.steps == [AddMacStep(number: 1, name: "Remote Login", rest: ", so MacMosh can reach it."),
+                            AddMacStep(number: 2, name: "Screen Sharing", rest: ", so you can log in to it after a restart.")])
+        #expect(p.steps.map(\.sentence) == ["Remote Login, so MacMosh can reach it.",
+                                            "Screen Sharing, so you can log in to it after a restart."])
+        #expect(p.intro == "At the other Mac, turn on these two in System Settings > General > Sharing:")
+        #expect(p.closing == "The button below opens a terminal tab, where the first connection asks for the other Mac's password. MacMosh never sees it.")
+        #expect(p.lines == [p.intro] + p.steps.map(\.sentence) + [p.closing])
     }
 
     // MARK: While a window action runs (step 4)
