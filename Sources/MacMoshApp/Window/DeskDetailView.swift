@@ -52,9 +52,10 @@ struct DeskDetail: View {
         .accessibilityIdentifier(WindowMarks.strip(row.name))
     }
 
-    /// One line per window, in a grid so the names, the states and the buttons each stand in a column.
+    /// One line per window, in a grid so the names, the states and the buttons each stand in a column; 26 points
+    /// apart, as in look-b-details.png (the small buttons are 24 high).
     private var lines: some View {
-        Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 6) {
+        Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 2) {
             ForEach(row.windowLines) { line in
                 WindowLineRow(desk: row.name, line: line, run: run)
             }
@@ -74,6 +75,7 @@ struct DeskDetail: View {
                             Text(verbatim: fact.label)
                                 .foregroundStyle(LookColor.text(.tertiary, on: .surface2))
                                 .lineLimit(1)
+                                .help(Text(verbatim: fact.label))
                             Text(verbatim: fact.value)
                                 .foregroundStyle(LookColor.text(.primary, on: .surface2))
                                 .lineLimit(1).truncationMode(.tail)
@@ -96,8 +98,9 @@ struct DeskDetail: View {
 
 /// One window's line: its cell (hidden from VoiceOver), its name, its state's words in green or the faintest grey,
 /// then the small Go to or Open and Name…. Without the menu's facts (an older script, the Tabs connection) the name
-/// stands alone and the cell's place stays empty. The menu's whole line is the buttons' help tag, so the button's
-/// accessibility hint names its window.
+/// stands alone and the cell's place stays empty. The menu's whole line is the help tag of the name and the buttons,
+/// so a name cut with "…" can still be read whole and the button's accessibility hint names its window. Only the name
+/// gives way when the line has less than its own width: the state's words keep theirs.
 struct WindowLineRow: View {
     let desk: String
     let line: WindowLine
@@ -117,12 +120,14 @@ struct WindowLineRow: View {
             Text(verbatim: line.title)
                 .foregroundStyle(LookColor.text(.primary, on: .surface2))
                 .lineLimit(1).truncationMode(.tail)
+                .help(Text(verbatim: line.help))
                 .accessibilityIdentifier(WindowMarks.windowLine(desk, line.id))
             if let state = line.state {
                 Text(verbatim: state.words)
                     .font(.system(size: LookSize.secondFont))
                     .foregroundStyle(LookColor.text(state.textRole, on: .surface2))
                     .lineLimit(1)
+                    .fixedSize()
                     .accessibilityIdentifier(WindowMarks.windowState(desk, line.id))
             } else {
                 Color.clear.frame(width: 0, height: 0).accessibilityHidden(true)
@@ -148,7 +153,8 @@ struct WindowLineRow: View {
 }
 
 /// The window lines, a hairline, and the facts: side by side when it is offered at least `stackBelow` points (the
-/// lines at their own width, the hairline one point wide and as tall as the taller column, the facts in the rest),
+/// facts at their own width, the lines at theirs or what is left, never less than half: `LookSize.detailsLinesWidth`,
+/// so a long window name is cut and the facts are not; the hairline one point wide and as tall as the taller column),
 /// one under the other below that, the hairline then one point high across. Three subviews, in that order.
 ///
 /// Apple, Layout (macOS 13.0, https://developer.apple.com/documentation/swiftui/layout): "A type that defines the
@@ -156,23 +162,32 @@ struct WindowLineRow: View {
 struct DetailColumns: Layout {
     let stackBelow: CGFloat
     /// Between each column and the hairline.
-    private let gap: CGFloat = 12
+    private let gap = CGFloat(LookSize.detailsColumnGap)
 
     private func beside(_ width: CGFloat?) -> Bool {
         guard let width, width.isFinite else { return true }
         return width >= stackBelow
     }
 
+    /// Side by side in `width`: the lines' width, and the facts' (what is left after the lines and the hairline).
+    private func widths(_ width: CGFloat, lines: LayoutSubview, facts: LayoutSubview) -> (lines: CGFloat, facts: CGFloat) {
+        let lw = CGFloat(LookSize.detailsLinesWidth(offered: Double(width),
+                                                    lines: Double(lines.sizeThatFits(.unspecified).width),
+                                                    facts: Double(facts.sizeThatFits(.unspecified).width)))
+        return (lw, max(width - lw - 2 * gap - 1, 0))
+    }
+
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         guard subviews.count == 3 else { return .zero }
         let (lines, facts) = (subviews[0], subviews[2])
         if beside(proposal.width) {
-            let l = lines.sizeThatFits(.unspecified)
             if let width = proposal.width, width.isFinite {
-                let rest = max(width - min(l.width, width) - 2 * gap - 1, 0)
-                let f = facts.sizeThatFits(ProposedViewSize(width: rest, height: nil))
+                let w = widths(width, lines: lines, facts: facts)
+                let l = lines.sizeThatFits(ProposedViewSize(width: w.lines, height: nil))
+                let f = facts.sizeThatFits(ProposedViewSize(width: w.facts, height: nil))
                 return CGSize(width: width, height: max(l.height, f.height))
             }
+            let l = lines.sizeThatFits(.unspecified)
             let f = facts.sizeThatFits(.unspecified)
             return CGSize(width: l.width + 2 * gap + 1 + f.width, height: max(l.height, f.height))
         }
@@ -186,12 +201,12 @@ struct DetailColumns: Layout {
         guard subviews.count == 3 else { return }
         let (lines, hairline, facts) = (subviews[0], subviews[1], subviews[2])
         if beside(bounds.width) {
-            let lw = min(lines.sizeThatFits(.unspecified).width, bounds.width)
-            lines.place(at: bounds.origin, proposal: ProposedViewSize(width: lw, height: nil))
-            hairline.place(at: CGPoint(x: bounds.minX + lw + gap, y: bounds.minY),
+            let w = widths(bounds.width, lines: lines, facts: facts)
+            lines.place(at: bounds.origin, proposal: ProposedViewSize(width: w.lines, height: nil))
+            hairline.place(at: CGPoint(x: bounds.minX + w.lines + gap, y: bounds.minY),
                            proposal: ProposedViewSize(width: 1, height: bounds.height))
-            let fx = bounds.minX + lw + 2 * gap + 1
-            facts.place(at: CGPoint(x: fx, y: bounds.minY), proposal: ProposedViewSize(width: max(bounds.maxX - fx, 0), height: nil))
+            let fx = bounds.minX + w.lines + 2 * gap + 1
+            facts.place(at: CGPoint(x: fx, y: bounds.minY), proposal: ProposedViewSize(width: w.facts, height: nil))
         } else {
             let across = ProposedViewSize(width: bounds.width, height: nil)
             let l = lines.sizeThatFits(across)

@@ -51,6 +51,15 @@ public enum LookSize {
     public static var detailsStackBelowColumnsWidth: Double {
         detailsStackBelowPageWidth - 2 * pagePadding - detailsInset - 2 * panelPadding
     }
+    /// Between each of the details' columns and the one-point hairline that parts them.
+    public static let detailsColumnGap = 12.0
+    /// Side by side (offered at least `detailsStackBelowColumnsWidth`), the width the details' window lines take: their
+    /// own while the facts keep theirs, so a long window name is cut with "…" and the facts are not. Never less than
+    /// half of what is offered, so long facts cannot squeeze the lines to nothing. When to stack stays the fixed rule.
+    public static func detailsLinesWidth(offered: Double, lines: Double, facts: Double) -> Double {
+        let room = offered - 2 * detailsColumnGap - 1 - facts
+        return min(lines, max(room, offered / 2))
+    }
     /// Window names beside a desk's name are cut with "…" only while at least this many letters stay; below that they
     /// are left out. A count of letters, so a whole number.
     public static let windowNamesFewest = 4

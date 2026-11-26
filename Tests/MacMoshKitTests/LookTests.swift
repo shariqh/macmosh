@@ -147,6 +147,26 @@ import Testing
         #expect(LookSize.windowNamesFewest == 4)
     }
 
+    /// Side by side, the details' facts keep their own width and the window lines take the rest, so a long window name
+    /// is cut and the facts are not; the lines never get less than half the width. The numbers are run 3's at 880
+    /// points: the lines 300 wide, the facts 231, 578 points offered, 25 between them (two gaps and the hairline).
+    @Test func sideBySideTheFactsKeepTheirWidthAndALongWindowNameGivesWay() {
+        #expect(LookSize.detailsColumnGap == 12)
+        let between = 2 * LookSize.detailsColumnGap + 1
+        // The sample's names: the lines keep their own width.
+        #expect(LookSize.detailsLinesWidth(offered: 578, lines: 300, facts: 231) == 300)
+        // A 32-letter name makes the lines 480 wide: they give way, and the facts keep 231.
+        let long = LookSize.detailsLinesWidth(offered: 578, lines: 480, facts: 231)
+        #expect(long == 578 - between - 231)
+        // Lines wider than the whole width: the facts still start inside it, at their own width.
+        let wider = LookSize.detailsLinesWidth(offered: 578, lines: 900, facts: 231)
+        #expect(wider + between + 231 == 578)
+        // Facts wider than half: the lines keep half the width, never less.
+        #expect(LookSize.detailsLinesWidth(offered: 534, lines: 300, facts: 400) == 267)
+        // Short lines stay short.
+        #expect(LookSize.detailsLinesWidth(offered: 534, lines: 120, facts: 231) == 120)
+    }
+
     /// Design 6.6 and 6.7: a window's name, a fact's value and "Keeps its command running" (primary), "in a tab" and
     /// "open in another tab" (good), "not in a tab", a fact's label and the greyed list (tertiary), all on surface-2.
     @Test func theDetailsAndTheGreyedListHaveTheirPairs() {   // everyPairReachesItsContrast then covers them
