@@ -1,6 +1,7 @@
-// icontool: draws the built app's icon as the system gives it, on one sheet with no words. CI only
-// (.github/workflows/icon-pictures.yml, through scripts/ci/icon-pictures.sh; look step 5a, issue 175). It only
-// reads the app: it never changes it, starts it or registers it. Never needed on your own Mac.
+// icontool: draws the built app's icon as the system gives it, and the icon document's styles, on sheets with no
+// words. CI only (.github/workflows/icon-pictures.yml, through scripts/ci/icon-pictures.sh; look step 5a, issue
+// 175). It only reads: it never changes the app, starts it or registers it, and changes no setting. Never needed on
+// your own Mac.
 //
 //   icontool <app> <out.png> <scale>     scale 1 or 2: pixels per point
 //
@@ -12,40 +13,70 @@
 // centred in the row. Row 2 shows whether AppKit draws a dark icon under a dark drawing appearance; the 16-point
 // icon shows whether the system took the .icns's solid M or the tiles of Assets.car.
 //
-// It prints "sheet <path> <width> <height>" in pixels, and per row "reps <light|dark|icns> <pixel widths>", the
-// widths of the image's representations, comma separated. It exits 1 when the app or its .icns cannot be read or
-// the PNG cannot be written, and 2 on a wrong call. Built by the workflow with swiftc, as a single file.
+// It prints "sheet <path> <width> <height>" in pixels; per row "reps <light|dark|icns> <pixel widths>", the widths
+// of the image's representations, comma separated; and for rows 1 and 2 "tile <light|dark> #RRGGBB <luminance>",
+// the colour at the middle of an unlit tile. That tile is row 1 or row 3 of the M's grid, column 2: both are
+// unlit, and they mirror each other, so the reading does not depend on which way a bitmap's rows run. The icon
+// is drawn alone at 256 by 256 pixels for it, and the 7 by 7 pixels at (128, 162) are averaged: the grid fills
+// about 80 percent of the icon's 1024 (the layer's 820) and the system's margin about 10 percent, which puts the
+// tile's middle at 162 of 256 and its sides 14 pixels away. The light M's unlit tiles are near white, the dark
+// M's near #34322F, so the luminance tells which M the system drew.
+//
+//   icontool --styles <out.png> <scale> <Default.png> <Dark.png> <ClearLight.png> <ClearDark.png> <TintedLight.png>
+//            <TintedDark.png>
+//
+// The styles sheet: Apple's ictool renders of the icon document, 864 by 576 points, each at 256 points in a cell of
+// 288. Top row on #FFFFFF: Default, ClearLight, TintedLight. Bottom row on #1D1C1A: Dark, ClearDark, TintedDark.
+// It prints "styles <path> <width> <height>".
+//
+// It exits 1 when an input cannot be read or the PNG cannot be written, and 2 on a wrong call. Built by the
+// workflow with swiftc, as a single file.
 import AppKit
 
-let args = CommandLine.arguments
-guard args.count == 4, let scale = Int(args[3]), scale == 1 || scale == 2 else {
-    print("usage: icontool <app> <out.png> <1|2>")
-    exit(2)
+func fail(_ message: String, _ code: Int32 = 1) -> Never {
+    print(message)
+    exit(code)
 }
-// NSWorkspace wants a full path ("icon(forFile fullPath:)"); given a relative one it returns a generic document icon.
-let appPath = URL(fileURLWithPath: args[1]).standardizedFileURL.path
-let outURL = URL(fileURLWithPath: args[2])
-
-var isFolder: ObjCBool = false
-guard FileManager.default.fileExists(atPath: appPath, isDirectory: &isFolder), isFolder.boolValue else {
-    print("icontool: cannot read the app at \(appPath)")
-    exit(1)
-}
-let icnsURL = URL(fileURLWithPath: appPath).appendingPathComponent("Contents/Resources/AppIcon.icns")
-guard let icns = NSImage(contentsOf: icnsURL) else {
-    print("icontool: cannot read \(icnsURL.path)")
-    exit(1)
-}
-
-let sizes: [CGFloat] = [16, 32, 64, 128, 256]
-let margin: CGFloat = 16
-let rowHeight: CGFloat = 288
-let width = sizes.reduce(0, +) + margin * CGFloat(sizes.count + 1)   // 592
-let height = rowHeight * 3                                            // 864
 
 func color(_ rgb: UInt32) -> NSColor {
     NSColor(srgbRed: CGFloat((rgb >> 16) & 0xFF) / 255, green: CGFloat((rgb >> 8) & 0xFF) / 255,
             blue: CGFloat(rgb & 0xFF) / 255, alpha: 1)
+}
+
+/// A bitmap of `width` by `height` points at `scale` pixels per point, drawn into by `draw` (origin bottom left).
+func bitmap(_ width: CGFloat, _ height: CGFloat, _ scale: Int, _ draw: () -> Void) -> NSBitmapImageRep {
+    guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(width) * scale,
+                                     pixelsHigh: Int(height) * scale, bitsPerSample: 8, samplesPerPixel: 4,
+                                     hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0,
+                                     bitsPerPixel: 0) else { fail("icontool: cannot make a bitmap") }
+    // Points, so each point is `scale` pixels. Set before the context is made, which takes its scale from it.
+    rep.size = NSSize(width: width, height: height)
+    guard let context = NSGraphicsContext(bitmapImageRep: rep) else { fail("icontool: cannot make a bitmap") }
+    NSGraphicsContext.saveGraphicsState()
+    NSGraphicsContext.current = context
+    draw()
+    context.flushGraphics()
+    NSGraphicsContext.restoreGraphicsState()
+    return rep
+}
+
+func write(_ rep: NSBitmapImageRep, _ url: URL, _ label: String) {
+    guard let png = rep.representation(using: .png, properties: [:]) else { fail("icontool: cannot make the PNG") }
+    do { try png.write(to: url) } catch { fail("icontool: cannot write \(url.path): \(error)") }
+    print("\(label) \(url.path) \(rep.pixelsWide) \(rep.pixelsHigh)")
+}
+
+/// The middle of an unlit tile of the icon, drawn alone at 256 pixels (see the header).
+func tile(_ name: String, _ image: NSImage) {
+    let rep = bitmap(256, 256, 1) { image.draw(in: NSRect(x: 0, y: 0, width: 256, height: 256)) }
+    var sum: [CGFloat] = [0, 0, 0]
+    for x in 125...131 { for y in 159...165 {
+        guard let c = rep.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else { continue }
+        sum[0] += c.redComponent; sum[1] += c.greenComponent; sum[2] += c.blueComponent } }
+    let mean = sum.map { $0 / 49 }
+    let luminance = 0.2126 * mean[0] + 0.7152 * mean[1] + 0.0722 * mean[2]
+    print(String(format: "tile %@ #%02X%02X%02X %.2f", name, Int((mean[0] * 255).rounded()),
+                 Int((mean[1] * 255).rounded()), Int((mean[2] * 255).rounded()), luminance))
 }
 
 func reps(_ name: String, _ image: NSImage) {
@@ -53,18 +84,52 @@ func reps(_ name: String, _ image: NSImage) {
     print("reps \(name) \(widths.isEmpty ? "none" : widths)")
 }
 
-guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(width) * scale, pixelsHigh: Int(height) * scale,
-                                 bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
-                                 colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) else {
-    print("icontool: cannot make the sheet")
-    exit(1)
+let args = CommandLine.arguments
+
+if args.count > 1 && args[1] == "--styles" {
+    guard args.count == 10, let scale = Int(args[3]), scale == 1 || scale == 2 else {
+        fail("usage: icontool --styles <out.png> <1|2> <Default> <Dark> <ClearLight> <ClearDark> <TintedLight> <TintedDark>", 2)
+    }
+    var images: [NSImage] = []
+    for path in args[4...] {
+        guard let image = NSImage(contentsOf: URL(fileURLWithPath: path)) else { fail("icontool: cannot read \(path)") }
+        images.append(image)
+    }
+    // Default, Dark, ClearLight, ClearDark, TintedLight, TintedDark: the light ones on top, the dark ones below.
+    let cell: CGFloat = 288, size: CGFloat = 256
+    let rep = bitmap(cell * 3, cell * 2, scale) {
+        for (row, ground) in [(0, UInt32(0xFFFFFF)), (1, UInt32(0x1D1C1A))] {
+            let bottom = cell * CGFloat(1 - row)
+            color(ground).setFill()
+            NSRect(x: 0, y: bottom, width: cell * 3, height: cell).fill()
+            for column in 0..<3 {
+                let rect = NSRect(x: cell * CGFloat(column) + (cell - size) / 2, y: bottom + (cell - size) / 2,
+                                  width: size, height: size)
+                images[column * 2 + row].draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1)
+            }
+        }
+    }
+    write(rep, URL(fileURLWithPath: args[2]), "styles")
+    exit(0)
 }
-// Points, so each point is `scale` pixels. Set before the context is made, which takes its scale from it.
-rep.size = NSSize(width: width, height: height)
-guard let context = NSGraphicsContext(bitmapImageRep: rep) else {
-    print("icontool: cannot make the sheet")
-    exit(1)
+
+guard args.count == 4, let scale = Int(args[3]), scale == 1 || scale == 2 else {
+    fail("usage: icontool <app> <out.png> <1|2>", 2)
 }
+// NSWorkspace wants a full path ("icon(forFile fullPath:)"); given a relative one it returns a generic document icon.
+let appPath = URL(fileURLWithPath: args[1]).standardizedFileURL.path
+var isFolder: ObjCBool = false
+guard FileManager.default.fileExists(atPath: appPath, isDirectory: &isFolder), isFolder.boolValue else {
+    fail("icontool: cannot read the app at \(appPath)")
+}
+let icnsURL = URL(fileURLWithPath: appPath).appendingPathComponent("Contents/Resources/AppIcon.icns")
+guard let icns = NSImage(contentsOf: icnsURL) else { fail("icontool: cannot read \(icnsURL.path)") }
+
+let sizes: [CGFloat] = [16, 32, 64, 128, 256]
+let margin: CGFloat = 16
+let rowHeight: CGFloat = 288
+let width = sizes.reduce(0, +) + margin * CGFloat(sizes.count + 1)   // 592
+let height = rowHeight * 3                                            // 864
 
 /// One row; `index` 0 is the top row. AppKit's origin is the bottom left.
 func drawRow(_ index: Int, ground: UInt32, image: NSImage) {
@@ -79,32 +144,23 @@ func drawRow(_ index: Int, ground: UInt32, image: NSImage) {
     }
 }
 
-NSGraphicsContext.saveGraphicsState()
-NSGraphicsContext.current = context
-// NSWorkspace is asked once per row, so no image cached under one appearance is drawn under the other.
-NSAppearance(named: .aqua)!.performAsCurrentDrawingAppearance {
-    let light = NSWorkspace.shared.icon(forFile: appPath)
-    reps("light", light)
-    drawRow(0, ground: 0xFFFFFF, image: light)
+// NSWorkspace is asked once per row, so no image cached under one appearance is drawn under the other. The tile
+// readings draw each image again, under the same appearance, into a bitmap of their own.
+var light = NSImage(), dark = NSImage()
+let sheet = bitmap(width, height, scale) {
+    NSAppearance(named: .aqua)!.performAsCurrentDrawingAppearance {
+        light = NSWorkspace.shared.icon(forFile: appPath)
+        drawRow(0, ground: 0xFFFFFF, image: light)
+    }
+    NSAppearance(named: .darkAqua)!.performAsCurrentDrawingAppearance {
+        dark = NSWorkspace.shared.icon(forFile: appPath)
+        drawRow(1, ground: 0x1D1C1A, image: dark)
+    }
+    drawRow(2, ground: 0xF0EFED, image: icns)
 }
-NSAppearance(named: .darkAqua)!.performAsCurrentDrawingAppearance {
-    let dark = NSWorkspace.shared.icon(forFile: appPath)
-    reps("dark", dark)
-    drawRow(1, ground: 0x1D1C1A, image: dark)
-}
+reps("light", light)
+reps("dark", dark)
 reps("icns", icns)
-drawRow(2, ground: 0xF0EFED, image: icns)
-context.flushGraphics()
-NSGraphicsContext.restoreGraphicsState()
-
-guard let png = rep.representation(using: .png, properties: [:]) else {
-    print("icontool: cannot make the PNG")
-    exit(1)
-}
-do {
-    try png.write(to: outURL)
-} catch {
-    print("icontool: cannot write \(outURL.path): \(error)")
-    exit(1)
-}
-print("sheet \(outURL.path) \(rep.pixelsWide) \(rep.pixelsHigh)")
+NSAppearance(named: .aqua)!.performAsCurrentDrawingAppearance { tile("light", light) }
+NSAppearance(named: .darkAqua)!.performAsCurrentDrawingAppearance { tile("dark", dark) }
+write(sheet, URL(fileURLWithPath: args[2]), "sheet")

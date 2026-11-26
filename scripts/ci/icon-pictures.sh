@@ -4,26 +4,46 @@
 # picture of the screen. It opens Finder: never run it on your own Mac. It needs scripts/build-app.sh --debug and the
 # built dist/debug/icontool first.
 #
-#   ICON_OUT=<folder> scripts/ci/icon-pictures.sh <light|dark>
+#   ICON_OUT=<folder> scripts/ci/icon-pictures.sh <light|dark|darkstyle>
 #
-# The workflow runs it twice per macOS version, once in light and once after it has switched the runner to dark,
-# each with its own ICON_OUT. In dark every name carries "-dark" after the version ("macos15-dark").
+# The workflow runs it once per macOS version in light, then after it has switched the runner to dark, each with
+# its own ICON_OUT. On macOS 26 it may run a third time, "darkstyle", after the workflow's one try at the Dark icon
+# style (the workflow sets it, never this script, which changes no setting). Every name carries the mode after the
+# version: "macos26", "macos26-dark", "macos26-darkstyle".
 #
 # What it leaves in ICON_OUT:
 #   pictures/<os>-icon-sheet-1x.png and -2x.png   icontool's sheet at 1 and 2 pixels per point: the icon in a light
 #                                                 row, a dark row and the .icns's own row, at 16 to 256 points
 #   pictures/<os>-finder.png and -finder-later.png the screen with the app revealed in Finder, 3 and 15 seconds on
+#   pictures/<os>-styles-sheet.png                (light only) the icon document drawn by Apple's ictool in its six
+#                                                 renditions: Default, ClearLight, TintedLight on white above,
+#                                                 Dark, ClearDark, TintedDark on charcoal below
+#   <os>-styles/<rendition>.png                   (light only) ictool's six renders, 512 pixels
 #   <os>-icns/AppIcon.iconset                     the app's AppIcon.icns, unpacked
+#   <os>-assetutil.json                           assetutil --info of the app's Assets.car
 #   icon.log                                      every step and icontool's output
 #   results.tsv                                   one line per check: <check> PASS|FAIL|NOT-SHOWN <detail>
 #
-# The app carries the fallback of design 8.3: a plain AppIcon.icns of the light M, with no Assets.car.
-# Checks: the app has its icon files (AppIcon.icns in Contents/Resources and no Assets.car); Info.plist names the
-# icon (CFBundleIconFile reads AppIcon and there is no CFBundleIconName); the app has no Assets.car and no
-# CFBundleIconName (so the system has nothing but the .icns to draw); the .icns
-# holds a 16-pixel picture (icon_16x16.png is 16 wide); the icon sheet was drawn (icontool exits 0 at 1x and 2x and
-# both files exist); Finder shows the app (a picture was taken; NOT-SHOWN when not, never FAIL). It exits 1 when any
-# check is FAIL, and never on how a picture looks: a person reads the pictures.
+# The app carries the layered icon (look step 5a, round 2): the committed App/Assets.car and an AppIcon.icns.
+# Checks:
+#   the app has its icon files          Assets.car and AppIcon.icns in Contents/Resources, not empty, and the
+#                                       Assets.car is the repository's App/Assets.car byte for byte
+#   Info.plist names the icon           CFBundleIconFile and CFBundleIconName both read AppIcon
+#   Assets.car holds a light and a dark icon   assetutil --info lists an IconImageStack for NSAppearanceNameAqua
+#                                       and one for NSAppearanceNameDarkAqua. NOT-SHOWN when this runner has no
+#                                       assetutil, when it fails, or when it lists no IconImageStack at all (an
+#                                       assetutil too old to know them); FAIL when it lists stacks but not both
+#   the .icns holds a 16-pixel picture  icon_16x16.png is 16 wide
+#   the icon sheet was drawn            icontool exits 0 at 1x and 2x and both files exist
+#   Finder shows the app                a picture was taken; NOT-SHOWN when not, never FAIL
+#   the styles sheet was drawn          (light only) ictool from the selected Xcode or an /Applications/Xcode_26*.app
+#                                       rendered all six and icontool drew the sheet; NOT-SHOWN when no ictool
+#                                       is found or none renders, FAIL only when icontool cannot draw six renders
+#   the system draws the dark M in the Dark icon style   (darkstyle only) the unlit tile icontool reads in the
+#                                       system's icon, drawn under aqua, is dark (luminance under 0.35); NOT-SHOWN
+#                                       otherwise, with the readings and what the workflow tried
+# In every mode the log says which M the system's icon shows under each drawing appearance (icontool's "tile"
+# lines). It exits 1 when any check is FAIL, and never on how a picture looks: a person reads the pictures.
 set -uo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -33,9 +53,9 @@ APP=${ICON_APP:-$root/dist/debug/MacMosh.app}
 TOOL=${ICON_TOOL:-$root/dist/debug/icontool}
 appearance=${1:-}
 case "$appearance" in
-    light | dark) ;;
+    light | dark | darkstyle) ;;
     *)
-        echo "usage: ICON_OUT=<folder> scripts/ci/icon-pictures.sh <light|dark>" >&2
+        echo "usage: ICON_OUT=<folder> scripts/ci/icon-pictures.sh <light|dark|darkstyle>" >&2
         exit 2
         ;;
 esac
@@ -45,7 +65,7 @@ mkdir -p "$OUT/pictures"
 : > "$LOG"
 : > "$RESULTS"
 os="macos$(sw_vers -productVersion | cut -d. -f1)"
-[ "$appearance" = dark ] && os="$os-dark"
+[ "$appearance" = light ] || os="$os-$appearance"
 failures=0
 
 say() { printf '%s icon %s\n' "$(date '+%H:%M:%S')" "$*" | tee -a "$LOG"; }
@@ -58,12 +78,16 @@ result() {
     if [ "$2" = FAIL ]; then failures=$((failures + 1)); fi
 }
 
-say "$os: $(sw_vers -productVersion), appearance $appearance, AppleInterfaceStyle $(defaults read -g AppleInterfaceStyle 2>/dev/null || echo unset)"
+say "$os: $(sw_vers -productVersion), mode $appearance, AppleInterfaceStyle $(defaults read -g AppleInterfaceStyle 2>/dev/null || echo unset), AppleIconAppearanceTheme $(defaults read -g AppleIconAppearanceTheme 2>/dev/null || echo unset)"
 resources="$APP/Contents/Resources"
 
 # 1. The app has its icon files.
-if [ -f "$resources/AppIcon.icns" ] && [ ! -e "$resources/Assets.car" ]; then
-    result "the app has its icon files" PASS "AppIcon.icns in Contents/Resources, and no Assets.car"
+if [ -s "$resources/Assets.car" ] && [ -s "$resources/AppIcon.icns" ]; then
+    if cmp -s "$resources/Assets.car" "$root/App/Assets.car"; then
+        result "the app has its icon files" PASS "Assets.car (the repository's App/Assets.car) and AppIcon.icns in Contents/Resources"
+    else
+        result "the app has its icon files" FAIL "Contents/Resources/Assets.car is not the repository's App/Assets.car"
+    fi
 else
     result "the app has its icon files" FAIL "Contents/Resources holds: $(find "$resources" -mindepth 1 -maxdepth 1 -exec basename {} \; 2>&1 | tr '\n' ' ')"
 fi
@@ -79,19 +103,33 @@ plist_key() {
 }
 icon_file=$(plist_key CFBundleIconFile)
 icon_name=$(plist_key CFBundleIconName)
-if [ "$icon_file" = AppIcon ] && [ -z "$icon_name" ]; then
-    result "Info.plist names the icon" PASS "CFBundleIconFile reads AppIcon, and there is no CFBundleIconName"
+if [ "$icon_file" = AppIcon ] && [ "$icon_name" = AppIcon ]; then
+    result "Info.plist names the icon" PASS "CFBundleIconFile and CFBundleIconName read AppIcon"
 else
     result "Info.plist names the icon" FAIL "CFBundleIconFile reads ${icon_file:-nothing}, CFBundleIconName reads ${icon_name:-nothing}"
 fi
 
-# 3. The app has no Assets.car and no CFBundleIconName.
-car=absent
-[ -e "$resources/Assets.car" ] && car=there
-if [ "$car" = absent ] && [ -z "$icon_name" ]; then
-    result "the app has no Assets.car and no CFBundleIconName" PASS "the system has only AppIcon.icns to draw"
+# 3. Assets.car holds a light and a dark icon. assetutil writes one JSON object per asset, its keys in order, so an
+# object's "Appearance" line comes before its "AssetType" line at the same depth (four spaces). The stacks' own
+# layers sit deeper and are not read.
+check="Assets.car holds a light and a dark icon"
+info="$OUT/$os-assetutil.json"
+if ! command -v assetutil >/dev/null 2>&1; then
+    result "$check" NOT-SHOWN "this runner has no assetutil"
+elif ! lim 60 assetutil --info "$resources/Assets.car" > "$info" 2>&1; then
+    result "$check" NOT-SHOWN "assetutil --info could not read it: $(head -c 300 "$info" | tr '\n' ' ')"
 else
-    result "the app has no Assets.car and no CFBundleIconName" FAIL "Assets.car is $car, CFBundleIconName reads ${icon_name:-nothing}"
+    stacks=$(awk '/^  \{/ { appearance = "" }
+        /^    "Appearance" : / { appearance = $3 }
+        /^    "AssetType" : "IconImageStack"/ { gsub(/[",]/, "", appearance); print appearance }' "$info" | sort | tr '\n' ' ')
+    say "assetutil lists icon stacks for: ${stacks:-nothing}"
+    if [ -z "$stacks" ]; then
+        result "$check" NOT-SHOWN "assetutil read it ($(grep -c '"AssetType"' "$info") assets) but lists no IconImageStack; $(grep -m1 '"DumpToolVersion"' "$info" | tr -d ' ,')"
+    elif [[ " $stacks" == *" NSAppearanceNameAqua "* && " $stacks" == *" NSAppearanceNameDarkAqua "* ]]; then
+        result "$check" PASS "IconImageStack for: $stacks(in $os-assetutil.json)"
+    else
+        result "$check" FAIL "IconImageStack only for: $stacks(in $os-assetutil.json)"
+    fi
 fi
 
 # 4. The .icns holds a 16-pixel picture.
@@ -123,6 +161,14 @@ if [ "$drawn" -eq 2 ]; then
 else
     result "the icon sheet was drawn" FAIL "icontool drew $drawn of the 2 sheets; icon.log has what it said"
 fi
+# Which M the system's icon shows: icontool's "tile" lines, from the 1x run (the 2x run reads the same images).
+# The light M's unlit tiles are near white and the dark M's near #34322F, so 0.35 splits them.
+which_m() {
+    local line
+    line=$(grep -m1 "^tile $1 " "$LOG") || { echo "no reading"; return; }
+    awk -v l="$line" 'BEGIN { split(l, f, " "); printf "%s, the %s M", f[3], (f[4] < 0.35 ? "dark" : "light") }'
+}
+say "reading: the system's icon drawn under aqua shows $(which_m light); under darkAqua $(which_m dark)"
 
 # 6. Finder shows the app: revealed, then a picture of the screen. What it shows is read by a person.
 # Two pictures, 3 and 15 seconds after the reveal: Finder may still be loading its icons at the first.
@@ -140,6 +186,71 @@ else
 fi
 # Close Finder's windows so the next run's picture shows its own. A failure here changes no result.
 lim 15 osascript -e 'tell application "Finder" to close every window' >> "$LOG" 2>&1 || say "Finder's windows were not closed"
+
+# 7. The styles sheet (light only): the icon document drawn by Apple's ictool, which ships inside Xcode's Icon
+# Composer from Xcode 26 on, in the six renditions its --help lists. The selected Xcode first, then each
+# /Applications/Xcode_26*.app in reverse name order, each by its real path and once; the first whose ictool renders
+# Default is used.
+if [ "$appearance" = light ]; then
+    check="the styles sheet was drawn"
+    renditions="Default Dark ClearLight ClearDark TintedLight TintedDark"
+    styles="$OUT/$os-styles"
+    mkdir -p "$styles"
+    ictool=""
+    tried=""
+    candidates=$( (xcode-select -p 2>/dev/null | sed 's|/Contents/Developer$||'; find /Applications -maxdepth 1 -name 'Xcode_26*.app' | sort -t_ -k2 -r) | while read -r xcode; do (cd -P "$xcode" 2>/dev/null && pwd); done | awk '!seen[$0]++')
+    for xcode in $candidates; do
+        tool="$xcode/Contents/Applications/Icon Composer.app/Contents/Executables/ictool"
+        if [ ! -x "$tool" ]; then
+            tried="$tried $(basename "$xcode") (no ictool);"
+            continue
+        fi
+        say "ictool from $xcode: $(lim 20 "$tool" --version 2>&1 | tr -d '\n ' | head -c 120)"
+        if lim 60 "$tool" "$root/App/AppIcon.icon" --export-image --output-file "$styles/Default.png" --platform macOS \
+            --rendition Default --width 256 --height 256 --scale 2 >> "$LOG" 2>&1 && [ -s "$styles/Default.png" ]; then
+            ictool="$tool"
+            say "ictool used: $tool"
+            break
+        fi
+        tried="$tried $(basename "$xcode") (ictool did not render Default);"
+    done
+    if [ -z "$ictool" ]; then
+        result "$check" NOT-SHOWN "no ictool rendered the document; tried:${tried:- no Xcode found}"
+    else
+        rendered=1
+        for rendition in $renditions; do
+            [ "$rendition" = Default ] && continue
+            if lim 60 "$ictool" "$root/App/AppIcon.icon" --export-image --output-file "$styles/$rendition.png" \
+                --platform macOS --rendition "$rendition" --width 256 --height 256 --scale 2 >> "$LOG" 2>&1 \
+                && [ -s "$styles/$rendition.png" ]; then
+                rendered=$((rendered + 1))
+            else
+                say "ictool did not render $rendition"
+            fi
+        done
+        sheet="$OUT/pictures/$os-styles-sheet.png"
+        if [ "$rendered" -ne 6 ]; then
+            result "$check" NOT-SHOWN "ictool ($ictool) rendered $rendered of 6; icon.log has what it said"
+        elif lim 60 "$TOOL" --styles "$sheet" 1 "$styles/Default.png" "$styles/Dark.png" "$styles/ClearLight.png" \
+            "$styles/ClearDark.png" "$styles/TintedLight.png" "$styles/TintedDark.png" >> "$LOG" 2>&1 && [ -f "$sheet" ]; then
+            result "$check" PASS "$os-styles-sheet.png, from ictool in ${ictool%%/Contents/Applications/*}"
+        else
+            result "$check" FAIL "ictool rendered all six, but icontool could not draw the sheet; icon.log has what it said"
+        fi
+    fi
+fi
+
+# 8. The Dark icon style (darkstyle only): the workflow has set it, by a guessed name, and read it back. Did the
+# system's icon follow? icontool's reading under aqua says which M it drew.
+if [ "$appearance" = darkstyle ]; then
+    check="the system draws the dark M in the Dark icon style"
+    reading=$(which_m light)
+    if [[ "$reading" == *"the dark M" ]]; then
+        result "$check" PASS "under aqua the system's icon shows $reading ($os-icon-sheet-2x.png)"
+    else
+        result "$check" NOT-SHOWN "under aqua the system's icon shows $reading, under darkAqua $(which_m dark); tried: AppleIconAppearanceTheme (a guessed name) reads $(defaults read -g AppleIconAppearanceTheme 2>/dev/null || echo unset)"
+    fi
+fi
 
 say "done: $failures failed"
 [ "$failures" -eq 0 ]

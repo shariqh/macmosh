@@ -1,6 +1,7 @@
 name: Icon pictures
 # Look step 5a (issue 175): builds the debug app with its icon on macOS 15 and 26, checks the icon files in it, and
-# draws the icon as the system gives it, in light and then in dark (scripts/ci/icon-pictures.sh says what it checks).
+# draws the icon as the system gives it, in light and then in dark, plus the icon document's six styles drawn by
+# Apple's ictool (scripts/ci/icon-pictures.sh says what it checks).
 # The Remove confirmation's pictures, where an alert may show the icon, come from the Menu pictures workflow.
 on:
   pull_request:
@@ -31,6 +32,7 @@ jobs:
           xcodebuild -version | head -n 1
           ls -d /Applications/Xcode*.app
           command -v assetutil iconutil sips || true
+          ls -d /Applications/Xcode*.app/Contents/Applications/Icon\ Composer.app/Contents/Executables/ictool || true
           system_profiler SPDisplaysDataType | grep -E 'Resolution|UI Looks like' || true
       - name: Build the debug app and icontool
         id: build
