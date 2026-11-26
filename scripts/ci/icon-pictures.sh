@@ -133,7 +133,7 @@ if lim 20 open -R "$APP" >> "$LOG" 2>&1; then
     sleep 12
     lim 20 screencapture -x "$OUT/pictures/$os-finder-later.png" >> "$LOG" 2>&1
 fi
-if [ -f "$finder" ]; then
+if [ -f "$finder" ] && [ -f "$OUT/pictures/$os-finder-later.png" ]; then
     result "Finder shows the app" PASS "$os-finder.png (3 seconds) and $os-finder-later.png (15 seconds) were taken"
 else
     result "Finder shows the app" NOT-SHOWN "Finder could not reveal the app or the screen picture failed"

@@ -65,7 +65,7 @@ for picture in icon_16x16.png icon_16x16@2x.png icon_32x32.png icon_32x32@2x.png
     fi
 done
 work=$(mktemp -d -t build-app-icon)
-if ! iconutil -c icns -o "$work/AppIcon.icns" "$iconset" >&2; then
+if ! iconutil -c icns -o "$work/AppIcon.icns" "$iconset" >&2 || [ ! -s "$work/AppIcon.icns" ]; then
     echo "build-app.sh: FAILED: iconutil could not make AppIcon.icns from App/AppIcon.iconset (work folder $work)" >&2
     exit 1
 fi
