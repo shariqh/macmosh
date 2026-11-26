@@ -65,6 +65,15 @@ public enum WindowWords {
         return open
     }
 
+    /// "No desks", "1 desk", "6 desks": a Ready Mac's count in the sidebar (look design 6.2), closed desks counted.
+    public static func deskCount(_ count: Int) -> String {
+        switch count {
+        case ...0: return "No desks"
+        case 1: return "1 desk"
+        default: return "\(count) desks"
+        }
+    }
+
     /// "1 window", "2 windows": for an open desk whose windows have no names.
     public static func windows(_ count: Int) -> String {
         count == 1 ? "1 window" : "\(count) windows"
@@ -470,22 +479,47 @@ public enum WindowSelection: Sendable, Hashable {
 }
 
 /// One line of the sidebar: each workhorse with its state's symbol (the menu icon's), then Add a Mac…, then Settings.
+/// A workhorse's row has a second line under its name (look design 6.2), from its pill only: "Checking…" before the
+/// first answer; "Ready · 6 desks" when plainly Ready (closed desks counted, ended ones not); otherwise the pill's word
+/// alone ("Locked after a restart", "Ready, sign-ins off", "Waiting for the desk server"). Its symbol takes the pill's
+/// tone.
 public struct SidebarItem: Sendable, Equatable, Identifiable {
     public var id: WindowSelection { selection }
     public var selection: WindowSelection
     public var title: String
     public var symbol: String
+    /// Under the name; nil for Add a Mac… and Settings.
+    public var second: String?
+    /// The symbol's colour (`PillTone.textRole.token`); nil: drawn in ink.
+    public var tone: PillTone?
 
-    public init(selection: WindowSelection, title: String, symbol: String) {
+    public init(selection: WindowSelection, title: String, symbol: String, second: String? = nil, tone: PillTone? = nil) {
         self.selection = selection
         self.title = title
         self.symbol = symbol
+        self.second = second
+        self.tone = tone
+    }
+
+    /// What VoiceOver says for the row, and what CI reads: the name, then the second line when there is one.
+    public var spokenLabel: String {
+        second.map { "\(title), \($0)" } ?? title
     }
 
     public static func list(_ board: Board) -> [SidebarItem] {
-        board.workhorses.map { SidebarItem(selection: .workhorse($0.id), title: $0.name, symbol: $0.symbol) }
+        board.workhorses.map { w in
+            SidebarItem(selection: .workhorse(w.id), title: w.name, symbol: w.symbol, second: secondLine(w), tone: w.pill.tone)
+        }
             + [SidebarItem(selection: .addMac, title: ButtonRules.addAMac.title, symbol: "plus"),
                SidebarItem(selection: .settings, title: SettingsWords.heading, symbol: "gearshape")]
+    }
+
+    private static func secondLine(_ w: BoardWorkhorse) -> String {
+        switch w.pill.tone {
+        case .checking: return WindowWords.checking
+        case .ready: return "\(w.pill.word) · \(WindowWords.deskCount(w.desks.count))"
+        case .needsYou, .cannot: return w.pill.word
+        }
     }
 }
 
