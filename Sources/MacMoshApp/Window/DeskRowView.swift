@@ -183,10 +183,8 @@ private struct CellView: View {
 struct SecondLineView: View {
     let line: SecondLine
 
-    /// The line at each width of `SecondLine.widths`, longest first, each different one once.
-    private var fittings: [String] {
-        SecondLine.widths.map(line.fitted).reduce(into: [String]()) { if $0.last != $1 { $0.append($1) } }
-    }
+    /// The line one character shorter at each rung, longest first (`SecondLine.ladder`).
+    private var fittings: [String] { line.ladder }
 
     var body: some View {
         if let tag = line.tag {

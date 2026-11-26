@@ -116,13 +116,13 @@ private func nameButton(_ desk: String, _ window: String) -> BoardButton {
     @Test func whileAWindowIsNamedTheDesksButtonsAreOffAndItsRowSaysNaming() {
         let website = desk(board(windowsReport(version: "0.11.0")), "website")
         let row = DeskRow(website, activity: WindowActivity(busy: ["website": .nameWindow]))
-        #expect(row.status == "Naming…")
+        #expect(row.state == DeskStateCell(word: "Naming…", kind: .busy))
         #expect(row.windowLines.allSatisfy { $0.name?.isEnabled == false && $0.button?.isEnabled == false })
         #expect(row.detailButtons.allSatisfy { !$0.isEnabled })
         let blog = DeskRow(desk(board(windowsReport(version: "0.11.0")), "blog"), activity: WindowActivity(busy: ["blog": .nameWindow]))
         #expect(blog.detailButtons.map(\.title) == ["New window", "Name its window…", "Rename…", "Remove…"])
         #expect(blog.detailButtons.allSatisfy { !$0.isEnabled })
-        #expect(DeskRow(website, activity: WindowActivity(updating: ["website"])).status == "Updating…")
+        #expect(DeskRow(website, activity: WindowActivity(updating: ["website"])).state == DeskStateCell(word: "Updating…", kind: .busy))
     }
 
     /// A name with a space and a full stop is shown whole: in the row's list of names, and in the details, with and
@@ -132,7 +132,7 @@ private func nameButton(_ desk: String, _ window: String) -> BoardButton {
         report.desks[0].windows[2].name = "front end v1.2"
         for mode in [ConnectionMode.mosh, .tabs] {
             let row = DeskRow(desk(board(report, mode: mode), "website"))
-            #expect(row.windows == "claude, zsh, front end v1.2", "\(mode)")
+            #expect(row.windowWords == "claude, zsh, front end v1.2", "\(mode)")
             #expect(row.windowLines.last?.title == "front end v1.2", "\(mode)")
         }
     }

@@ -62,7 +62,6 @@ private func titles(_ buttons: [BoardButton]) -> [String] { buttons.map(\.title)
         #expect(WindowWords.keptWhenItExits == "Kept when it exits")
         #expect(WindowWords.doesntComeBack == "Doesn't come back after a restart")
         #expect(WindowWords.notMadeWithMacMosh == "Not made with MacMosh: folder and restart not known")
-        #expect(WindowWords.closed == "(closed)")
         #expect(WindowWords.open == "Open")
         #expect(WindowWords.desks == "Desks")
         #expect(WindowWords.keepsItsCommandRunning == "Keeps its command running")
@@ -153,27 +152,27 @@ private func titles(_ buttons: [BoardButton]) -> [String] { buttons.map(\.title)
         let r = try rows()
         let website = try #require(r["website"])
         #expect(website.id == "website")
-        #expect(website.windows == "claude, zsh, vim")
-        #expect(website.tabs == "In 2 tabs")
-        #expect(website.second == "~/Development/website")
+        #expect(website.windowWords == "claude, zsh, vim")
+        #expect(website.state.word == "In 2 tabs")
+        #expect(website.secondLine.whole == "~/Development/website")
         #expect(website.open == BoardButton(title: "Open", action: .menu(.tab(["connect", "attic", "website"]))))
         let api = try #require(r["api"])
-        #expect(api.windows == "server, tests" && api.tabs == "In 1 tab" && api.second == "~/Development/api")
+        #expect(api.windowWords == "server, tests" && api.state.word == "In 1 tab" && api.secondLine.whole == "~/Development/api")
     }
 
     @Test func theSecondLineSaysOnlyWhatIsUnusual() throws {
         let r = try rows()
-        #expect(r["garden"]?.second == "~/Development/garden · Kept when it exits")
-        #expect(r["garden"]?.tabs == "No tab")
-        #expect(r["recipes"]?.second == "/opt/projects/recipes · Doesn't come back after a restart")
-        #expect(r["blog"]?.second == "Not made with MacMosh: folder and restart not known")
+        #expect(r["garden"]?.secondLine.whole == "~/Development/garden · Kept when it exits")
+        #expect(r["garden"]?.state.word == "No tab")
+        #expect(r["recipes"]?.secondLine.whole == "/opt/projects/recipes · Doesn't come back after a restart")
+        #expect(r["blog"]?.secondLine.help == "Not made with MacMosh: folder and restart not known")
     }
 
     @Test func aClosedDeskSaysClosedAndHasNoTabCount() throws {
         let notes = try #require(try rows()["notes"])
-        #expect(notes.windows == "(closed)")
-        #expect(notes.tabs == nil)
-        #expect(notes.second == "~/notes · Kept when it exits")
+        #expect(notes.windowWords == "")
+        #expect(notes.state.kind == .closed)
+        #expect(notes.secondLine.whole == "~/notes · Kept when it exits")
         #expect(notes.open?.action == .menu(.tab(["connect", "attic", "notes"])))
     }
 
@@ -207,17 +206,17 @@ private func titles(_ buttons: [BoardButton]) -> [String] { buttons.map(\.title)
         let blog = try #require(try rows()["blog"])
         #expect(blog.detail.isEmpty && blog.facts.isEmpty)
         #expect(titles(blog.detailButtons) == ["New window", "Rename…", "Remove…"])
-        #expect(blog.windows == "claude, zsh" && blog.tabs == "In 1 tab")
+        #expect(blog.windowWords == "claude, zsh" && blog.state.word == "In 1 tab")
     }
 
     @Test func anOpenDeskWithNoWindowNamesCountsItsWindows() {
         let one = BoardDesk(name: "x", isOpen: true, windows: [BoardWindow(index: 0, name: "", id: nil, tabs: nil)],
                             windowCount: 1, tabsOpen: 0, folder: nil, command: nil, reopen: nil, keep: nil,
                             permanent: nil, madeByMacMosh: false, open: nil, buttons: [])
-        #expect(DeskRow(one).windows == "1 window")
+        #expect(DeskRow(one).windowWords == "1 window")
         var two = one
         two.windowCount = 2
-        #expect(DeskRow(two).windows == "2 windows")
+        #expect(DeskRow(two).windowWords == "2 windows")
     }
 
     // MARK: Going to a tab, and a desk's windows, by the menu's rules (issue #134)
@@ -255,7 +254,7 @@ private func titles(_ buttons: [BoardButton]) -> [String] { buttons.map(\.title)
         let website = try #require(r["website"])
         #expect(website.open == BoardButton(title: "Open", action: .menu(.tabs([onWindow("website", "@3")]))))
         #expect(website.openWords == "Open the 1 window not in a tab")
-        #expect(website.tabs == "In 2 tabs")
+        #expect(website.state.word == "In 2 tabs")
         #expect(website.windowLines == [
             WindowLine(id: "@1", title: "claude", state: .inTabs(1), help: "claude (in a tab)",
                        button: BoardButton(title: "Go to", action: .menu(.focus(label: "3f9a2c71e5b7d4a6",
@@ -272,15 +271,15 @@ private func titles(_ buttons: [BoardButton]) -> [String] { buttons.map(\.title)
         let notes = try #require(r["notes"])
         #expect(notes.open == BoardButton(title: "Go to", action: .menu(.focus(label: "c1d2e3f4a5b6c7d8",
                                                                               orOpen: onWindow("notes", "@7")))))
-        #expect(notes.openWords == "Go to notes" && notes.tabs == "In 1 tab" && notes.windowLines.isEmpty)
+        #expect(notes.openWords == "Go to notes" && notes.state.word == "In 1 tab" && notes.windowLines.isEmpty)
 
         let api = try #require(r["api"])
-        #expect(api.open?.title == "Open" && api.openWords == "Open api in 2 tabs" && api.tabs == "No tab")
+        #expect(api.open?.title == "Open" && api.openWords == "Open api in 2 tabs" && api.state.word == "No tab")
         #expect(api.windowLines.map(\.title) == ["server", "tests"] && api.windowLines.map { $0.button?.title } == ["Open", "Open"])
         #expect(r["blog"]?.windowLines == [])   // one window: the row's button is that window's
         let garden = try #require(r["garden"])
         #expect(garden.open == BoardButton(title: "Open", action: .menu(.tab(["connect", "attic", "garden", "--view"]))))
-        #expect(garden.openWords == "Open garden" && garden.tabs == nil)
+        #expect(garden.openWords == "Open garden" && garden.state.kind == .closed)
         #expect(try #require(r["shop"]).windowLines.map(\.help) == ["web (open in another tab)", "db"])
     }
 
@@ -387,7 +386,7 @@ private func titles(_ buttons: [BoardButton]) -> [String] { buttons.map(\.title)
 
     @Test func nineWindowsShowFiveCellsAndThePlus() {   // Review Focus 2
         let nine = desk(windows: 9, inTabs: [0, 1, 0, 0, 0, 0, 0, 1, 0], tabsOpen: 2)
-        #expect(DeskCells(nine) == DeskCells(cells: [.unlit, .lit, .unlit, .unlit, .unlit], more: true) && DeskRow(nine).tabs == "In 2 tabs")
+        #expect(DeskCells(nine) == DeskCells(cells: [.unlit, .lit, .unlit, .unlit, .unlit], more: true) && DeskRow(nine).state.word == "In 2 tabs")
         #expect(DeskRow(nine).state == DeskStateCell(word: "In 2 tabs", kind: .inTabs))
         #expect(DeskCells(desk(windows: 9, inTabs: nil, tabsOpen: 7)) == DeskCells(cells: Array(repeating: .lit, count: 5), more: true))
         #expect(DeskCells(desk(windows: 6, inTabs: nil, tabsOpen: 0)) == DeskCells(cells: Array(repeating: .unlit, count: 6), more: false))
@@ -409,8 +408,8 @@ private func titles(_ buttons: [BoardButton]) -> [String] { buttons.map(\.title)
         #expect(r["website"]?.state == DeskStateCell(word: "In 2 tabs", kind: .inTabs))
         #expect(r["garden"]?.state == DeskStateCell(word: "No tab", kind: .noTab))
         #expect(r["notes"]?.state == DeskStateCell(word: "Closed", kind: .closed))
-        #expect(r["notes"]?.windowWords == "" && r["notes"]?.windows == "(closed)")   // today's field unchanged
-        #expect(r["website"]?.windowWords == "claude, zsh, vim" && r["blog"]?.windowWords == r["blog"]?.windows)
+        #expect(r["notes"]?.windowWords == "")
+        #expect(r["website"]?.windowWords == "claude, zsh, vim" && r["blog"]?.windowWords == "claude, zsh")
         let busy = try activePage(WindowActivity(busy: ["api": .rename], arriving: ["garden-planner"]))
         #expect(busy.desks.first { $0.name == "api" }?.state == DeskStateCell(word: "Renaming…", kind: .busy))
         let arriving = try #require(busy.desks.first { $0.name == "garden-planner" })
@@ -434,7 +433,6 @@ private func titles(_ buttons: [BoardButton]) -> [String] { buttons.map(\.title)
         #expect(blog.secondLine.tag == "Made by hand" && blog.secondLine.whole == "Made by hand" && blog.secondLine.fitted(4) == "Made by hand")
         #expect(blog.secondLine.help == "Not made with MacMosh: folder and restart not known")
         #expect(blog.secondLine.folder == nil && blog.secondLine.facts.isEmpty)
-        #expect(blog.second == "Not made with MacMosh: folder and restart not known")   // today's field unchanged
     }
 
     @Test func theFolderIsCutInTheMiddleAndTheFactsStay() throws {
@@ -446,8 +444,26 @@ private func titles(_ buttons: [BoardButton]) -> [String] { buttons.map(\.title)
         #expect(recipes.help == recipes.whole)
         let website = try #require(try rows()["website"]).secondLine
         #expect(website.fitted(12) == "~/Dev…ebsite" && website.help == "~/Development/website")
-        #expect(SecondLine.widths == [.max, 96, 80, 64, 48, 32, 0])
-        #expect(SecondLine.widths.map(website.fitted).first == website.whole)
+        #expect(website.ladder.first == website.whole)
+    }
+
+    @Test func aLongFolderIsCutOnlyAsFarAsTheRoomNeeds() throws {
+        let recipes = try #require(try rows()["recipes"]).secondLine
+        let ladder = recipes.ladder
+        #expect(ladder.first == recipes.whole && ladder.last == recipes.fitted(0))
+        #expect(zip(ladder, ladder.dropFirst()).allSatisfy { $0.count == $1.count + 1 })
+        #expect(ladder.allSatisfy { $0.hasSuffix(" · Doesn't come back after a restart") })
+        #expect(ladder.count == recipes.whole.count - recipes.fitted(0).count + 1)
+        #expect(try #require(try rows()["blog"]).secondLine.ladder == ["Made by hand"])
+    }
+
+    @Test func theWindowNamesAreCutOnlyWhenAFewLettersStay() throws {
+        let r = try rows()
+        #expect(r["website"]?.windowWordsAtFewest == "clau…" && r["notes"]?.windowWordsAtFewest == "")
+        let one = BoardDesk(name: "x", isOpen: true, windows: [BoardWindow(index: 0, name: "zsh", id: "@1", tabs: 1)], windowCount: 1,
+                            tabsOpen: 1, folder: nil, command: nil, reopen: nil, keep: nil, permanent: nil, madeByMacMosh: false,
+                            open: nil, buttons: [])
+        #expect(DeskRow(one).windowWordsAtFewest == "zsh")
     }
 
     @Test func theSpokenLabelIsNameWindowsSecondLineThenState() throws {
@@ -613,13 +629,13 @@ private func titles(_ buttons: [BoardButton]) -> [String] { buttons.map(\.title)
     @Test func aDeskWithAnActionRunningSaysSoAndItsButtonsAreOff() throws {
         let p = try activePage(WindowActivity(busy: ["api": .rename]))
         let api = try #require(p.desks.first { $0.name == "api" })
-        #expect(api.status == "Renaming…")
+        #expect(api.state == DeskStateCell(word: "Renaming…", kind: .busy))
         #expect(api.detailButtons.map(\.title) == ["New window", "Renaming…", "Remove…"])
         #expect(api.detailButtons.allSatisfy { !$0.isEnabled })
         #expect(api.open?.isEnabled == false)
         // Another desk stays usable.
         let website = try #require(p.desks.first { $0.name == "website" })
-        #expect(website.status == nil && website.detailButtons.allSatisfy(\.isEnabled) && website.open?.isEnabled == true)
+        #expect(website.state.kind != .busy && website.detailButtons.allSatisfy(\.isEnabled) && website.open?.isEnabled == true)
         let removing = try activePage(WindowActivity(busy: ["website": .remove]))
         #expect(removing.desks.first { $0.name == "website" }?.detailButtons.last?.title == "Removing…")
     }
@@ -633,20 +649,21 @@ private func titles(_ buttons: [BoardButton]) -> [String] { buttons.map(\.title)
 
     @Test func aRowSaysUpdatingUntilTheCheckLands() throws {
         let p = try activePage(WindowActivity(updating: ["website", "gone"], arriving: ["garden-planner"]))
-        #expect(p.desks.first { $0.name == "website" }?.status == "Updating…")
+        #expect(p.desks.first { $0.name == "website" }?.state == DeskStateCell(word: "Updating…", kind: .busy))
         #expect(p.desks.first { $0.name == "website" }?.hasStrip == true)
         // A new desk the check has not brought yet has a row of its own, in name order. A desk renamed or
         // removed has none once the check has taken it away.
         let names = p.desks.map(\.name)
         #expect(names == ["api", "blog", "garden", "garden-planner", "notes", "recipes", "website"])
         let placeholder = try #require(p.desks.first { $0.name == "garden-planner" })
-        #expect(placeholder.status == "Updating…" && placeholder.windows == "" && placeholder.open == nil)
-        #expect(placeholder.detailButtons.isEmpty && placeholder.second == "" && placeholder.detail.isEmpty)
+        #expect(placeholder.state == DeskStateCell(word: "Updating…", kind: .busy) && placeholder.windowWords == ""
+                && placeholder.open == nil)
+        #expect(placeholder.detailButtons.isEmpty && placeholder.secondLine.whole == "" && placeholder.detail.isEmpty)
         #expect(!placeholder.hasStrip)
         // Once the check has brought it, its own row says Updating… until the mark is taken off.
         let arrived = try activePage(WindowActivity(arriving: ["website"]))
         #expect(arrived.desks.filter { $0.name == "website" }.count == 1)
-        #expect(arrived.desks.first { $0.name == "website" }?.status == "Updating…")
+        #expect(arrived.desks.first { $0.name == "website" }?.state == DeskStateCell(word: "Updating…", kind: .busy))
     }
 
     /// Section 7.2: Rename needs script 0.6.0, so with an older one its button is hidden.

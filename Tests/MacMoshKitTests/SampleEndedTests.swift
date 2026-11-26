@@ -63,7 +63,8 @@ import Testing
         let page = try #require(board.workhorses.first.map { WorkhorsePage($0, now: Date(), timeZone: .current) })
         #expect(page.endedHeading == "Ended")
         #expect(page.ended.first { $0.name == "shop" }?.note == "Attic already has a desk called shop.")
-        #expect(page.desks.first { $0.name == "website" }?.windows == "(closed)")
+        let website = page.desks.first { $0.name == "website" }
+        #expect(website?.windowWords == "" && website?.state.kind == .closed)
     }
 }
 #endif

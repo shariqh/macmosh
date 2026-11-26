@@ -15,7 +15,6 @@ public enum WindowWords {
     public static let noDesks = "No desks yet."
     public static let open = "Open"
     public static let goTo = "Go to"
-    public static let closed = "(closed)"
     public static let keptWhenItExits = "Kept when it exits"
     public static let doesntComeBack = "Doesn't come back after a restart"
     public static let notMadeWithMacMosh = "Not made with MacMosh: folder and restart not known"
@@ -23,7 +22,7 @@ public enum WindowWords {
     /// The tag on the second line of a desk with no saved definition (look design 6.5); today's sentence
     /// (`notMadeWithMacMosh`) is its help tag.
     public static let madeByHand = "Made by hand"
-    /// A closed desk's state cell (look design 6.5). Today's windows column says `closed`, "(closed)".
+    /// A closed desk's state cell (look design 6.5).
     public static let closedState = "Closed"
 
     // The detail strip's labels and values.
@@ -238,10 +237,6 @@ public struct WindowLine: Sendable, Equatable, Identifiable {
 public struct DeskRow: Sendable, Equatable, Identifiable {
     public var id: String { name }
     public var name: String
-    /// Its window names ("claude, zsh, vim"), or "(closed)".
-    public var windows: String
-    /// "In 2 tabs" or "No tab"; nil for a closed desk.
-    public var tabs: String?
     /// The menu's click on the desk (issue #134), titled "Go to" when it goes to a tab and "Open" otherwise.
     public var open: BoardButton?
     /// The menu's words for that click, "Go to website" or "Open the 1 window not in a tab": the button's help tag.
@@ -249,8 +244,6 @@ public struct DeskRow: Sendable, Equatable, Identifiable {
     /// One line per window when the desk has the menu's line per window and more than one window, or when its
     /// windows can be named and it has more than one; none otherwise.
     public var windowLines: [WindowLine]
-    /// The folder and the unusual facts: "~/notes · Kept when it exits".
-    public var second: String
     /// Starts with, After a restart, When its last shell exits; none for a desk made by hand.
     public var detail: [DetailLine]
     /// "Keeps its command running", when the desk has that flag.
@@ -258,14 +251,18 @@ public struct DeskRow: Sendable, Equatable, Identifiable {
     /// New window (when open), Name its window… (one window, issue 144), Rename…, Remove…, with the strip's short
     /// titles.
     public var detailButtons: [BoardButton]
-    /// "Renaming…", "Removing…" or "Naming…" while one of the window's actions runs on it, "Updating…" until the
-    /// check after it lands; nil otherwise. Shown in place of the tab count.
-    public var status: String?
     /// The cells on the desk's tile (look design 6.5); none for a desk just made, before its check.
     public var cells: DeskCells
     /// Its window names ("claude, zsh, vim"), or "1 window" when they have none; "" for a closed desk and for a desk
     /// just made (look design 6.5).
     public var windowWords: String
+    /// The window names as the row shows them when little room is left: cut to `LookSize.windowNamesFewest` letters
+    /// and "…", or whole when no longer than that and one; "" when there are none. Below this the row leaves them out
+    /// (the spoken label keeps them).
+    public var windowWordsAtFewest: String {
+        let fewest = LookSize.windowNamesFewest
+        return windowWords.count <= fewest + 1 ? windowWords : String(windowWords.prefix(fewest)) + "…"
+    }
     /// The state cell: the running action's words first ("Renaming…", "Updating…"); else "In 2 tabs", "No tab" or
     /// "Closed".
     public var state: DeskStateCell
@@ -281,14 +278,6 @@ public struct DeskRow: Sendable, Equatable, Identifiable {
     /// `canRename` (a script older than 0.6.0) it has no Rename….
     public init(_ desk: BoardDesk, activity: WindowActivity = WindowActivity(), canRename: Bool = true) {
         name = desk.name
-        if !desk.isOpen {
-            windows = WindowWords.closed
-        } else if desk.windowNames.isEmpty {
-            windows = WindowWords.windows(desk.windowCount)
-        } else {
-            windows = desk.windowNames.joined(separator: ", ")
-        }
-        tabs = desk.isOpen ? WindowWords.tabs(desk.tabsOpen) : nil
         open = desk.open.map { BoardButton(title: WindowWords.openOrGoTo($0.action), note: $0.note, action: $0.action) }
         openWords = desk.open?.title
         let names = DeskWindows.names(desk.windows.map { (index: $0.index, name: $0.name) })
@@ -300,10 +289,6 @@ public struct DeskRow: Sendable, Equatable, Identifiable {
                               name: w.nameButton)
         }
         if desk.madeByMacMosh {
-            var parts = [desk.folder ?? ""]
-            if desk.permanent == true { parts.append(WindowWords.keptWhenItExits) }
-            if desk.reopen == false { parts.append(WindowWords.doesntComeBack) }
-            second = parts.filter { !$0.isEmpty }.joined(separator: " · ")
             // No Folder line: the row's second line shows the folder whenever it is known (look design 6.6).
             detail = [
                 DetailLine(label: WindowWords.startsWith, value: desk.command ?? WindowWords.plainShell),
@@ -314,7 +299,6 @@ public struct DeskRow: Sendable, Equatable, Identifiable {
             ]
             facts = desk.keep == true ? [WindowWords.keepsItsCommandRunning] : []
         } else {
-            second = WindowWords.notMadeWithMacMosh
             detail = []
             facts = []
         }
@@ -324,7 +308,9 @@ public struct DeskRow: Sendable, Equatable, Identifiable {
         }
         let running = activity.busy[desk.name]
         let marked = activity.updating.contains(desk.name) || activity.arriving.contains(desk.name)
-        status = running?.progress ?? (marked ? WindowActivity.updatingWords : nil)
+        // "Renaming…", "Removing…" or "Naming…" while one of the window's actions runs, "Updating…" until the check
+        // after it lands: shown in the state cell in place of the tab count.
+        let status = running?.progress ?? (marked ? WindowActivity.updatingWords : nil)
         cells = DeskCells(desk)
         if !desk.isOpen {
             windowWords = ""
@@ -375,16 +361,12 @@ public struct DeskRow: Sendable, Equatable, Identifiable {
 
     private init(name: String) {
         self.name = name
-        windows = ""
-        tabs = nil
         open = nil
         openWords = nil
         windowLines = []
-        second = ""
         detail = []
         facts = []
         detailButtons = []
-        status = WindowActivity.updatingWords
         cells = DeskCells(cells: [], more: false)
         windowWords = ""
         state = DeskStateCell(word: WindowActivity.updatingWords, kind: .busy)
