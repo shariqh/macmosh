@@ -40,7 +40,18 @@ Five conditions no listed test exercises, most likely first.
 
 ## Decisions on the plan's open points
 
-The coordinator fills this in.
+The coordinator's, 2026-11-26. Where a task says otherwise, these win.
+
+1. **The `/Users/` paths are issue #189, and it lands first.** #189 makes `scripts/build-app.sh` strip the debugging entries from both programs before signing and stop if either still holds `/Users/`. This plan is built only after #189 is merged: merge `main` into this branch before Task 1. `release.sh` keeps its own check (Task 3, `home-path`) as written, a byte search (`LC_ALL=C grep -qaF`), never `strings`: on 26 November `strings -a | grep` found none of the 209 and 313 places a byte search found. Review Focus 1 is then history; the pull request says so in one line and gives counts only.
+2. **Who runs rehearsals.** The coordinator, alone. Signed builds through `build-app.sh` already run on this Mac without the owner (the rollouts of 25 and 26 November signed with no keychain prompt). So Task 5 items 3 and 4 say: the agent runs every rehearsal; the owner is at the Mac for the first real run, where the notary profile is read for the first time, and for any run that sits silent. In `theRunbookKeepsTheSecretOffEveryCommandLine` the part `"first rehearsal"` becomes `"first real run"`. Review Focus 3 keeps the profile's prompt and drops the signing key's. The builder still never runs `release.sh` outside the tests.
+3. **The rehearsal flag** is `--rehearsal`, given first, and skips exactly what the plan lists. It keeps the clean-checkout rule and needs `MACMOSH_SIGN_IDENTITY`.
+4. **`build-app.sh --into <folder under dist/>`,** as the plan has it.
+5. **Stand-ins** as the plan has them: bare tool names in `release.sh`, a copy of the script in a throwaway repository, stand-ins first on `PATH`, and the static ban on `STANDIN` and `/usr/bin/`.
+6. **`scripts/check.sh`** gains only the `shellcheck scripts/release.sh` line. No workflow job.
+7. **The notary wait** is 30 minutes.
+8. **No fixed-name `MacMosh.zip`** in this script. It is decided with the README (#38).
+9. **The printed release command** has `--draft --verify-tag --generate-notes`; the coordinator rewrites the draft's notes before the owner is asked to publish.
+10. **Words a stranger will read later** (built as proposals; the pull request lists both under "Words for the owner" with the alternative): the printed cask's `desc` is "Menu bar app for mosh and tmux sessions on another Mac" (alternative: "Menu bar control for a spare Mac over mosh and tmux"); the printed draft-release title is "MacMosh <version>, first public preview" (alternative: "MacMosh <version>"). Homebrew's own audit of the `desc` belongs to #37.
 
 ## What the reading settled (this Mac, macOS 27.3, 2026-11-26, read only)
 
@@ -451,7 +462,7 @@ func aFailedStapleOrGatekeeperStopsBeforeTheZip(fault: String, sentence: String)
 3. **Each release,** numbered, with what to expect after each: `scripts/release.sh --rehearsal <version>` on the owner's Mac, where both variables are set. A rehearsal signs with his Developer ID key, so the owner is at the Mac for the first rehearsal, to answer any keychain prompt; the agent runs later rehearsals alone only once the first one showed no prompt. Then the owner sits at the Mac on a clean, pushed `main` with both variables set and runs `scripts/release.sh <version>`; a keychain prompt may appear for the signing key or the profile (its wording is unproven); Apple usually answers within 5 to 15 minutes; he reads the end summary; he says yes or no to the printed tag and draft-release commands, which the coordinator runs only after that yes. Publishing the draft and the tap are separate yeses.
 4. **Who does what,** a table: the agent (rehearsals after the first, reading the output, the download test on a Mac with no MacMosh over ssh) and the owner at the Mac (the credential, the first rehearsal, the real run, any keychain prompt, every yes).
 5. **If something's off,** one line per `refused:` and `stopped:` sentence of Tasks 2 to 4, saying what to do, plus: a run that sits silent after build-app.sh's signing line, or at the notary upload, is waiting for a click on a keychain prompt. For `/Users/`, the line says it is a known gap whose fix is tracked separately.
-   **Coordinator's line, the `/Users/` issue:** `none filed yet`. While it says that, the runbook names no number and the PR description names the issue once it exists; when the coordinator writes a number here, the runbook line names it as `#<n>`.
+   **Coordinator's line, the `/Users/` issue:** `#189`, merged before this plan is built. The runbook's line reads: if `release.sh` stops on `/Users/`, the strip step in `build-app.sh` did not do its work; see #189.
 
 - [ ] **Step 1: Write the failing test:**
 ```swift
