@@ -52,6 +52,11 @@ struct LookTile: ViewModifier {
     /// Apple, EnvironmentValues.colorScheme (https://developer.apple.com/documentation/swiftui/environmentvalues/colorscheme):
     /// "The color scheme of this environment."
     @Environment(\.colorScheme) private var scheme
+    /// With Increase Contrast on, the light ring is the hairline token (ink-3 in that table), not a faint black.
+    /// Apple, EnvironmentValues.colorSchemeContrast (macOS 10.15,
+    /// https://developer.apple.com/documentation/swiftui/environmentvalues/colorschemecontrast): "The contrast
+    /// associated with the color scheme of this environment."
+    @Environment(\.colorSchemeContrast) private var contrast
 
     func body(content: Content) -> some View {
         let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
@@ -63,7 +68,8 @@ struct LookTile: ViewModifier {
                 shape.fill(LookColor.background(fill))
                     .shadow(color: .black.opacity(LookSize.shadowOpacity), radius: LookSize.shadowBlur, x: 0,
                             y: LookSize.shadowY)
-                    .overlay(shape.strokeBorder(.black.opacity(LookSize.ringOpacity), lineWidth: LookSize.ringWidth))
+                    .overlay(shape.strokeBorder(contrast == .increased ? LookColor.mark(.hairline)
+                                                    : .black.opacity(LookSize.ringOpacity), lineWidth: LookSize.ringWidth))
             }
         }
     }
