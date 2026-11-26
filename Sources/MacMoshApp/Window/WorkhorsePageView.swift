@@ -33,6 +33,10 @@ struct WorkhorsePageView: View {
             .padding(20)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        // The ground behind the page shows through. Apple, scrollContentBackground(_:) (macOS 13.0,
+        // https://developer.apple.com/documentation/swiftui/view/scrollcontentbackground(_:)): "Specifies the
+        // visibility of the background for scrollable views within this view."
+        .scrollContentBackground(.hidden)
     }
 
     private var header: some View {

@@ -57,14 +57,12 @@ struct MainWindow: View {
                             Task { await settings.reload() }
                         }
                 case .unreadableList:
-                    // The menu's own sentence, in place of an invitation to add a Mac.
-                    Text(verbatim: screen.listProblem ?? "")
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(20)
-                        .accessibilityIdentifier(WindowMarks.listProblem)
+                    UnreadableListPageView(problem: screen.listProblem ?? "")
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            // The page sits on the look's warm ground (look design 6.1); the sidebar keeps the system's look in step 1.
+            .background(LookColor.background(.ground))
         }
         .frame(minWidth: 700, minHeight: 440)
         // Apple, sheet(item:onDismiss:content:) (macOS 10.15,
