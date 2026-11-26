@@ -88,6 +88,16 @@ private func titles(_ buttons: [BoardButton]) -> [String] { buttons.map(\.title)
         #expect(p.noDesks == nil && p.stale == nil && p.result == nil)
     }
 
+    /// Design 6.4: the foot keeps its buttons at the left in order, and Restart… alone at the right; one primary
+    /// button on the page.
+    @Test func theFootPutsRestartAloneAtTheRight() throws {
+        let p = try page(result(.ready(signIns: true), status: try report()))
+        #expect(titles(p.footLeft) == ["Share screen", "Turn off lid-closed mode…", "Run the checklist…"] && p.footRight?.title == "Restart…")
+        #expect((p.underHint + p.deskButtons + p.foot).filter { ButtonKind.of($0.action) == .primary }.count == 1)
+        let locked = try page(result(.locked, status: nil))
+        #expect(titles(locked.footLeft) == ["Run the checklist…"] && locked.footRight == nil)
+    }
+
     /// Every button of the board is on the page once, in the board's order.
     @Test func everyButtonOfTheBoardIsOnThePageOnceInItsOrder() throws {
         let w = try boardWorkhorse(result(.ready(signIns: false), status: try report {

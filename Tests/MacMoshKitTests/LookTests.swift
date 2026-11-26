@@ -93,6 +93,27 @@ import Testing
         #expect(LookRGB(0xB93F12) == LookRGB(0xB93F12) && LookRGB(0xB93F12).red == 0xB9 && LookRGB(0xB93F12).blue == 0x12)
     }
 
+    /// Design 6.4: one primary button per page, Restart… set apart, red words for what removes or forgets.
+    @Test func eachButtonHasItsKind() {
+        #expect(ButtonKind.of(.window(.newDesk(workhorse: "attic"))) == .primary && ButtonKind.of(.menu(.tab(["pair"]))) == .primary)
+        #expect(ButtonKind.of(.menu(.tab(["restart", "attic"]))) == .setApart)
+        #expect(ButtonKind.of(.window(.remove(workhorse: "attic", desk: "website"))) == .destructive)
+        #expect(ButtonKind.of(.window(.forget(workhorse: "attic", desk: "shop"))) == .destructive)
+        #expect(ButtonKind.of(BoardAction(ButtonRules.removeMacMosh("attic").action)) == .destructive)
+        for a: BoardAction in [.menu(.refresh), .menu(.tab(["prepare", "attic", "--pause"])),
+                               .window(.rename(workhorse: "attic", desk: "api")),
+                               .window(.openAllWithoutTab(workhorse: "attic", tabs: [])),
+                               .window(.startAgain(workhorse: "attic", desk: "shop", keepIt: false)),
+                               .menu(.tab(["pair", "attic"])), .menu(.tab(["restart"]))] {
+            #expect(ButtonKind.of(a) == .secondary, "\(a)")
+        }
+        for k in [ButtonKind.primary, .secondary, .setApart, .destructive] { #expect(Look.pairs.contains(k.words), "\(k)") }
+        #expect(ButtonKind.primary.words == LookPair(text: .onPrimary, background: .primary))
+        #expect(ButtonKind.secondary.words == LookPair(text: .primary, background: .surface))
+        #expect(ButtonKind.setApart.words == LookPair(text: .primary, background: .ground))
+        #expect(ButtonKind.destructive.words == LookPair(text: .cannot, background: .surface))
+    }
+
     /// Design 5.1, 5.2 and 6.5.
     @Test func theSizesAreTheDesigns() {
         #expect(LookSize.deskTile == 40)

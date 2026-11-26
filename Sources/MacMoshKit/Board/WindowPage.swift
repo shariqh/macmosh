@@ -159,6 +159,17 @@ public struct WorkhorsePage: Sendable, Equatable {
         result = w.result
     }
 
+    /// The foot's buttons at the left, in order: every foot button but Restart… (design 6.4).
+    public var footLeft: [BoardButton] {
+        guard let right = footRightIndex else { return foot }
+        return foot.enumerated().filter { $0.offset != right }.map(\.element)
+    }
+
+    /// Restart…, alone at the right of the foot: the first foot button of kind `.setApart`; nil without one.
+    public var footRight: BoardButton? { footRightIndex.map { foot[$0] } }
+
+    private var footRightIndex: Int? { foot.firstIndex { ButtonKind.of($0.action) == .setApart } }
+
     /// The menu's notice as the page shows it under the header: left out when it is this workhorse's result
     /// line, which the header shows already (a window action sets both).
     public func notice(_ notice: String?) -> String? {
