@@ -8,8 +8,9 @@
 #                                   pictures of the menu (.github/workflows/menu-pictures.yml). Only a
 #                                   debug build can show a sample menu (MACMOSH_SAMPLE_MENU).
 #
-# The app's icon is App/AppIcon.iconset, the light M, packed into AppIcon.icns with iconutil (block A,
-# below). No Xcode is needed for it.
+# The app's icon is the committed App/Assets.car (the layered icon, light and dark) and App/AppIcon.iconset
+# (the light M), packed into AppIcon.icns with iconutil (block A, below). No Xcode is needed for it:
+# scripts/make-icon.sh makes both again by hand, and this script never runs it.
 #
 # The certificate's name comes only from that environment variable. It is never written to a
 # file, a log or this script's output.
@@ -48,14 +49,18 @@ if [ -z "$version" ]; then
     exit 1
 fi
 
-# Block A: the icon (design section 8.3, the fallback), made in a work folder before anything is built
-# and before the app folder is replaced, so a stop here leaves dist/ as it was.
+# Block A: the icon (design section 8.2; look step 5a, round 2), checked and packed in a work folder before
+# anything is built and before the app folder is replaced, so a stop here leaves dist/ as it was.
 #
-# A plain .icns of the light M on every macOS version. The layered Icon Composer document,
-# App/AppIcon.icon, stays as the source of the iconset, but actool does not compile it here: on CI's
-# macOS 15 image, actool from every Xcode 26 crashed in its asset-catalog agent in each build (pull
-# request 176). App/AppIcon.iconset was made once from actool's own light render of the document, with
-# the solid 16-pixel M (App/AppIcon-16.png) as icon_16x16.png.
+# App/Assets.car is the compile of the Icon Composer document App/AppIcon.icon, made by hand with
+# scripts/make-icon.sh and committed: the light and dark M for macOS 26 and newer. The build does not compile
+# it, because on CI's macOS 15 image Xcode 26's asset compiler crashed in each build (pull request 176).
+# App/AppIcon.iconset is that compile's light render, with the solid 16-pixel M (App/AppIcon-16.png) as
+# icon_16x16.png; packed into AppIcon.icns, it is the loose icon that older macOS needs (design 8.2).
+if [ ! -s App/Assets.car ]; then
+    echo "build-app.sh: FAILED: App/Assets.car is missing or empty; make it again with scripts/make-icon.sh" >&2
+    exit 1
+fi
 iconset=App/AppIcon.iconset
 for picture in icon_16x16.png icon_16x16@2x.png icon_32x32.png icon_32x32@2x.png icon_128x128.png \
     icon_128x128@2x.png icon_256x256.png icon_256x256@2x.png icon_512x512.png icon_512x512@2x.png; do
@@ -69,7 +74,7 @@ if ! iconutil -c icns -o "$work/AppIcon.icns" "$iconset" >&2 || [ ! -s "$work/Ap
     echo "build-app.sh: FAILED: iconutil could not make AppIcon.icns from App/AppIcon.iconset (work folder $work)" >&2
     exit 1
 fi
-echo "build-app.sh: icon: AppIcon.icns made from $iconset"
+echo "build-app.sh: icon: App/Assets.car is there, and AppIcon.icns was made from $iconset"
 
 echo "build-app.sh: swift build -c $config (version $version)"
 swift build -c "$config" --product MacMoshApp
@@ -121,8 +126,9 @@ fi
 
 # Block B: the icon goes in before signing, so the final verify covers it.
 mkdir -p "$app/Contents/Resources"
+cp App/Assets.car "$app/Contents/Resources/"
 cp "$work/AppIcon.icns" "$app/Contents/Resources/"
-echo "build-app.sh: icon: AppIcon.icns in Contents/Resources"
+echo "build-app.sh: icon: Assets.car and AppIcon.icns in Contents/Resources"
 rm -rf "$work"
 
 # The inner command is signed first, then the app around it.

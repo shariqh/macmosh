@@ -92,27 +92,42 @@ private func pixelSize(_ relativePath: String) throws -> [Int] {
         #expect(try pixelSize("App/AppIcon.icon/Assets/m-dark.png") == [1024, 1024])
         #expect(try pixelSize("App/AppIcon-16.png") == [16, 16]) }
 
-    /// The fallback (design 8.3, Task 6): a plain .icns of the light M on every version, so no CFBundleIconName.
+    /// Round 2, decision 1: the layered icon. Assets.car carries the light and dark M for macOS 26 and newer,
+    /// AppIcon.icns the light M for macOS 15.
     @Test func theInfoPlistNamesTheIcon() throws {
         let plist = try readPlist("App/Info.plist")
         #expect(plist?["CFBundleIconFile"] as? String == "AppIcon")
-        #expect(plist?["CFBundleIconName"] == nil) }
+        #expect(plist?["CFBundleIconName"] as? String == "AppIcon") }
 
-    /// Design 8.2 and 8.3: iconutil before the app is made, Contents/Resources, then signing as today. No actool: on CI's
-    /// macOS 15 image it crashed in every build (pull request 176).
-    @Test func theBuildScriptMakesTheIconBeforeItSigns() throws {
+    /// Round 2, decisions 2 and 4: the build copies the committed Assets.car and packs the iconset; it never runs
+    /// actool, so no Xcode is needed (actool from Xcode 26 crashed on CI's macOS 15 image, pull request 176). Both
+    /// files go in after the sample-menu check and before signing, so the final verify covers them.
+    @Test func theBuildScriptCopiesTheIconBeforeItSigns() throws {
         let script = try String(contentsOf: repoRoot().appendingPathComponent("scripts/build-app.sh"), encoding: .utf8)
-        for part in ["iconutil -c icns -o", "App/AppIcon.iconset", "$app/Contents/Resources", "AppIcon.icns"] {
+        for part in ["-s App/Assets.car ]", "iconutil -c icns -o", "App/AppIcon.iconset"] {
             #expect(script.contains(part), "\(part)") }
-        #expect(!script.contains("xcrun actool"))
-        let compile = try #require(script.range(of: "iconutil -c icns -o"))
+        #expect(!script.contains("actool"))
+        let carCheck = try #require(script.range(of: "-s App/Assets.car ]"))
+        let pack = try #require(script.range(of: "iconutil -c icns -o"))
         let makeApp = try #require(script.range(of: "rm -rf \"$app\""))
         let sampleCheck = try #require(script.range(of: "sample_variable=MACMOSH_SAMPLE_MENU"))
-        let resources = try #require(script.range(of: "$app/Contents/Resources"))
+        let copyCar = try #require(script.range(of: "cp App/Assets.car \"$app/Contents/Resources/\""))
+        let copyIcns = try #require(script.range(of: "cp \"$work/AppIcon.icns\" \"$app/Contents/Resources/\""))
         let firstSign = try #require(script.range(of: "\"${sign[@]}\" \"$app/Contents/Helpers/macmosh\""))
-        #expect(compile.lowerBound < makeApp.lowerBound && makeApp.lowerBound < sampleCheck.lowerBound)
-        #expect(sampleCheck.lowerBound < resources.lowerBound && resources.lowerBound < firstSign.lowerBound)
+        #expect(carCheck.lowerBound < makeApp.lowerBound && pack.lowerBound < makeApp.lowerBound)
+        #expect(makeApp.lowerBound < sampleCheck.lowerBound)
+        for copy in [copyCar, copyIcns] {
+            #expect(sampleCheck.lowerBound < copy.lowerBound && copy.lowerBound < firstSign.lowerBound) }
         #expect(script.components(separatedBy: "codesign --verify --deep --strict").count == 2) }
+
+    /// Round 2, decision 2: App/Assets.car is actool's compile of App/AppIcon.icon, committed. An asset catalog is
+    /// a BOM file; the three appearance names are those round 1's compile listed (light, dark and tintable).
+    @Test func theCommittedAssetsCarIsThere() throws {
+        let car = try Data(contentsOf: repoRoot().appendingPathComponent("App/Assets.car"))
+        #expect(car.count > 100_000)
+        #expect(car.prefix(8) == Data("BOMStore".utf8))
+        for name in ["NSAppearanceNameAqua", "NSAppearanceNameDarkAqua", "ISAppearanceTintable"] {
+            #expect(car.range(of: Data(name.utf8)) != nil, "\(name)") } }
 
     /// Round 2, decision 3: scripts/make-icon.sh is the one written way to make the icon's files again, by hand,
     /// with Xcode 26 or newer. It writes only under App/ and in its own work folder, and deletes nothing.
