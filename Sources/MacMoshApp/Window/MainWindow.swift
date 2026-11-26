@@ -234,7 +234,7 @@ struct NoticeLine: View {
     }
 }
 
-/// A row of buttons, each with the board's title.
+/// A row of buttons, each with the board's title, in the look's style for what it does (`ButtonKind`).
 struct ButtonRow: View {
     let buttons: [BoardButton]
     let run: (BoardButton) -> Void
@@ -243,6 +243,8 @@ struct ButtonRow: View {
         HStack(spacing: 8) {
             ForEach(Array(buttons.enumerated()), id: \.offset) { _, button in
                 Button { run(button) } label: { Text(verbatim: button.title) }
+                    .buttonStyle(LookButtonStyle(kind: ButtonKind.of(button.action),
+                                                 glyph: LookButtonStyle.glyph(for: button.action)))
                     .disabled(!button.isEnabled)
                     .accessibilityIdentifier(WindowMarks.button(button))
             }
