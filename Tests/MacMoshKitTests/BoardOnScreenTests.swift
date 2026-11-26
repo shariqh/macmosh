@@ -340,4 +340,17 @@ private func locked(_ w: Workhorse = attic) -> Gathered {
                                      kind: .unknown)
         #expect(screen.board.workhorses.first?.resultKind == .unknown)
     }
+
+    /// A finished action rebuilds the board once, and no board pairs the last sentence with the next action's kind.
+    @Test func aResultsSentenceAndKindArriveTogetherInOneRebuild() async {
+        let (refresher, screen) = make(Script([[ready()]]), saved: SavedList([attic]))
+        await screen.reloadList(); await refresher.refresh()
+        refresher.finishWindowAction(id: "attic", result: "Removed the desk website from Attic.", kind: .done)
+        var seen: [(String?, ResultKind?)] = []
+        let watch = screen.$board.dropFirst().sink { b in seen.append((b.workhorses.first?.result, b.workhorses.first?.resultKind)) }
+        refresher.finishWindowAction(id: "attic", result: "website wasn't removed. It didn't work.", kind: .failed)
+        watch.cancel()
+        #expect(seen.count == 1)
+        #expect(seen.allSatisfy { $0.0 == "website wasn't removed. It didn't work." && $0.1 == .failed })
+    }
 }

@@ -88,11 +88,13 @@ public final class BoardOnScreen: ObservableObject {
                                      resultKinds: self.inputs.resultKinds, ended: self.inputs.ended))
                 }
             })
-        // The result line of the window's last action on each workhorse (step 4), and whether it worked, joined as
-        // above.
-        watches.append(refresher.$results.combineLatest(refresher.$resultKinds).sink { [weak self] results, kinds in
+        // The result line of the window's last action on each workhorse (step 4), and whether it worked. Only the
+        // sentence is followed: `finishWindowAction` sets the kind first, so it is already there when the sentence
+        // arrives, and the board is rebuilt once with the two together.
+        watches.append(refresher.$results.sink { [weak self, weak refresher] results in
             MainActor.assumeIsolated {
-                guard let self, self.inputs.results != results || self.inputs.resultKinds != kinds else { return }
+                guard let self, let kinds = refresher?.resultKinds,
+                      self.inputs.results != results || self.inputs.resultKinds != kinds else { return }
                 self.inputs.results = results
                 self.inputs.resultKinds = kinds
                 self.rebuild()
