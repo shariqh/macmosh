@@ -28,7 +28,7 @@ struct WorkhorsePageView: View {
                     StaleList(stale: stale)
                 }
                 // Under the desks the last row's line is enough; otherwise a line sets the foot apart.
-                if page.desksHeading == nil || page.endedHeading != nil || page.stale != nil {
+                if page.desksHeading == nil || page.desks.isEmpty || page.endedHeading != nil || page.stale != nil {
                     Hairline()
                 }
                 PageFoot(left: page.footLeft, right: page.footRight, home: page.home, run: run)

@@ -11,38 +11,24 @@ struct WorkhorseHeader: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .center, spacing: 6) {
-                // One element for VoiceOver and CI, read as the menu's headline ("Attic · Ready"); the name and the
-                // pill inside it are not read as pieces. Apple, accessibilityElement(children:) (macOS 10.15,
-                // https://developer.apple.com/documentation/swiftui/view/accessibilityelement(children:)).
-                HStack(alignment: .center, spacing: 8) {
-                    Text(verbatim: page.name)
-                        .font(.system(size: LookSize.titleFont, weight: .semibold))
-                        .foregroundStyle(LookColor.text(.primary, on: .ground))
-                        .lineLimit(1)
-                        .help(Text(verbatim: page.name))
-                    StatePillView(pill: page.pill)
+            // The name and its pill, then the checks at the right. When the page is too narrow for both on one line
+            // (the smallest window), the checks go to a line of their own under the name, still at the right, so the
+            // name is never cut for them. Apple, ViewThatFits (macOS 13.0,
+            // https://developer.apple.com/documentation/swiftui/viewthatfits): "A view that adapts to the available
+            // space by providing the first child view that fits."
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .center, spacing: 10) {
+                    headline.fixedSize()
+                    Spacer(minLength: 12)
+                    checks
                 }
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel(Text(verbatim: page.headline))
-                .accessibilityAddTraits(.isHeader)
-                .accessibilityIdentifier(WindowMarks.headline)
-                .layoutPriority(1)
-                Spacer(minLength: 6)
-                // Always laid out; seen and read only while a check runs.
-                Text(verbatim: page.checking ?? WindowWords.checking)
-                    .foregroundStyle(LookColor.text(.tertiary, on: .ground))
-                    .lineLimit(1).fixedSize()
-                    .opacity(page.checking == nil ? 0 : 1)
-                    .accessibilityHidden(page.checking == nil)
-                if let checked = page.checked {
-                    Text(verbatim: checked)
-                        .foregroundStyle(LookColor.text(.tertiary, on: .ground))
-                        .lineLimit(1).fixedSize()
+                VStack(alignment: .leading, spacing: 6) {
+                    headline
+                    HStack(spacing: 10) {
+                        Spacer(minLength: 0)
+                        checks
+                    }
                 }
-                Button { run(page.checkNow) } label: { Text(verbatim: page.checkNow.title) }
-                    .buttonStyle(LookButtonStyle(kind: ButtonKind.of(page.checkNow.action)))
-                    .accessibilityIdentifier(WindowMarks.button(page.checkNow))
             }
             .font(.system(size: LookSize.bodyFont))
             if let hint = page.hint {
@@ -57,6 +43,45 @@ struct WorkhorseHeader: View {
             }
             ResultSlotView(slot: page.resultSlot(notice: notice))
                 .padding(.top, 4)
+        }
+        .font(.system(size: LookSize.bodyFont))
+    }
+
+    /// One element for VoiceOver and CI, read as the menu's headline ("Attic · Ready"); the name and the pill inside
+    /// it are not read as pieces. Apple, accessibilityElement(children:) (macOS 10.15,
+    /// https://developer.apple.com/documentation/swiftui/view/accessibilityelement(children:)).
+    private var headline: some View {
+        HStack(alignment: .center, spacing: 10) {
+            Text(verbatim: page.name)
+                .font(.system(size: LookSize.titleFont, weight: .semibold))
+                .foregroundStyle(LookColor.text(.primary, on: .ground))
+                .lineLimit(1)
+                .help(Text(verbatim: page.name))
+            StatePillView(pill: page.pill)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(verbatim: page.headline))
+        .accessibilityAddTraits(.isHeader)
+        .accessibilityIdentifier(WindowMarks.headline)
+    }
+
+    /// "Checking…", always laid out and seen and read only while a check runs, so Check now never moves; the time;
+    /// Check now.
+    private var checks: some View {
+        HStack(alignment: .center, spacing: 10) {
+            Text(verbatim: page.checking ?? WindowWords.checking)
+                .foregroundStyle(LookColor.text(.tertiary, on: .ground))
+                .lineLimit(1).fixedSize()
+                .opacity(page.checking == nil ? 0 : 1)
+                .accessibilityHidden(page.checking == nil)
+            if let checked = page.checked {
+                Text(verbatim: checked)
+                    .foregroundStyle(LookColor.text(.tertiary, on: .ground))
+                    .lineLimit(1).fixedSize()
+            }
+            Button { run(page.checkNow) } label: { Text(verbatim: page.checkNow.title) }
+                .buttonStyle(LookButtonStyle(kind: ButtonKind.of(page.checkNow.action)))
+                .accessibilityIdentifier(WindowMarks.button(page.checkNow))
         }
         .font(.system(size: LookSize.bodyFont))
     }
