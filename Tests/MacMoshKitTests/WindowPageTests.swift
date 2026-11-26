@@ -177,10 +177,9 @@ private func titles(_ buttons: [BoardButton]) -> [String] { buttons.map(\.title)
         #expect(notes.open?.action == .menu(.tab(["connect", "attic", "notes"])))
     }
 
-    @Test func theDetailStripHasTheFourLinesAndTheButtons() throws {
+    @Test func theDetailStripHasTheThreeLinesAndTheButtons() throws {
         let website = try #require(try rows()["website"])
         #expect(website.detail == [
-            DetailLine(label: "Folder", value: "~/Development/website"),
             DetailLine(label: "Starts with", value: "claude --continue"),
             DetailLine(label: "After a restart", value: "Comes back"),
             DetailLine(label: "When its last shell exits", value: "Remove the desk"),
@@ -258,13 +257,14 @@ private func titles(_ buttons: [BoardButton]) -> [String] { buttons.map(\.title)
         #expect(website.openWords == "Open the 1 window not in a tab")
         #expect(website.tabs == "In 2 tabs")
         #expect(website.windowLines == [
-            WindowLine(id: "@1", words: "claude (in a tab)",
+            WindowLine(id: "@1", title: "claude", state: .inTabs(1), help: "claude (in a tab)",
                        button: BoardButton(title: "Go to", action: .menu(.focus(label: "3f9a2c71e5b7d4a6",
                                                                                orOpen: onWindow("website", "@1"))))),
-            WindowLine(id: "@2", words: "zsh (in a tab)",
+            WindowLine(id: "@2", title: "zsh", state: .inTabs(1), help: "zsh (in a tab)",
                        button: BoardButton(title: "Go to", action: .menu(.focus(label: "b04e5d12c3a4f5e6",
                                                                                orOpen: onWindow("website", "@2"))))),
-            WindowLine(id: "@3", words: "vim", button: BoardButton(title: "Open", action: .menu(.tab(onWindow("website", "@3"))))),
+            WindowLine(id: "@3", title: "vim", state: .notInATab, help: "vim",
+                       button: BoardButton(title: "Open", action: .menu(.tab(onWindow("website", "@3"))))),
         ])
         #expect(website.detailButtons.map(\.title) == ["New window", "Rename…", "Remove…"])
         #expect(website.detailButtons.first?.action == .menu(.tab(["connect", "attic", "website", "--new-window"])))
@@ -276,12 +276,65 @@ private func titles(_ buttons: [BoardButton]) -> [String] { buttons.map(\.title)
 
         let api = try #require(r["api"])
         #expect(api.open?.title == "Open" && api.openWords == "Open api in 2 tabs" && api.tabs == "No tab")
-        #expect(api.windowLines.map(\.words) == ["server", "tests"] && api.windowLines.map { $0.button?.title } == ["Open", "Open"])
+        #expect(api.windowLines.map(\.title) == ["server", "tests"] && api.windowLines.map { $0.button?.title } == ["Open", "Open"])
         #expect(r["blog"]?.windowLines == [])   // one window: the row's button is that window's
         let garden = try #require(r["garden"])
         #expect(garden.open == BoardButton(title: "Open", action: .menu(.tab(["connect", "attic", "garden", "--view"]))))
         #expect(garden.openWords == "Open garden" && garden.tabs == nil)
-        #expect(try #require(r["shop"]).windowLines.map(\.words) == ["web (open in another tab)", "db"])
+        #expect(try #require(r["shop"]).windowLines.map(\.help) == ["web (open in another tab)", "db"])
+    }
+
+    // MARK: The opened details (look design 6.6)
+
+    @Test func aWindowLineIsItsNameThenItsState() throws {
+        let r = try rowsWithTabs()
+        let website = try #require(r["website"])
+        #expect(website.windowLines.map(\.title) == ["claude", "zsh", "vim"])
+        #expect(website.windowLines.map(\.state) == [.inTabs(1), .inTabs(1), .notInATab])
+        #expect(website.windowLines.map(\.help) == ["claude (in a tab)", "zsh (in a tab)", "vim"])
+        #expect(website.windowLines.map(\.cell) == [.lit, .lit, .unlit])
+        let shop = try #require(r["shop"])
+        #expect(shop.windowLines.map(\.title) == ["web", "db"] && shop.windowLines.map(\.state) == [.inAnotherTab, .notInATab])
+        #expect(shop.windowLines.first?.help == "web (open in another tab)" && shop.windowLines.first?.cell == .lit)
+    }
+
+    @Test func aWindowLineWithoutTheMenusFactsHasNoStateOrCell() throws {   // Review Focus 3
+        let tabs = try rowsWithTabs(windowsReport(version: "0.11.0"), mode: .tabs)
+        #expect(tabs["website"]?.windowLines.map(\.title) == ["claude", "zsh", "vim"])
+        var seen = 0
+        for row in tabs.values {
+            for line in row.windowLines {
+                #expect(line.state == nil && line.cell == nil && line.button == nil && line.name != nil && line.help == line.title,
+                        "\(row.name)")
+                seen += 1
+            }
+        }
+        #expect(seen > 0)
+        var twice = windowsReport(version: "0.11.0")   // a repeated name keeps the menu's "name (window N)" here too
+        twice.desks[0].windows[1].name = "claude"
+        #expect(try rowsWithTabs(twice, mode: .tabs)["website"]?.windowLines.map(\.title) == ["claude", "claude (window 1)", "vim"])
+    }
+
+    @Test func theFactsLeaveOutTheFolderTheRowShows() throws {
+        let r = try rows()
+        #expect(r["website"]?.detail == [DetailLine(label: "Starts with", value: "claude --continue"),
+                                         DetailLine(label: "After a restart", value: "Comes back"),
+                                         DetailLine(label: "When its last shell exits", value: "Remove the desk")])
+        for row in r.values {
+            #expect(!row.detail.contains { $0.label == "Folder" }, "\(row.name)")
+            if !row.detail.isEmpty { #expect(row.secondLine.folder != nil, "\(row.name)") }
+        }
+    }
+
+    @Test func theDetailsFootPutsRemoveAloneAtTheRight() throws {
+        let r = try rowsWithTabs()
+        let website = try #require(r["website"])
+        #expect(titles(website.detailSplit.left) == ["New window", "Rename…"] && website.detailSplit.right?.title == "Remove…")
+        #expect(titles(try #require(r["garden"]).detailSplit.left) == ["Rename…"])   // closed: no New window
+        let named = try rowsWithTabs(windowsReport(version: "0.11.0"))
+        let blog = try #require(named["blog"]).detailSplit   // one window: Name its window… at the left
+        #expect(titles(blog.left).contains("Name its window…") && blog.right?.title == "Remove…")
+        #expect(ButtonSplit([], apart: .destructive) == ButtonSplit(left: [], right: nil))
     }
 
     /// Without the menu's tabs (before its first build), a row is what it was: Open, the desk's own connect, and

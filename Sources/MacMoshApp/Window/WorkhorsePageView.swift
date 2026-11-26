@@ -132,7 +132,7 @@ struct DeskDetail: View {
                 Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 3) {
                     ForEach(row.windowLines) { line in
                         GridRow {
-                            Text(verbatim: line.words)
+                            Text(verbatim: line.title)
                             // Apple, controlSize(_:) (macOS 10.15, https://developer.apple.com/documentation/swiftui/view/controlsize(_:)):
                             // "Sets the size for controls within this view."; ControlSize.small: "A control version
                             // that is proportionally smaller size for space-constrained views."
@@ -143,14 +143,14 @@ struct DeskDetail: View {
                                     Button { run(open) } label: { Text(verbatim: open.title) }
                                         .controlSize(.small)
                                         .disabled(!open.isEnabled)
-                                        .help(Text(verbatim: line.words))
+                                        .help(Text(verbatim: line.help))
                                         .accessibilityIdentifier(WindowMarks.window(row.name, line.id))
                                 }
                                 if let name = line.name {
                                     Button { run(name) } label: { Text(verbatim: name.title) }
                                         .controlSize(.small)
                                         .disabled(!name.isEnabled)
-                                        .help(Text(verbatim: line.words))
+                                        .help(Text(verbatim: line.help))
                                         .accessibilityIdentifier(WindowMarks.nameWindow(row.name, line.id))
                                 }
                             }

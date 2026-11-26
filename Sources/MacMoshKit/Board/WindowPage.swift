@@ -27,7 +27,6 @@ public enum WindowWords {
     public static let closedState = "Closed"
 
     // The detail strip's labels and values.
-    public static let folder = "Folder"
     public static let startsWith = "Starts with"
     public static let plainShell = "A plain shell"
     public static let afterARestart = "After a restart"
@@ -206,20 +205,30 @@ public struct DetailLine: Sendable, Equatable {
     }
 }
 
-/// One window of a desk in its detail strip (issue #134): the menu's words for it ("claude (in a tab)",
-/// "vim", "zsh (open in another tab)") and a small button, "Go to" or "Open", that runs the menu's action
-/// for that window; and, when its windows can be named (issue 144), a small "Name…". A window the menu has no
-/// line for (iTerm2's Tabs mode) is listed by its name, or "window <number>", with only its Name… button.
+/// One window of a desk in its opened details (issue #134, look design 6.6): its name, then its state in words
+/// ("in a tab", "not in a tab"), and a small button, "Go to" or "Open", that runs the menu's action for that window;
+/// and, when its windows can be named (issue 144), a small "Name…". A window the menu has no line for (iTerm2's Tabs
+/// mode, an older script) is listed by its name with no state, with only its Name… button.
 public struct WindowLine: Sendable, Equatable, Identifiable {
     /// tmux's window id, `@` and digits.
     public var id: String
-    public var words: String
+    /// "claude", "zsh (window 3)", "window 1": the menu's name for the window.
+    public var title: String
+    /// Whether a tab shows it, from the menu's facts; nil without them (an older script, the Tabs connection).
+    public var state: WindowTabState?
+    /// The menu's whole line ("claude (in a tab)"), or the title: the help tag of the line's buttons.
+    public var help: String
     public var button: BoardButton?
     public var name: BoardButton?
+    /// The window's cell, lit for all but "not in a tab"; nil without the menu's facts.
+    public var cell: DeskCell? { state?.cell }
 
-    public init(id: String, words: String, button: BoardButton?, name: BoardButton? = nil) {
+    public init(id: String, title: String, state: WindowTabState?, help: String, button: BoardButton?,
+                name: BoardButton? = nil) {
         self.id = id
-        self.words = words
+        self.title = title
+        self.state = state
+        self.help = help
         self.button = button
         self.name = name
     }
@@ -242,7 +251,7 @@ public struct DeskRow: Sendable, Equatable, Identifiable {
     public var windowLines: [WindowLine]
     /// The folder and the unusual facts: "~/notes · Kept when it exits".
     public var second: String
-    /// Folder, Starts with, After a restart, When its last shell exits; none for a desk made by hand.
+    /// Starts with, After a restart, When its last shell exits; none for a desk made by hand.
     public var detail: [DetailLine]
     /// "Keeps its command running", when the desk has that flag.
     public var facts: [String]
@@ -282,10 +291,11 @@ public struct DeskRow: Sendable, Equatable, Identifiable {
         tabs = desk.isOpen ? WindowWords.tabs(desk.tabsOpen) : nil
         open = desk.open.map { BoardButton(title: WindowWords.openOrGoTo($0.action), note: $0.note, action: $0.action) }
         openWords = desk.open?.title
-        windowLines = desk.windows.compactMap { w in
+        let names = DeskWindows.names(desk.windows.map { (index: $0.index, name: $0.name) })
+        windowLines = zip(desk.windows, names).compactMap { w, named in
             guard let id = w.id, w.button != nil || w.nameButton != nil else { return nil }
-            let words = w.button?.title ?? (w.name.isEmpty ? "window \(w.index)" : w.name)
-            return WindowLine(id: id, words: words,
+            let title = w.nameAndState?.name ?? named
+            return WindowLine(id: id, title: title, state: w.nameAndState?.state, help: w.button?.title ?? title,
                               button: w.button.map { BoardButton(title: WindowWords.openOrGoTo($0.action), action: $0.action) },
                               name: w.nameButton)
         }
@@ -294,8 +304,8 @@ public struct DeskRow: Sendable, Equatable, Identifiable {
             if desk.permanent == true { parts.append(WindowWords.keptWhenItExits) }
             if desk.reopen == false { parts.append(WindowWords.doesntComeBack) }
             second = parts.filter { !$0.isEmpty }.joined(separator: " · ")
+            // No Folder line: the row's second line shows the folder whenever it is known (look design 6.6).
             detail = [
-                DetailLine(label: WindowWords.folder, value: desk.folder ?? ""),
                 DetailLine(label: WindowWords.startsWith, value: desk.command ?? WindowWords.plainShell),
                 DetailLine(label: WindowWords.afterARestart,
                            value: desk.reopen == false ? WindowWords.doesntComeBackShort : WindowWords.comesBack),
@@ -351,7 +361,10 @@ public struct DeskRow: Sendable, Equatable, Identifiable {
             }
             open = open.map(off)
             detailButtons = detailButtons.map(off)
-            windowLines = windowLines.map { WindowLine(id: $0.id, words: $0.words, button: $0.button.map(off), name: $0.name.map(off)) }
+            windowLines = windowLines.map {
+                WindowLine(id: $0.id, title: $0.title, state: $0.state, help: $0.help, button: $0.button.map(off),
+                           name: $0.name.map(off))
+            }
         }
     }
 
@@ -382,6 +395,10 @@ public struct DeskRow: Sendable, Equatable, Identifiable {
     private static func spoken(name: String, windowWords: String, second: SecondLine, state: DeskStateCell) -> String {
         [name, windowWords, second.whole, state.word].filter { !$0.isEmpty }.joined(separator: ", ")
     }
+
+    /// The foot of the opened details: New window, Name its window… and Rename… at the left, Remove… alone at the
+    /// right (look design 6.6).
+    public var detailSplit: ButtonSplit { ButtonSplit(detailButtons, apart: .destructive) }
 
     /// The strip sits under the desk's own row, so its buttons need not name it: "Rename…" for
     /// "Rename website…". Any other button keeps its title.

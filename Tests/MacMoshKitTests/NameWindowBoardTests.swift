@@ -87,7 +87,8 @@ private func nameButton(_ desk: String, _ window: String) -> BoardButton {
     @Test func theDetailsListEachWindowWithItsOpenAndNameButtons() {
         let row = DeskRow(desk(board(windowsReport(version: "0.11.0")), "website"))
         #expect(row.windowLines.map(\.id) == ["@1", "@2", "@3"])
-        #expect(row.windowLines.map(\.words) == ["claude (in a tab)", "zsh (in a tab)", "vim"])
+        #expect(row.windowLines.map(\.title) == ["claude", "zsh", "vim"])
+        #expect(row.windowLines.map(\.help) == ["claude (in a tab)", "zsh (in a tab)", "vim"])
         #expect(row.windowLines.map { $0.button?.title } == ["Go to", "Go to", "Open"])
         #expect(row.windowLines.map(\.name) == ["@1", "@2", "@3"].map { nameButton("website", $0) })
         #expect(row.detailButtons.map(\.title) == ["New window", "Rename…", "Remove…"])
@@ -98,7 +99,8 @@ private func nameButton(_ desk: String, _ window: String) -> BoardButton {
         var report = windowsReport(version: "0.11.0")
         report.desks[0].windows[1].name = ""
         let row = DeskRow(desk(board(report, mode: .tabs), "website"))
-        #expect(row.windowLines.map(\.words) == ["claude", "window 1", "vim"])
+        #expect(row.windowLines.map(\.title) == ["claude", "window 1", "vim"])
+        #expect(row.windowLines.allSatisfy { $0.state == nil })
         #expect(row.windowLines.allSatisfy { $0.button == nil })
         #expect(row.windowLines.map(\.name) == ["@1", "@2", "@3"].map { nameButton("website", $0) })
         // At 0.10.0 in Tabs mode there is nothing to list.
@@ -131,7 +133,7 @@ private func nameButton(_ desk: String, _ window: String) -> BoardButton {
         for mode in [ConnectionMode.mosh, .tabs] {
             let row = DeskRow(desk(board(report, mode: mode), "website"))
             #expect(row.windows == "claude, zsh, front end v1.2", "\(mode)")
-            #expect(row.windowLines.last?.words == "front end v1.2", "\(mode)")
+            #expect(row.windowLines.last?.title == "front end v1.2", "\(mode)")
         }
     }
 

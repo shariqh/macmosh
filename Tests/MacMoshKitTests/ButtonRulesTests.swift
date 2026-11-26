@@ -183,6 +183,30 @@ import Testing
         #expect(block.buttons == [ButtonRules.checklist("attic")])
     }
 
+    // MARK: Each window's state on the board is the menu's (look design 13)
+
+    /// Design 13: the window's state words come from the menu's facts, so each line on the board is the menu's line split in two.
+    @Test func eachWindowsStateOnTheBoardIsTheMenusLine() throws {
+        var seen = 0
+        for input in windowSampleInputs() {
+            for w in boardFor(input).workhorses {
+                for d in w.desks {
+                    for win in d.windows where win.button != nil {
+                        let pair = try #require(win.nameAndState, "\(d.name) \(win.id ?? "-")")
+                        #expect(win.button?.title == pair.menuWords)
+                        switch pair.state {
+                        case .inTabs(let n): #expect(win.inTabs == n)
+                        case .inAnotherTab: #expect((win.inTabs ?? 0) > 0)
+                        case .notInATab: #expect(win.inTabs == 0)
+                        }
+                        seen += 1
+                    }
+                }
+            }
+        }
+        #expect(seen > 20)
+    }
+
     // MARK: The menu and the window's board show the same buttons (main window design, 7.3)
 
     /// For every sample state, the buttons the menu and the board share have the same titles and actions
