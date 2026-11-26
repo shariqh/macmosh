@@ -4,11 +4,18 @@ import SwiftUI
 /// A desk's row (look design 6.5), and its detail strip under it when it is open. From left to right: the chevron,
 /// the desk's tile with a cell per window, the name with the window names beside it and the second line under them,
 /// all one button that opens or closes the strip; then the state cell and Open or Go to, each an element of its own.
-struct DeskRowView: View {
+///
+/// Equal when its row and whether it is open are: each check redraws the page, and a row that has not changed is
+/// not drawn again (`.equatable()` where it is used). Apple, equatable() (macOS 10.15,
+/// https://developer.apple.com/documentation/swiftui/view/equatable()): "Prevents the view from updating its child
+/// view when its new value is the same as its old value."
+struct DeskRowView: View, Equatable {
     let row: DeskRow
     let isOpen: Bool
     let run: (BoardButton) -> Void
     let toggle: () -> Void
+
+    nonisolated static func == (a: DeskRowView, b: DeskRowView) -> Bool { a.row == b.row && a.isOpen == b.isOpen }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -33,14 +40,14 @@ struct DeskRowView: View {
                         VStack(alignment: .leading, spacing: 3) {
                             HStack(alignment: .firstTextBaseline, spacing: 8) {
                                 // Never wraps: whole up to 200 points, cut with "…" beyond, the whole name as help tag.
-                                Text(verbatim: row.name)
-                                    .fontWeight(.semibold)
-                                    .foregroundStyle(LookColor.text(.primary, on: .ground))
-                                    .lineLimit(1).truncationMode(.tail)
-                                    .frame(maxWidth: LookSize.nameMaxWidth, alignment: .leading)
-                                    .fixedSize(horizontal: false, vertical: true)
-                                    .help(Text(verbatim: row.name))
-                                    .layoutPriority(1)
+                                CappedWidth(cap: LookSize.nameMaxWidth) {
+                                    Text(verbatim: row.name)
+                                        .fontWeight(.semibold)
+                                        .foregroundStyle(LookColor.text(.primary, on: .ground))
+                                        .lineLimit(1).truncationMode(.tail)
+                                }
+                                .help(Text(verbatim: row.name))
+                                .layoutPriority(1)
                                 // The window names give way first.
                                 Text(verbatim: row.windowWords)
                                     .foregroundStyle(LookColor.text(.secondary, on: .ground))
@@ -77,6 +84,23 @@ struct DeskRowView: View {
             }
             Hairline()
         }
+    }
+}
+
+/// Its one view at its own width, but never wider than `cap`: a short name takes only its width, so the window
+/// names follow it, and a long one is offered `cap` points and cut there. Apple, Layout (macOS 13.0,
+/// https://developer.apple.com/documentation/swiftui/layout): "A type that defines the geometry of a collection of
+/// views."
+struct CappedWidth: Layout {
+    let cap: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard let view = subviews.first else { return .zero }
+        return view.sizeThatFits(ProposedViewSize(width: min(proposal.width ?? cap, cap), height: proposal.height))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        subviews.first?.place(at: bounds.origin, proposal: ProposedViewSize(width: bounds.width, height: bounds.height))
     }
 }
 
@@ -142,6 +166,11 @@ private struct CellView: View {
 struct SecondLineView: View {
     let line: SecondLine
 
+    /// The line at each width of `SecondLine.widths`, longest first, each different one once.
+    private var fittings: [String] {
+        SecondLine.widths.map(line.fitted).reduce(into: [String]()) { if $0.last != $1 { $0.append($1) } }
+    }
+
     var body: some View {
         if let tag = line.tag {
             Text(verbatim: tag)
@@ -158,8 +187,8 @@ struct SecondLineView: View {
                 .help(Text(verbatim: line.help))
         } else if !line.whole.isEmpty {
             ViewThatFits(in: .horizontal) {
-                ForEach(Array(SecondLine.widths.enumerated()), id: \.offset) { _, width in
-                    Text(verbatim: line.fitted(width)).lineLimit(1).fixedSize()
+                ForEach(Array(fittings.enumerated()), id: \.offset) { _, words in
+                    Text(verbatim: words).lineLimit(1).fixedSize()
                 }
             }
             .font(.system(size: LookSize.secondFont))

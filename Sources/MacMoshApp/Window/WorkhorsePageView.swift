@@ -31,7 +31,8 @@ struct WorkhorsePageView: View {
                 if page.desksHeading == nil || page.endedHeading != nil || page.stale != nil {
                     Hairline()
                 }
-                foot
+                PageFoot(left: page.footLeft, right: page.footRight, home: page.home, run: run)
+                    .equatable()
             }
             .padding(20)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -62,36 +63,47 @@ struct WorkhorsePageView: View {
                 DeskRowView(row: row, isOpen: openRow == row.id, run: run) {
                     openRow = openRow == row.id ? nil : row.id
                 }
+                .equatable()
             }
         }
     }
 
-    /// The rarer buttons (look design 6.4): Share screen, the lid-closed button and Run the checklist… at the left,
-    /// Restart… alone at the right, and the home-address line under them. When the page is too narrow for one line,
-    /// Restart… moves to a line of its own, still at the right, and then the left buttons take two lines.
-    private var foot: some View {
+}
+
+/// The rarer buttons (look design 6.4): Share screen, the lid-closed button and Run the checklist… at the left,
+/// Restart… alone at the right, and the home-address line under them. When the page is too narrow for one line,
+/// Restart… moves to a line of its own, still at the right, and then the left buttons take two lines. Equal when its
+/// buttons and line are, so a check that changes none of them does not draw it again.
+struct PageFoot: View, Equatable {
+    let left: [BoardButton]
+    let right: BoardButton?
+    let home: String?
+    let run: (BoardButton) -> Void
+
+    nonisolated static func == (a: PageFoot, b: PageFoot) -> Bool { a.left == b.left && a.right == b.right && a.home == b.home }
+
+    var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            let left = page.footLeft
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 8) {
                     ButtonRow(buttons: left, run: run)
                     Spacer(minLength: 16)
-                    footRight
+                    restart
                 }
                 VStack(alignment: .leading, spacing: 8) {
                     ButtonRow(buttons: left, run: run)
-                    HStack { Spacer(minLength: 0); footRight }
+                    HStack { Spacer(minLength: 0); restart }
                 }
                 VStack(alignment: .leading, spacing: 8) {
                     ButtonRow(buttons: Array(left.dropLast()), run: run)
                     HStack(spacing: 8) {
                         ButtonRow(buttons: Array(left.suffix(1)), run: run)
                         Spacer(minLength: 16)
-                        footRight
+                        restart
                     }
                 }
             }
-            if let home = page.home {
+            if let home {
                 Text(verbatim: home)
                     .foregroundStyle(LookColor.text(.tertiary, on: .ground))
             }
@@ -99,9 +111,9 @@ struct WorkhorsePageView: View {
         .font(.system(size: LookSize.bodyFont))
     }
 
-    @ViewBuilder private var footRight: some View {
-        if let restart = page.footRight {
-            ButtonRow(buttons: [restart], run: run)
+    @ViewBuilder private var restart: some View {
+        if let right {
+            ButtonRow(buttons: [right], run: run)
         }
     }
 }
