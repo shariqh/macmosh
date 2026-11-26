@@ -59,11 +59,12 @@ import Testing
     }
 
     /// The "builder computes" tokens (design 5.1): each started as its plain value and moved, toward black in light and
-    /// toward white in dark, until its pairs reach 7:1. The pull request lists each move.
+    /// toward white in dark, until its pairs reach 7:1. The pull request lists each move. Red in light increased moved
+    /// again in step 2, from #9A211A to #952019, for 7:1 on a pressed tile (`aPressedButtonKeepsItsContrast`).
     @Test func theBuilderComputedTheIncreasedColours() {
         let computed: [(LookToken, UInt32, UInt32)] = [
             (.emberText, 0x8E310E, 0xFF9A78), (.green, 0x225B26, 0x7BC67E),
-            (.amber, 0x804D00, 0xF0B44C), (.red, 0x9A211A, 0xFF998B)]
+            (.amber, 0x804D00, 0xF0B44C), (.red, 0x952019, 0xFF998B)]
         for (t, light, dark) in computed {
             #expect(Look.value(t, in: .lightIncreased) == LookRGB(light) && Look.value(t, in: .darkIncreased) == LookRGB(dark),
                     "\(t)")
@@ -140,5 +141,42 @@ import Testing
         #expect(LookSize.bodyFont == 13)
         #expect(LookSize.secondFont == 12)
         #expect(LookSize.tagFont == 11)
+        #expect(LookSize.smallButtonHeight == 24 && LookSize.pagePadding == 20 && LookSize.panelPadding == 12)
+        #expect(LookSize.detailsInset == 22)
+        #expect(LookSize.detailsStackBelowPageWidth == 620 && LookSize.detailsStackBelowColumnsWidth == 534)
+        #expect(LookSize.windowNamesFewest == 4)
+    }
+
+    /// Design 6.6 and 6.7: a window's name, a fact's value and "Keeps its command running" (primary), "in a tab" and
+    /// "open in another tab" (good), "not in a tab", a fact's label and the greyed list (tertiary), all on surface-2.
+    @Test func theDetailsAndTheGreyedListHaveTheirPairs() {   // everyPairReachesItsContrast then covers them
+        for p in [LookPair(text: .primary, background: .surface2), LookPair(text: .good, background: .surface2),
+                  LookPair(text: .tertiary, background: .surface2)] {
+            #expect(Look.pairs.contains(p), "\(p)")
+        }
+    }
+
+    /// Our own floor, borrowing WCAG 2.2 1.4.11's 3:1: a mark beside words reaches 3:1 against what it sits on.
+    @Test func everyMarkBesideWordsReachesThreeToOne() {
+        #expect(Contrast.nonText == 3.0)
+        #expect(Look.marks == [LookMark(token: .green, background: .ground), LookMark(token: .red, background: .ground),
+                               LookMark(token: .ink3, background: .ground), LookMark(token: .ink2, background: .ground)])
+        #expect(LookMark(token: .green, background: .ground).description == "green on ground")
+        for m in Look.marks {
+            for a in LookAppearance.allCases { #expect(Look.ratio(m, in: a) >= Contrast.nonText, "\(m) in \(a)") }
+        }
+    }
+
+    /// A pressed button lays black at 8 per cent over its fill, under its words; the words, not darkened, still reach
+    /// their pair's contrast on the darkened fill.
+    @Test func aPressedButtonKeepsItsContrast() {   // Review Focus 4
+        #expect(LookSize.pressedOverlay == 0.08 && Look.pressed(LookRGB(0xFFFFFF)) == LookRGB(0xEBEBEB))
+        #expect(LookRGB(red: 0xB9, green: 0x3F, blue: 0x12) == LookRGB(0xB93F12))
+        for k in [ButtonKind.primary, .secondary, .setApart, .destructive] {
+            for a in LookAppearance.allCases {
+                let r = Contrast.ratio(Look.value(k.words.text.token, in: a), Look.pressed(Look.value(k.words.background.token, in: a)))
+                #expect(r >= (a.isIncreased ? Contrast.increased : Contrast.minimum), "\(k) in \(a)")
+            }
+        }
     }
 }
