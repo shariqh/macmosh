@@ -32,6 +32,9 @@ name: Menu pictures
 # the selected trait of an open desk's row (windowtool isselected), scrolls the page at the smallest window to picture
 # the details stacked (menutool scroll), and checks the unreadable-list page's heading and next step and that Forget
 # stands apart.
+# Look step 3 (issue 178): drive-window.sh reads each sidebar row as a button with its name and second line and the
+# chosen row's selected trait in a five-Mac sample (window-sidebar), Tabs through the sidebar, and reads the Add a Mac
+# page's two settings and its button at the smallest window.
 # scripts/ci/drive-menu.sh says what it checks.
 on:
   pull_request:

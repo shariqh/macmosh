@@ -58,6 +58,18 @@
 # and "a 32-letter window name reaches the field", "a 32-letter window name leaves the facts their width" (narrower
 # facts than with "vim", or facts past the panel or over the lines) and "a 32-letter window name ends before its
 # state" each fail.
+# Look step 3 (issue 178) makes the sidebar a column of buttons, one per row, each keeping its identifier
+# (sidebar.<id>, sidebar.addMac, sidebar.settings) and read as its name and second line. The Tab check takes up to 40
+# presses (25 before: the sidebar's rows join the ring) and also fails when the sidebar's three rows of the "six-desks"
+# sample are never reached; it pictures the focus on the first, and "after the sidebar Tab goes to the page" (a
+# finding) names the stop after Settings. "a desk row whose details are closed is not selected" reads api's row while
+# website's details are open (FAIL when it reads selected). In the "windows" sample, "a window in two tabs and a
+# repeated name read as the menu's facts" opens shop's details (FAIL). In the "no-workhorses" sample, "the Add a Mac
+# page reads its title and today's two settings" and "at the smallest window Add a Mac… stays in the window" fail, and
+# a picture shows the page at its smallest. A new "window-sidebar" sample (five Macs in five states) fails when a row is
+# not a button with its words, when the chosen row is not the one selected, or when a click on a row does not show its
+# page; "Tab and Space choose a Mac in the sidebar" is a finding, and a menu-open signal from them fails. The pointer
+# rests on the title bar before the pictures of the details at the smallest window, where a help tag showed.
 set -uo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -357,6 +369,13 @@ six_desks() {
         else
             result DIFFERS "VoiceOver hears that a desk's details are open" "desk.website: ${t:-no answer}"
         fi
+        # A row whose details are closed is not selected (look step 3): false, or no attribute at all as a finding.
+        t=$(wax isselected "desk.api" | grep -E '^(isselected|notfound)' | tail -n 1)
+        case "$t" in
+            "isselected false") result PASS "a desk row whose details are closed is not selected" "desk.api: $t" ;;
+            "isselected none") result DIFFERS "a desk row whose details are closed is not selected" "desk.api: $t" ;;
+            *) result FAIL "a desk row whose details are closed is not selected" "desk.api: ${t:-no answer}" ;;
+        esac
         snap detail-strip
     else
         result NOT-SHOWN "a click on a desk's row opens its detail strip" "no row for website"
@@ -435,22 +454,30 @@ six_desks() {
 }
 
 # The Tab check (look step 1): with keyboard navigation on (the workflow turns it on), Tab moves keyboard focus across
-# the page's buttons as it does across stock buttons. Up to 25 presses of Tab, reading the focused element after each;
-# it passes once Check now, New desk… and a desk's Open have each had focus. A picture shows the focus on Check now and
-# on New desk…, for the focus ring. A press that sets off the menu-open signal fails it.
+# the page's buttons as it does across stock buttons. Up to 40 presses of Tab (look step 3; 25 before, when the sidebar
+# was one stop), reading the focused element after each; it passes once Check now, New desk… and a desk's Open have
+# each had focus. Look step 3: the sidebar's rows join the ring, and "Tab moves focus through the sidebar's rows" fails
+# when Workhorse, Add a Mac… and Settings are not all reached; the stop after Settings is a finding. The loop stops
+# early only when all six have been seen and the stop after Settings is known. Pictures show the focus on Check now, on
+# New desk… and on the sidebar's first row, for the focus ring. A press that sets off the menu-open signal fails it.
 tab_check() {
-    local since seen="" f id i shot_check="" shot_new=""
+    local since seen="" f id i prev="" after_settings="" shot_check="" shot_new="" shot_sidebar=""
     since=$(moment)
-    for i in $(seq 1 25); do
+    for i in $(seq 1 40); do
         tool keys 48 1 150 > /dev/null
         sleep 0.3
         f=$(wax focused | grep '^focused' | tail -n 1)
         id=$(awk '{ print $2 }' <<< "$f")
         say "Tab $i: ${f:-no answer}"
         seen="$seen ${id:-?}"
+        if [ "$prev" = "sidebar.settings" ] && [ -z "$after_settings" ]; then after_settings=${id:-?}; fi
+        prev=$id
         if [ "$id" = "button.checkNow" ] && [ -z "$shot_check" ]; then snap focus-check-now; shot_check=1; fi
         if [ "$id" = "button.newDesk" ] && [ -z "$shot_new" ]; then snap focus-new-desk; shot_new=1; fi
-        if [[ " $seen " == *" button.checkNow "* && " $seen " == *" button.newDesk "* && " $seen " == *" desk.website.open "* ]]; then
+        if [ "$id" = "sidebar.workhorse" ] && [ -z "$shot_sidebar" ]; then snap focus-sidebar; shot_sidebar=1; fi
+        if [[ " $seen " == *" button.checkNow "* && " $seen " == *" button.newDesk "* && " $seen " == *" desk.website.open "* \
+              && " $seen " == *" sidebar.workhorse "* && " $seen " == *" sidebar.addMac "* && " $seen " == *" sidebar.settings "* ]] \
+           && [ -n "$after_settings" ]; then
             break
         fi
     done
@@ -458,6 +485,16 @@ tab_check() {
         result PASS "Tab moves focus across the page's buttons" "focus went to:$seen"
     else
         result FAIL "Tab moves focus across the page's buttons" "Check now, New desk… and website's Open not all reached; focus went to:$seen"
+    fi
+    if [[ " $seen " == *" sidebar.workhorse "* && " $seen " == *" sidebar.addMac "* && " $seen " == *" sidebar.settings "* ]]; then
+        result PASS "Tab moves focus through the sidebar's rows" "focus went to:$seen"
+    else
+        result FAIL "Tab moves focus through the sidebar's rows" "Workhorse, Add a Mac… and Settings not all reached; focus went to:$seen"
+    fi
+    if [ "$after_settings" = "button.checkNow" ]; then
+        result PASS "after the sidebar Tab goes to the page" "the stop after sidebar.settings is $after_settings"
+    else
+        result DIFFERS "after the sidebar Tab goes to the page" "the stop after sidebar.settings is ${after_settings:-not seen}"
     fi
     f=$(applog "$since" | grep -cE "menu opened|menu tracking")
     result "$([ "$f" -eq 0 ] && echo PASS || echo FAIL)" "Tab sets off no menu-open signal" \
@@ -519,6 +556,69 @@ two_workhorses() {
     else
         result NOT-SHOWN "a click on the second workhorse shows its page" "no sidebar row for Spare"
     fi
+    stop_app
+}
+
+# The "window-sidebar" sample (look step 3): five Macs in five states. Each sidebar row is a button read as its name
+# and second line; the chosen row alone is selected; a click on a row shows its page and moves the selection; Tab then
+# Space on a row is a finding, and a menu-open signal from them fails.
+sidebar_sample() {
+    local entry id want r v missing="" rows since f i seen=""
+    rows="sidebar.workhorse sidebar.attic sidebar.spare sidebar.den sidebar.loft sidebar.addMac sidebar.settings"
+    start_app window-sidebar || return
+    if ! open_window; then stop_app; return; fi
+    sleep 1
+    for entry in "workhorse|Workhorse, Ready · 6 desks" "attic|Attic, Ready · 1 desk" "spare|Spare, Locked after a restart" \
+                 "den|Den, Can't reach it" "loft|Loft, Checking…" "addMac|Add a Mac…" "settings|Settings"; do
+        id="sidebar.${entry%%|*}"
+        want=${entry#*|}
+        r=$(wax find "$id" | grep '^found' | tail -n 1 | awk '{ print $NF }')
+        v=$(val "$id")
+        if [ "$r" != AXButton ] || [ "$v" != "$want" ]; then missing="$missing [$id: ${r:-not found}, ${v:-nothing}]"; fi
+    done
+    if [ -z "$missing" ]; then
+        result PASS "each sidebar row is a button with its Mac's name and second line" "all seven rows read as expected"
+    else
+        result FAIL "each sidebar row is a button with its Mac's name and second line" "missing or wrong:$missing"
+    fi
+    # shellcheck disable=SC2086 # the rows, one word each
+    selected_only "the chosen Mac's row is selected, and only it" sidebar.workhorse ${rows#sidebar.workhorse }
+    snap sidebar-states
+    if click_id "sidebar.spare"; then
+        sleep 1.5
+        v=$(val "page.headline")
+        result "$([ "$v" = "Spare · Locked after a restart" ] && echo PASS || echo FAIL)" "a click on a Mac's row shows its page" \
+            "page.headline reads: ${v:-nothing}"
+        # shellcheck disable=SC2086 # the rows, one word each
+        selected_only "the clicked row is now the selected one" sidebar.spare ${rows/sidebar.spare /}
+    else
+        result FAIL "a click on a Mac's row shows its page" "no sidebar row for Spare"
+    fi
+    rest_on_title
+    snap spare-chosen
+    # Tab to Attic's row, then Space. No Apple page says what Space does on a plain button: a finding.
+    since=$(moment)
+    id=""
+    for i in $(seq 1 40); do
+        tool keys 48 1 150 > /dev/null
+        sleep 0.3
+        f=$(wax focused | grep '^focused' | tail -n 1)
+        id=$(awk '{ print $2 }' <<< "$f")
+        seen="$seen ${id:-?}"
+        [ "$id" = "sidebar.attic" ] && break
+    done
+    if [ "$id" = "sidebar.attic" ]; then
+        tool keys 49 1 150 > /dev/null
+        sleep 1.5
+        v=$(val "page.headline")
+        result "$([ "$v" = "Attic · Ready" ] && echo PASS || echo DIFFERS)" "Tab and Space choose a Mac in the sidebar" \
+            "after $i presses of Tab and one of Space page.headline reads: ${v:-nothing}; focus went to:$seen"
+    else
+        result DIFFERS "Tab and Space choose a Mac in the sidebar" "Tab never reached sidebar.attic in 40 presses; focus went to:$seen"
+    fi
+    f=$(applog "$since" | grep -cE "menu opened|menu tracking")
+    result "$([ "$f" -eq 0 ] && echo PASS || echo FAIL)" "Tab and Space set off no menu-open signal" \
+        "$f 'menu opened' or 'menu tracking' line(s) since the first Tab"
     stop_app
 }
 
@@ -631,7 +731,8 @@ details_beside_and_under() {
     say "before the scroll: the strip ends at $(box "desk.website.strip" | awk 'NF == 4 { print $2 + $4 }'), the window at $bottom"
     for try in -100 100; do
         tool scroll "$px" "$py" "$try" > /dev/null
-        sleep 1
+        # The pointer leaves the page before a fact's help tag can show (look step 3: one showed in a picture).
+        rest_on_title
         strip_bottom=$(box "desk.website.strip" | awk 'NF == 4 { print $2 + $4 }')
         say "scrolled $try at $px,$py: the strip ends at ${strip_bottom:-?}, the window at $bottom"
         if [ -n "$strip_bottom" ] && [ "$strip_bottom" -le "$bottom" ]; then sign=$try; break; fi
@@ -658,8 +759,7 @@ details_beside_and_under() {
     if [ -n "$sign" ]; then
         # The pointer rested on the page for the scroll, where a fact's help tag would cover the picture: the title
         # bar has none.
-        lim 10 "$TOOL" move "$px" "$((fy + 12))" >> "$LOG" 2>&1
-        sleep 1
+        rest_on_title
         snap website-windows-minimum-size
         tool scroll "$px" "$py" "$((-sign))" > /dev/null
         sleep 1
@@ -784,6 +884,25 @@ windows_sample() {
     fi
     sleep 1
     snap after-clicks
+
+    # shop's details (look step 3): web in two tabs, and a second window with the same name, which reads as the menu's
+    # "web (window 1)".
+    if click_id "desk.shop"; then
+        sleep 1
+        local l9 s9 l10 s10
+        l9=$(val "desk.shop.line.@9"); s9=$(val "desk.shop.state.@9")
+        l10=$(val "desk.shop.line.@10"); s10=$(val "desk.shop.state.@10")
+        if [ "$l9|$s9|$l10|$s10" = "web|in 2 tabs|web (window 1)|not in a tab" ]; then
+            result PASS "a window in two tabs and a repeated name read as the menu's facts" "$l9, $s9 | $l10, $s10"
+        else
+            result FAIL "a window in two tabs and a repeated name read as the menu's facts" \
+                "@9: ${l9:-nothing}, ${s9:-nothing} | @10: ${l10:-nothing}, ${s10:-nothing}"
+        fi
+        rest_on_title
+        snap shop-windows
+    else
+        result FAIL "a window in two tabs and a repeated name read as the menu's facts" "no row for shop"
+    fi
     stop_app
 }
 
@@ -825,7 +944,35 @@ no_workhorses() {
     else
         result DIFFERS "with no workhorse the Add a Mac page is shown" "page.addMac not found"
     fi
+    # Look step 3: the title and each setting's sentence, one text each, in today's words; Add a Mac… is the chosen row.
+    local h s1 s2 f r b fx fy fw fh
+    h=$(val "page.addMac"); s1=$(val "page.addMac.step.1"); s2=$(val "page.addMac.step.2")
+    if [ "$h" = "Add a Mac" ] && [ "$s1" = "Remote Login, so MacMosh can reach it." ] \
+        && [ "$s2" = "Screen Sharing, so you can log in to it after a restart." ]; then
+        result PASS "the Add a Mac page reads its title and today's two settings" "$h | $s1 | $s2"
+    else
+        result FAIL "the Add a Mac page reads its title and today's two settings" \
+            "title: ${h:-nothing} | 1: ${s1:-nothing} | 2: ${s2:-nothing}"
+    fi
+    selected_only "the chosen row is Add a Mac…" sidebar.addMac sidebar.settings
     snap add-a-mac
+    # At the smallest window the button stays in the window and the art is cut to its foot.
+    wax size 600 300 > /dev/null
+    sleep 1
+    f=$(wax frame | grep '^frame' | tail -n 1)
+    r=$(box "button.menu.pair" | awk 'NF == 4 { print $1 + $3 }'); b=$(box "button.menu.pair" | awk 'NF == 4 { print $2 + $4 }')
+    read -r _ fx fy fw fh <<< "$f"
+    if [ -n "$r" ] && [ -n "$b" ] && [ -n "${fh:-}" ] && [ "$r" -le $((fx + fw)) ] && [ "$b" -le $((fy + fh)) ]; then
+        result PASS "at the smallest window Add a Mac… stays in the window" \
+            "Add a Mac… ends at $r across and $b down, the window at $((fx + fw)) and $((fy + fh))"
+    else
+        result FAIL "at the smallest window Add a Mac… stays in the window" \
+            "Add a Mac… ends at ${r:-?} across and ${b:-?} down; ${f:-no frame}"
+    fi
+    rest_on_title
+    snap add-a-mac-minimum-size
+    wax size 880 680 > /dev/null
+    sleep 1
     # Settings with no workhorse: This Mac's terminal and "No workhorses yet…" (issue 157).
     if click_id "sidebar.settings" && wait_id "settings.none" 5; then
         result PASS "Settings with no workhorse says so" "settings.none reads: $(val settings.none)"
@@ -871,6 +1018,32 @@ rest_on_title() {
     [ -n "${w:-}" ] && lim 10 "$TOOL" move "$((x + w / 2))" "$((y + 12))" >> "$LOG" 2>&1
     # A tag shown before the move fades out; one second was not always enough on macOS 26.
     sleep 2
+}
+
+# selected_only <check> <chosen> <other…> (look step 3): PASS when the chosen element reads "isselected true" and every
+# other "isselected false"; DIFFERS when the chosen is true and some other has no selected attribute (listed); FAIL
+# otherwise.
+selected_only() {
+    local check=$1 chosen=$2 t v id none="" bad="" detail
+    shift 2
+    t=$(wax isselected "$chosen" | grep -E '^(isselected|notfound)' | tail -n 1)
+    detail="$chosen: ${t:-no answer}"
+    for id in "$@"; do
+        v=$(wax isselected "$id" | grep -E '^(isselected|notfound)' | tail -n 1)
+        detail="$detail; $id: ${v:-no answer}"
+        case "$v" in
+            "isselected false") ;;
+            "isselected none") none="$none $id" ;;
+            *) bad="$bad $id" ;;
+        esac
+    done
+    if [ "$t" = "isselected true" ] && [ -z "$bad" ] && [ -z "$none" ]; then
+        result PASS "$check" "$detail"
+    elif [ "$t" = "isselected true" ] && [ -z "$bad" ]; then
+        result DIFFERS "$check" "with no selected attribute:$none; $detail"
+    else
+        result FAIL "$check" "$detail"
+    fi
 }
 
 # same_end <check> <desk> <other desk>: the two rows' buttons end within 2 points of each other, so the state cells
@@ -2276,6 +2449,7 @@ six_desks
 windows_sample
 ready_then_locked
 two_workhorses
+sidebar_sample
 long_folder
 unreadable_list
 no_workhorses
