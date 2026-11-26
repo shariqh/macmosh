@@ -257,6 +257,31 @@ private func titles(_ buttons: [BoardButton]) -> [String] { buttons.map(\.title)
         #expect(off.symbol == "wrench.and.screwdriver")
     }
 
+    // MARK: The state pill (look design 6.3)
+
+    @Test func eachStateHasItsPillWordAndTone() {
+        let cases: [(WorkhorseState, String, PillTone)] = [
+            (.ready(signIns: true), "Ready", .ready), (.ready(signIns: false), "Ready, sign-ins off", .needsYou),
+            (.waitingForLogin, "Waiting for login", .needsYou), (.locked, "Locked after a restart", .needsYou),
+            (.cantVerify, "Can't verify it", .cannot), (.cantReach(.nothingAnswers), "Can't reach it", .cannot),
+            (.notSetUp(.notPaired), "Not paired", .needsYou), (.notSetUp(.identityUnusable), "Your ssh key is locked", .needsYou),
+            (.notSetUp(.hostScriptMissing), "Needs setting up", .needsYou),
+            (.notSetUp(.unreadableReport), "Couldn't read its status", .needsYou), (.notSetUp(.deskServerDown), "Desk server is off", .needsYou)]
+        for (s, word, tone) in cases { #expect(StatePill.of(s) == StatePill(word: word, tone: tone), "\(s)") }
+        #expect(PillTone.ready.textRole == .good && PillTone.checking.textRole == .tertiary)
+        #expect(PillTone.needsYou.textRole == .needsYou && PillTone.cannot.textRole == .cannot)
+    }
+
+    /// Built outside the state's title (design 6.3): the pill comes from the block, never from the headline.
+    @Test func theWaitAndStillCheckingHaveTheirOwnPills() throws {
+        let waiting = try #require(board([result(.notSetUp(.deskServerDown), status: try boardReport())], waiting: ["attic"]).workhorses.first)
+        #expect(waiting.headline == "Attic · Waiting for the desk server")
+        #expect(waiting.pill == StatePill(word: "Waiting for the desk server", tone: .needsYou))
+        #expect(try #require(board([], order: [attic]).workhorses.first).pill == StatePill(word: "Still checking…", tone: .checking))
+        #expect(WorkhorseBlock.waitingForDeskServerTitle == "Waiting for the desk server")
+        #expect(WorkhorseBlock.stillCheckingTitle == "Still checking…")
+    }
+
     // MARK: Checking
 
     @Test func aWorkhorseThatHasNeverAnsweredIsStillChecking() throws {

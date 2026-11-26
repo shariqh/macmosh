@@ -77,7 +77,11 @@ public enum WindowWords {
 /// Restart…, Run the checklist…), as the menu orders them.
 public struct WorkhorsePage: Sendable, Equatable {
     public var id: String
+    /// The workhorse's name, the page's title (look design 6.3).
+    public var name: String
     public var headline: String
+    /// The state's word and tone beside the name; the headline stays the one element VoiceOver and CI read.
+    public var pill: StatePill
     public var hint: String?
     public var summary: String?
     /// "Checked 14:02"; nil when it has never answered.
@@ -111,7 +115,9 @@ public struct WorkhorsePage: Sendable, Equatable {
     /// `activity` is what the window's actions are doing on it now (`WindowActionRunner.activity`).
     public init(_ w: BoardWorkhorse, now: Date, timeZone: TimeZone, activity: WindowActivity = WindowActivity()) {
         id = w.id
+        name = w.name
         headline = w.headline
+        pill = w.pill
         hint = w.hint
         summary = w.summary
         checked = w.checkedAt.map { WindowWords.checked($0, now: now, timeZone: timeZone) }

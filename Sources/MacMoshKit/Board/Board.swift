@@ -51,11 +51,15 @@ public struct BoardWorkhorse: Sendable, Equatable, Identifiable {
     /// The workhorse script's version in its last report; nil without one. The window hides a control that
     /// needs a newer script (main window design, section 7.2).
     public var scriptVersion: String?
+    /// The state's word and tone beside the name in the window's header (look design 6.3): the headline's words after
+    /// the name, never cut from it (`StatePill.of(_:state:)`).
+    public var pill: StatePill
 
     public init(id: String, name: String, state: WorkhorseState?, symbol: String, headline: String, hint: String?,
                 checkedAt: Date?, isChecking: Bool, isWaitingForDeskServer: Bool, summary: String?,
                 homeReachable: Bool?, desks: [BoardDesk], ended: [EndedDesk], lastReadyDesks: [BoardDesk]?,
-                lastReadyAt: Date?, buttons: [BoardButton], result: String?, scriptVersion: String? = nil) {
+                lastReadyAt: Date?, buttons: [BoardButton], result: String?, scriptVersion: String? = nil,
+                pill: StatePill) {
         self.id = id
         self.name = name
         self.state = state
@@ -74,6 +78,7 @@ public struct BoardWorkhorse: Sendable, Equatable, Identifiable {
         self.buttons = buttons
         self.result = result
         self.scriptVersion = scriptVersion
+        self.pill = pill
     }
 }
 

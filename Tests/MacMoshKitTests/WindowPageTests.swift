@@ -86,6 +86,7 @@ private func titles(_ buttons: [BoardButton]) -> [String] { buttons.map(\.title)
         #expect(p.home == "Home address reachable from here: yes")
         #expect(p.desks.map(\.name) == ["api", "blog", "garden", "notes", "recipes", "website"])
         #expect(p.noDesks == nil && p.stale == nil && p.result == nil)
+        #expect(p.name == "Attic" && p.pill == StatePill(word: "Ready", tone: .ready))
     }
 
     /// Design 6.4: the foot keeps its buttons at the left in order, and Restart… alone at the right; one primary

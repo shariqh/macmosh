@@ -44,6 +44,11 @@ public struct WorkhorseBlock: Sendable, Equatable {
         stateButtons + (newDesk.map { [$0] } ?? []) + rareButtons + [checklist]
     }
 
+    /// The headline's words after the name while it waits for its desk server, and the window's pill for it.
+    public static let waitingForDeskServerTitle = "Waiting for the desk server"
+    /// The headline's words after the name before the first answer, and the window's pill for it.
+    public static let stillCheckingTitle = "Still checking…"
+
     /// Under "Waiting for the desk server". Every clause is true when it is shown (issue #88).
     public static let waitingForDeskServerHint = "Someone has logged in and the desk server isn't running yet. MacMosh's login agent starts it after a login; if it still isn't running in a minute, this menu says so."
 
@@ -66,7 +71,7 @@ public struct WorkhorseBlock: Sendable, Equatable {
         if isWaitingForDeskServer(r, waitingForDeskServer) {
             // No "Finish setting up…": the login agent is about to do it.
             return WorkhorseBlock(kind: .waitingForDeskServer,
-                                  headline: "\(r.workhorse.name) · Waiting for the desk server",
+                                  headline: "\(r.workhorse.name) · \(waitingForDeskServerTitle)",
                                   hint: waitingForDeskServerHint, stateButtons: [], desks: [], newDesk: nil,
                                   rareButtons: [], summaryFacts: [], homeReachable: nil, checklist: checklist)
         }
@@ -86,7 +91,7 @@ public struct WorkhorseBlock: Sendable, Equatable {
 
     /// A workhorse that hasn't answered yet: its name, "Still checking…", and the checklist.
     public static func stillChecking(_ w: Workhorse) -> WorkhorseBlock {
-        WorkhorseBlock(kind: .stillChecking, headline: "\(w.name) · Still checking…", hint: nil, stateButtons: [],
+        WorkhorseBlock(kind: .stillChecking, headline: "\(w.name) · \(stillCheckingTitle)", hint: nil, stateButtons: [],
                        desks: [], newDesk: nil, rareButtons: [], summaryFacts: [], homeReachable: nil,
                        checklist: ButtonRules.checklist(w.id))
     }

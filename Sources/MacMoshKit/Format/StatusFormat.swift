@@ -28,8 +28,8 @@ public enum StatusFormat {
         }
     }
 
-    /// What the state is called to a person.
-    private static func title(_ s: WorkhorseState) -> String {
+    /// What the state is called to a person. The window's state pill takes it too (`StatePill`).
+    static func title(_ s: WorkhorseState) -> String {
         switch s {
         case .ready(let signIns): return signIns ? "Ready" : "Ready, sign-ins off"
         case .waitingForLogin: return "Waiting for login"

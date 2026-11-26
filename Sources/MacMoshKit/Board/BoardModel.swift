@@ -68,7 +68,7 @@ public enum BoardModel {
                 },
                 lastReadyDesks: lastReadyDesks, lastReadyAt: lastReadyAt,
                 buttons: buttons(block, desks: lines, workhorse: id), result: results[id],
-                scriptVersion: r?.status?.scriptVersion))
+                scriptVersion: r?.status?.scriptVersion, pill: StatePill.of(block, state: r?.state)))
         }
         return Board(workhorses: workhorses, symbol: MenuModel.symbol(forAll: states))
     }
