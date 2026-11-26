@@ -108,4 +108,12 @@ private func pixelSize(_ relativePath: String) throws -> [Int] {
         #expect(compile.lowerBound < makeApp.lowerBound && makeApp.lowerBound < sampleCheck.lowerBound)
         #expect(sampleCheck.lowerBound < resources.lowerBound && resources.lowerBound < firstSign.lowerBound)
         #expect(script.components(separatedBy: "codesign --verify --deep --strict").count == 2) }
+
+    /// On CI's macOS 15 image, actool from Xcode 26.3 crashed when reached through /Applications/Xcode_26.3.0.app, a
+    /// second name for /Applications/Xcode_26.3.app, and compiled the document through the real path (pull request 176).
+    @Test func theBuildScriptRunsActoolFromTheXcodesRealPath() throws {
+        let script = try String(contentsOf: repoRoot().appendingPathComponent("scripts/build-app.sh"), encoding: .utf8)
+        let resolve = try #require(script.range(of: "real=$(cd -P \"$xcode\" && pwd)"))
+        let use = try #require(script.range(of: "developer_dir=\"$real/Contents/Developer\""))
+        #expect(resolve.lowerBound < use.lowerBound) }
 }

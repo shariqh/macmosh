@@ -67,9 +67,12 @@ if [ -n "$selected" ] && [ "${selected%%.*}" -ge 26 ]; then
 else
     best=""
     best_key=0
+    # Each Xcode by its real path: on CI's macOS 15 image, actool from Xcode 26.3 crashed when reached through
+    # /Applications/Xcode_26.3.0.app, a second name for /Applications/Xcode_26.3.app, and worked through the real one.
     for xcode in /Applications/Xcode*.app; do
-        [ -f "$xcode/Contents/version.plist" ] || continue
-        found=$(plutil -extract CFBundleShortVersionString raw "$xcode/Contents/version.plist" 2>/dev/null || true)
+        real=$(cd -P "$xcode" && pwd) || continue
+        [ -f "$real/Contents/version.plist" ] || continue
+        found=$(plutil -extract CFBundleShortVersionString raw "$real/Contents/version.plist" 2>/dev/null || true)
         case "$found" in
             [0-9]*) ;;
             *) continue ;;
@@ -79,7 +82,7 @@ else
         if [ "$key" -gt "$best_key" ]; then
             best="$found"
             best_key=$key
-            developer_dir="$xcode/Contents/Developer"
+            developer_dir="$real/Contents/Developer"
         fi
     done
     if [ -z "$developer_dir" ]; then
