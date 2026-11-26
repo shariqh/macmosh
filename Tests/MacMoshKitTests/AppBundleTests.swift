@@ -87,4 +87,25 @@ private func pixelSize(_ relativePath: String) throws -> [Int] {
         #expect(try pixelSize("App/AppIcon.icon/Assets/m-light.png") == [1024, 1024])
         #expect(try pixelSize("App/AppIcon.icon/Assets/m-dark.png") == [1024, 1024])
         #expect(try pixelSize("App/AppIcon-16.png") == [16, 16]) }
+
+    @Test func theInfoPlistNamesTheIcon() throws {
+        let plist = try readPlist("App/Info.plist")
+        #expect(plist?["CFBundleIconFile"] as? String == "AppIcon")
+        #expect(plist?["CFBundleIconName"] as? String == "AppIcon") }
+
+    /// Design 8.2: actool before the app is made, Contents/Resources, both files, then signing as today (Review Focus 1, 2 and 4).
+    @Test func theBuildScriptMakesTheIconBeforeItSigns() throws {
+        let script = try String(contentsOf: repoRoot().appendingPathComponent("scripts/build-app.sh"), encoding: .utf8)
+        for part in ["xcrun actool", "App/AppIcon.icon", "--app-icon AppIcon", "--minimum-deployment-target 15.0",
+                     "--standalone-icon-behavior all", "Contents/version.plist", "DEVELOPER_DIR=",
+                     "icon_16x16.png", "App/AppIcon-16.png", "iconutil -c iconset -o", "iconutil -c icns -o",
+                     "$app/Contents/Resources", "Assets.car", "AppIcon.icns"] { #expect(script.contains(part), "\(part)") }
+        let compile = try #require(script.range(of: "--app-icon AppIcon"))
+        let makeApp = try #require(script.range(of: "rm -rf \"$app\""))
+        let sampleCheck = try #require(script.range(of: "sample_variable=MACMOSH_SAMPLE_MENU"))
+        let resources = try #require(script.range(of: "$app/Contents/Resources"))
+        let firstSign = try #require(script.range(of: "\"${sign[@]}\" \"$app/Contents/Helpers/macmosh\""))
+        #expect(compile.lowerBound < makeApp.lowerBound && makeApp.lowerBound < sampleCheck.lowerBound)
+        #expect(sampleCheck.lowerBound < resources.lowerBound && resources.lowerBound < firstSign.lowerBound)
+        #expect(script.components(separatedBy: "codesign --verify --deep --strict").count == 2) }
 }
