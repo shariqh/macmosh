@@ -4,8 +4,8 @@
 //
 // scripts/draw-icon/main.swift compiles this file alone, together with itself, to draw the icon's
 // layer pictures. So this file imports nothing and uses no other MacMoshKit type: the standard
-// library only (IconArtTests checks that it has no import line). Step 6, the picture in the menu
-// bar, reuses `mCells`.
+// library only (IconArtTests checks that it has no import line). `MenuBarMark` and the Add a Mac page's tile read
+// `mCells`; there is no other table of the M.
 
 /// One cell of the 5 by 5 grid, counted from 0 at the top left.
 public struct IconCell: Hashable, Sendable {

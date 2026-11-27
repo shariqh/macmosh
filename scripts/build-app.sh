@@ -17,6 +17,7 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
+root=$(pwd -P)
 
 adhoc=0
 config=release
@@ -106,6 +107,28 @@ fi
 if ! cmp -s "$bin/macmosh" "$app/Contents/Helpers/macmosh"; then
     echo "build-app.sh: FAILED: Contents/Helpers/macmosh is not the macmosh build" >&2
     exit 1
+fi
+
+# Issue 189: a release build keeps debugging entries that name every source and object file by its full path on
+# the Mac that built it, so both programs carried the builder's folder names. strip -S takes those entries out
+# (man strip: "Remove the debugging symbol table entries (those created by the -g option to cc(1) and other
+# compilers)"); the ordinary symbols stay, so a crash report still names functions. Stripping changes the file,
+# so it comes after the comparisons above and before signing. The search then reads the file's bytes (grep -a),
+# for the home folders' parent and for this checkout's own folder; the match is never printed. `strings -a` piped
+# into grep found none of these paths on 26 November 2026, so nothing here relies on strings.
+# CI's pictures use the debug build as it is: it is never shipped.
+if [ "$config" = release ]; then
+    for file in "$app/Contents/MacOS/MacMosh" "$app/Contents/Helpers/macmosh"; do
+        places=$({ LC_ALL=C grep -aoF "$root" "$file" || true; } | wc -l | tr -d ' ')
+        strip -S -no_code_signature_warning "$file"
+        for needle in "/Users/" "$root"; do
+            if LC_ALL=C grep -qaF "$needle" "$file"; then
+                echo "build-app.sh: FAILED: the release build $file still holds a folder path from the Mac that built it" >&2
+                exit 1
+            fi
+        done
+        echo "build-app.sh: stripped $file: $places places named this checkout's folder before, none after"
+    done
 fi
 
 # The sample menus CI takes pictures of are compiled into debug builds only (#if DEBUG in

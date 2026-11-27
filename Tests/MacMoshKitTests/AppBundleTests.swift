@@ -137,7 +137,7 @@ private func pixelSize(_ relativePath: String) throws -> [Int] {
         let script = try String(contentsOf: url, encoding: .utf8)
         #expect(script.filter { $0 == "\n" }.count <= 70)
         #expect(FileManager.default.isExecutableFile(atPath: url.path))
-        for part in ["xcrun actool \"$PWD/App/AppIcon.icon\"", "--platform macosx", "--minimum-deployment-target 15.0",
+        for part in ["xcrun actool \"$work/App/AppIcon.icon\"", "--platform macosx", "--minimum-deployment-target 15.0",
                      "--app-icon AppIcon", "--target-device mac", "--standalone-icon-behavior all", "DEVELOPER_DIR",
                      "scripts/draw-icon/main.swift Sources/MacMoshKit/Look/IconArt.swift", "iconutil -c iconset -o",
                      "icon_16x16.png", "App/AppIcon-16.png", "App/Assets.car", "App/AppIcon.iconset", "mktemp -d"] {
@@ -146,6 +146,23 @@ private func pixelSize(_ relativePath: String) throws -> [Int] {
             let target = String(line.split(separator: " ").last ?? "")
             #expect(target.hasPrefix("\"App/") || target.hasPrefix("App/") || target.hasPrefix("\"$work"), "\(line)") }
         #expect(script.range(of: #"(^|[\s;|&(])rm\s"#, options: .regularExpression) == nil)
+        // Issue 183: everything is made and checked in the work folder first; the copies into App/ come after the last
+        // check, so a stop partway leaves App/ as it was.
+        let lines = script.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
+        let lastStop = try #require(lines.lastIndex { $0.contains("stop \"") && !$0.hasPrefix("stop()") })
+        let firstCopy = try #require(lines.firstIndex { line in
+            guard line.hasPrefix("cp "), let target = line.split(separator: " ").last else { return false }
+            return target.hasPrefix("App/") || target.hasPrefix("\"App/") })
+        #expect(lastStop < firstCopy)
+        // A loop that checks and copies in turn would pass that by its lines' order alone (make-icon.sh before issue 183
+        // did, with its size loop): every loop that holds a check ends before the first copy.
+        for (i, line) in lines.enumerated() where i < lastStop && (line.hasPrefix("for ") || line.hasPrefix("while ")) {
+            let end = lines[i...].firstIndex { $0 == "done" || $0.hasPrefix("done ") || $0.hasPrefix("done<") } ?? lines.count
+            if end > lastStop { #expect(end < firstCopy, "\(line)") } }
+        #expect(script.contains("\"$work/draw-icon\" \"$work\"") && !script.contains("\"$work/draw-icon\" ."))
+        // Every copy stands on a line of its own, so the order check sees it (no `; cp`, `&& cp` or `do cp`).
+        for line in lines where !line.hasPrefix("#") && line.range(of: #"(^|[\s;&|])cp\s"#, options: .regularExpression) != nil {
+            #expect(line.hasPrefix("cp "), "\(line)") }
         let check = try String(contentsOf: repoRoot().appendingPathComponent("scripts/check.sh"), encoding: .utf8)
         #expect(check.contains("shellcheck scripts/make-icon.sh"))
         let workflow = try String(contentsOf: repoRoot().appendingPathComponent(".github/workflows/icon-pictures.yml"),
@@ -208,6 +225,8 @@ private func pixelSize(_ relativePath: String) throws -> [Int] {
                                encoding: .utf8)
         #expect(check.contains("if [ \"$theme\" != RegularDark ]; then\n        result \"$check\" NOT-SHOWN"))
         #expect(check.contains("AppleIconAppearanceTheme (a guessed name, not Apple's) $(defaults read"))
+        // Issue 183: the check also wants the system's icon to show a lit tile of the M, not only a dark unlit one.
+        #expect(check.contains("lit_warm light") && check.contains("lit_warm()"))
         #expect(steps.filter { $0.contains("defaults write") }.count == 1)
         let root = repoRoot()
         let scripts = try #require(FileManager.default.enumerator(at: root.appendingPathComponent("scripts"),

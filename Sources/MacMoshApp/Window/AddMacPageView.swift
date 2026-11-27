@@ -21,7 +21,7 @@ struct AddMacPageView: View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 12) {
-                    LetterMTile()
+                    MTile()
                     Text(verbatim: page.heading)
                         .font(.system(size: LookSize.titleFont, weight: .semibold))
                         .foregroundStyle(LookColor.text(.primary, on: .ground))
@@ -83,16 +83,16 @@ struct AddMacPageView: View {
     }
 }
 
-/// The icon's M (look design 8.1) in a desk-sized tile: 5 by 5 cells, lit in ember where `LetterM` says, clay elsewhere.
+/// The icon's M (look design 8.1) in a desk-sized tile: 5 by 5 cells, lit in ember where `IconArt` says, clay elsewhere.
 /// Decoration, hidden from VoiceOver.
-struct LetterMTile: View {
+struct MTile: View {
     var body: some View {
         VStack(spacing: LookSize.mCellGap) {
-            ForEach(0..<LetterM.size, id: \.self) { row in
+            ForEach(0..<IconArt.gridSize, id: \.self) { row in
                 HStack(spacing: LookSize.mCellGap) {
-                    ForEach(0..<LetterM.size, id: \.self) { column in
+                    ForEach(0..<IconArt.gridSize, id: \.self) { column in
                         RoundedRectangle(cornerRadius: LookSize.mCellRadius, style: .continuous)
-                            .fill(LookColor.mark(LetterM.isLit(row: row, column: column) ? .ember : .clayCell))
+                            .fill(LookColor.mark(IconArt.isLit(IconCell(row: row, column: column)) ? .ember : .clayCell))
                             .frame(width: LookSize.mCell, height: LookSize.mCell)
                     }
                 }

@@ -30,6 +30,13 @@ public enum SampleMenu: String, CaseIterable, Sendable {
     /// #124): each desk past the gate has a line per window, and Name a window… (issue 144). `website` has a window in a tab this Mac can find,
     /// one open in a tab it can't, and one with no tab.
     case windows
+    /// Look step 6: the workhorse can't be reached (nothing answers), for the menu bar's hollow mark.
+    case cantReach = "cant-reach"
+    /// Look step 6: the workhorse needs setting up (its script is missing), for the menu bar's wrench badge.
+    case notSetUp = "not-set-up"
+    /// Look step 6: the workhorse is still being checked at every look, for the menu bar's faint mark, which a
+    /// real launch shows only for a moment.
+    case stillChecking = "still-checking"
 
     /// The environment variable that names the sample.
     public static let variable = "MACMOSH_SAMPLE_MENU"
@@ -134,6 +141,12 @@ public enum SampleMenu: String, CaseIterable, Sendable {
                                          home: true))]
         case .windows:
             return [.checked(Self.result(Self.main, .ready(signIns: true), report: Self.windowsReport, home: true))]
+        case .cantReach:
+            return [.checked(Self.result(Self.main, .cantReach(.nothingAnswers), report: nil, home: nil))]
+        case .notSetUp:
+            return [.checked(Self.result(Self.main, .notSetUp(.hostScriptMissing), report: nil, home: nil))]
+        case .stillChecking:
+            return [.stillChecking(Self.main)]
         }
     }
 

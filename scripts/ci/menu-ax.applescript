@@ -3,6 +3,11 @@
 -- trial-submenus). It never presses anything: the driver clicks with posted pointer events.
 --
 --   osascript menu-ax.applescript barpos                   position and size of the menu-bar item
+--   osascript menu-ax.applescript barinfo                  position and size of the menu-bar item, and its
+--                                                          AXDescription, AXTitle, AXHelp and AXRoleDescription, each
+--                                                          read as that attribute's value (empty when missing); never
+--                                                          System Events' description property, which falls back to
+--                                                          the role description (look step 6)
 --   osascript menu-ax.applescript dump <place>             every row of a menu, one per line
 --   osascript menu-ax.applescript names <place>            only the rows' names, one per line
 --   osascript menu-ax.applescript selected <place>         the highlighted (AXSelected) row of a menu
@@ -19,6 +24,27 @@ on run argv
 			tell application "System Events" to tell process "MacMosh"
 				set b to menu bar item 1 of menu bar (count of menu bars)
 				return "bar menus=" & (count of menu bars) & " pos=" & my pair(position of b) & " size=" & my pair(size of b)
+			end tell
+		else if cmd is "barinfo" then
+			tell application "System Events" to tell process "MacMosh"
+				set b to menu bar item 1 of menu bar (count of menu bars)
+				set d to ""
+				set t to ""
+				set h to ""
+				set r to ""
+				try
+					set d to my txt(value of attribute "AXDescription" of b)
+				end try
+				try
+					set t to my txt(value of attribute "AXTitle" of b)
+				end try
+				try
+					set h to my txt(value of attribute "AXHelp" of b)
+				end try
+				try
+					set r to my txt(value of attribute "AXRoleDescription" of b)
+				end try
+				return "barinfo pos=" & my pair(position of b) & " size=" & my pair(size of b) & " axdescription=[" & d & "] axtitle=[" & t & "] axhelp=[" & h & "] axroledescription=[" & r & "]"
 			end tell
 		else if cmd is "dump" then
 			return my dumpMenu(my menuAt(item 2 of argv), item 2 of argv, false)
@@ -83,6 +109,11 @@ on nm(mi)
 		end try
 	end tell
 end nm
+
+on txt(v)
+	if v is missing value then return ""
+	return v as text
+end txt
 
 on pair(p)
 	try
