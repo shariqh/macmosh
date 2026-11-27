@@ -253,5 +253,15 @@ extension HostScriptTests {
             #expect(!h.calls.contains { $0.hasPrefix("gh ") || $0.hasPrefix("security ") || $0.hasPrefix("git tag") || $0.hasPrefix("git push") })
             #expect(h.git(["tag", "-l"]).stdout.isEmpty)
             #expect(h.git(["ls-remote", "--tags", "origin"]).stdout.isEmpty) }
+
+        /// The owner's runbook: the secret is typed only at notarytool's own prompt, never on a command line.
+        /// Decision 2: the agent runs every rehearsal, and the owner is at the Mac for the first real run.
+        @Test func theRunbookKeepsTheSecretOffEveryCommandLine() throws {
+            let text = try String(contentsOf: HostHarness.repoRoot().appendingPathComponent("docs/releasing.md"), encoding: .utf8)
+            for part in ["xcrun notarytool store-credentials \"macmosh-notary\"", "MACMOSH_NOTARY_PROFILE", "MACMOSH_SIGN_IDENTITY",
+                         "scripts/release.sh --rehearsal", "Which one do I use?", "If something's off", "at the Mac", "first real run"] {
+                #expect(text.contains(part), "\(part)") }
+            for line in text.split(separator: "\n") where line.contains("store-credentials") {
+                #expect(!line.contains("--password") && !line.contains("--sync"), "\(line)") } }
     }
 }
