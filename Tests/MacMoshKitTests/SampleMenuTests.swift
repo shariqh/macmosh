@@ -43,6 +43,16 @@ import Testing
         #expect(SampleMenu.noWorkhorses.workhorses.isEmpty)
     }
 
+    /// Look step 6: the menu-bar mark of every state can be pictured.
+    @Test func theMenuBarSamplesShowTheirStates() {
+        #expect(menu(.cantReach).symbol == "wifi.slash" && menu(.cantReach).rows.first?.label == "Workhorse · Can't reach it")
+        #expect(menu(.notSetUp).symbol == "wrench.and.screwdriver")
+        #expect(menu(.notSetUp).rows.first?.label == "Workhorse · Needs setting up")
+        #expect(menu(.stillChecking).symbol == "ellipsis.circle")
+        #expect(menu(.stillChecking).rows.first?.label == "Workhorse · Still checking…")
+        for s in [SampleMenu.cantReach, .notSetUp, .stillChecking] { #expect(s.workhorses.map(\.id) == ["workhorse"]) }
+    }
+
     @Test func theChangingSampleDiffersAtEveryChangeAndAddsAndRemovesADeskInTurn() {
         let menus = (0..<4).map { menu(.changing, change: $0) }
         for i in 1..<menus.count { #expect(menus[i] != menus[i - 1]) }

@@ -118,7 +118,7 @@ struct MacMoshApp: App {
         MenuBarExtra(isInserted: inserted) {
             MenuContent(screen: screen, actions: actions)
         } label: {
-            Image(systemName: screen.shown.menu.symbol)
+            MenuBarLabel(symbol: screen.shown.menu.symbol)
                 // The label is on screen from launch, so this starts the checks at once. They then
                 // follow the schedule in `PollSchedule` and stop when the app does.
                 .task {

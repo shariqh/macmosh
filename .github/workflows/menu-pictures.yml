@@ -36,6 +36,7 @@ name: Menu pictures
 # chosen row's selected trait in a five-Mac sample (window-sidebar), Tabs through the sidebar, and reads the Add a Mac
 # page's two settings and its button at the smallest window.
 # scripts/ci/drive-menu.sh says what it checks.
+# Look step 6 (issue 183): scripts/ci/drive-menu-bar.sh pictures the menu bar in light (pictures) and dark (window-dark).
 on:
   pull_request:
     paths:
@@ -108,6 +109,14 @@ jobs:
           MENU_OUT: ${{ runner.temp }}/menu-pictures/window
         run: scripts/ci/drive-window.sh
 
+      - name: Picture the menu bar
+        if: ${{ !cancelled() }}
+        timeout-minutes: 6
+        env:
+          MENU_OUT: ${{ runner.temp }}/menu-pictures/menu-bar
+          MENU_BAR_APPEARANCE: light
+        run: scripts/ci/drive-menu-bar.sh
+
       - name: Upload the pictures and logs
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -164,6 +173,14 @@ jobs:
           WINDOW_APPEARANCE: dark
           MENU_OUT: ${{ runner.temp }}/window-dark
         run: scripts/ci/drive-window.sh
+
+      - name: Picture the menu bar in dark
+        if: ${{ !cancelled() }}
+        timeout-minutes: 6
+        env:
+          MENU_OUT: ${{ runner.temp }}/window-dark/menu-bar
+          MENU_BAR_APPEARANCE: dark
+        run: scripts/ci/drive-menu-bar.sh
 
       - name: Upload the pictures and logs
         if: always()
