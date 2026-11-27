@@ -38,6 +38,8 @@ shellcheck scripts/embed-host-script.sh scripts/embed-dot-art.sh
 
 echo "check.sh: shellcheck scripts/build-app.sh"
 shellcheck scripts/build-app.sh
+echo "check.sh: shellcheck scripts/release.sh"
+shellcheck scripts/release.sh
 
 echo "check.sh: shellcheck scripts/make-icon.sh"
 shellcheck scripts/make-icon.sh
