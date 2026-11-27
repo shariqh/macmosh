@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import Testing
 
@@ -21,6 +22,9 @@ private let checks = ["build-app.sh --into dist/X/0.1.0",
     "lipo -archs dist/X/0.1.0/MacMosh.app/Contents/MacOS/MacMosh",
     "lipo -archs dist/X/0.1.0/MacMosh.app/Contents/Helpers/macmosh",
     "ditto -c -k --keepParent dist/X/0.1.0/MacMosh.app dist/X/0.1.0/for-notary.zip"]
+
+/// The stand-in notary service's submission id.
+private let id = "2efe2717-0000-4000-8000-000000000036"
 
 /// Every stand-in call but git's.
 private func steps(_ h: ReleaseHarness) -> [String] { h.calls.filter { !$0.hasPrefix("git ") } }
@@ -158,5 +162,96 @@ extension HostScriptTests {
             #expect(!(out.stdout + out.stderr).contains("Stand-in Signer"))
             let signature = try String(contentsOf: h.repo.appendingPathComponent("dist/release/0.1.0/signature-app.txt"), encoding: .utf8)
             #expect(signature.contains("Authority=Stand-in Signer (TEAM000000)")) }
+
+        @Test func aReleaseRunsEveryStepInOrder() throws {
+            let h = try ReleaseHarness(); defer { h.cleanUp() }
+            let out = h.run(["0.1.0"])
+            #expect(out.exitCode == 0, "\(out.stderr)")
+            // The log is kept and its issues shown even when Apple accepts.
+            #expect(out.stdout.contains("release.sh: Apple's notary log lists 1 issue(s):\n  warning: MacMosh.app/Contents/Helpers/macmosh: stand-in warning\n"))
+            #expect(FileManager.default.fileExists(atPath: h.repo.appendingPathComponent("dist/release/0.1.0/notary-log.json").path))
+            let o = "dist/release/0.1.0"
+            let expected = checks.map { $0.replacingOccurrences(of: "dist/X/", with: "dist/release/") } + [
+                "xcrun notarytool submit \(o)/for-notary.zip --keychain-profile stand-in-profile --wait --timeout 30m --no-progress",
+                "xcrun notarytool log \(id) --keychain-profile stand-in-profile \(o)/notary-log.json",
+                "xcrun stapler staple \(o)/MacMosh.app", "xcrun stapler validate \(o)/MacMosh.app",
+                "spctl --assess --type execute -vv \(o)/MacMosh.app",
+                "ditto -c -k --keepParent \(o)/MacMosh.app \(o)/MacMosh-0.1.0.zip",
+                "ditto -x -k \(o)/MacMosh-0.1.0.zip \(h.root.path)/tmp/macmosh-release.",
+                "codesign --verify --deep --strict --verbose=2 \(h.root.path)/tmp/macmosh-release.",
+                "xcrun stapler validate \(h.root.path)/tmp/macmosh-release.",
+                "spctl --assess --type execute -vv \(h.root.path)/tmp/macmosh-release."]
+            #expect(steps(h).count == expected.count && zip(steps(h), expected).allSatisfy { $0.hasPrefix($1) }, "\(steps(h))")
+            let tmp = try FileManager.default.contentsOfDirectory(atPath: h.root.appendingPathComponent("tmp").path)
+            #expect(!tmp.contains { $0.hasPrefix("macmosh-release.") })
+            let trash = try FileManager.default.contentsOfDirectory(atPath: h.home.appendingPathComponent(".Trash").path)
+            #expect(trash.contains { $0.hasPrefix("macmosh-release.") }) }
+
+        @Test func aNotaryAnswerOtherThanAcceptedStopsBeforeStapling() throws {
+            let h = try ReleaseHarness(); defer { h.cleanUp() }
+            let out = h.run(["0.1.0"], fault: "notary-invalid")
+            #expect(out.exitCode == 1)
+            #expect(out.stderr.hasSuffix("release.sh: stopped: Apple's answer is Invalid, not Accepted, so nothing was stapled; the whole log is in dist/release/0.1.0/notary-log.json.\n"))
+            #expect(out.stdout.contains("  error: MacMosh.app/Contents/MacOS/MacMosh: The signature does not include a secure timestamp."))
+            #expect(!steps(h).contains { $0.hasPrefix("xcrun stapler") || $0.hasPrefix("spctl") })
+            #expect(!FileManager.default.fileExists(atPath: h.repo.appendingPathComponent("dist/release/0.1.0/MacMosh-0.1.0.zip").path)) }
+
+        @Test(arguments: [
+            ("notary-unfinished", "Apple had not finished after 30 minutes; submission 2efe2717-0000-4000-8000-000000000036 goes on without this script. Ask later with: xcrun notarytool info 2efe2717-0000-4000-8000-000000000036 --keychain-profile \"$MACMOSH_NOTARY_PROFILE\""),
+            ("notary-upload-fails", "notarytool could not send for-notary.zip to Apple; what it said is in dist/release/0.1.0/notary-submit.txt.")])
+        func aNotaryProblemBeforeAnAnswerStops(fault: String, sentence: String) throws {
+            let h = try ReleaseHarness(); defer { h.cleanUp() }
+            let out = h.run(["0.1.0"], fault: fault)
+            #expect(out.exitCode == 1 && out.stderr.hasSuffix("release.sh: stopped: " + sentence + "\n"), "\(out.stderr)")
+            #expect(!steps(h).contains { $0.hasPrefix("xcrun notarytool log") || $0.hasPrefix("xcrun stapler") }) }
+
+        @Test(arguments: [
+            ("staple-fails", "xcrun stapler could not staple the ticket to dist/release/0.1.0/MacMosh.app."),
+            ("gatekeeper-rejects", "Gatekeeper did not accept dist/release/0.1.0/MacMosh.app (source=Unnotarized Developer ID); its whole answer is in dist/release/0.1.0/gatekeeper.txt.")])
+        func aFailedStapleOrGatekeeperStopsBeforeTheZip(fault: String, sentence: String) throws {
+            let h = try ReleaseHarness(); defer { h.cleanUp() }
+            let out = h.run(["0.1.0"], fault: fault)
+            #expect(out.exitCode == 1 && out.stderr.hasSuffix("release.sh: stopped: " + sentence + "\n"), "\(out.stderr)")
+            #expect(!steps(h).contains { $0.contains("MacMosh-0.1.0.zip") }) }
+
+        @Test func theDownloadZipIsMadeFromTheStapledApp() throws {
+            let h = try ReleaseHarness(); defer { h.cleanUp() }
+            #expect(h.run(["0.1.0"]).exitCode == 0)
+            let o = h.repo.appendingPathComponent("dist/release/0.1.0")
+            func unpacked(_ zip: String) throws -> URL {
+                let into = h.root.appendingPathComponent("look-\(zip)")
+                let p = Process(); p.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+                p.arguments = ["-x", "-k", o.appendingPathComponent(zip).path, into.path]; try p.run(); p.waitUntilExit()
+                return into.appendingPathComponent("MacMosh.app/Contents/stand-in-ticket") }
+            #expect(FileManager.default.fileExists(atPath: try unpacked("MacMosh-0.1.0.zip").path))
+            #expect(!FileManager.default.fileExists(atPath: try unpacked("for-notary.zip").path))
+            let digest = SHA256.hash(data: try Data(contentsOf: o.appendingPathComponent("MacMosh-0.1.0.zip")))
+            let hex = digest.map { String(format: "%02x", $0) }.joined()
+            #expect(try String(contentsOf: o.appendingPathComponent("MacMosh-0.1.0.zip.sha256"), encoding: .utf8) == "\(hex)  MacMosh-0.1.0.zip\n") }
+
+        @Test func theDownloadedCopyIsCheckedToo() throws {
+            let h = try ReleaseHarness(); defer { h.cleanUp() }
+            let out = h.run(["0.1.0"], fault: "copy-gatekeeper-rejects")
+            #expect(out.exitCode == 1)
+            #expect(out.stderr.hasSuffix("release.sh: stopped: the copy unpacked from MacMosh-0.1.0.zip was not accepted by Gatekeeper (source=Unnotarized Developer ID), so the zip is renamed NOT-FOR-RELEASE-MacMosh-0.1.0.zip and has no checksum.\n"))
+            let names = try FileManager.default.contentsOfDirectory(atPath: h.repo.appendingPathComponent("dist/release/0.1.0").path)
+            #expect(names.contains("NOT-FOR-RELEASE-MacMosh-0.1.0.zip") && !names.contains("MacMosh-0.1.0.zip") && !names.contains { $0.hasSuffix(".sha256") })
+            let trash = try FileManager.default.contentsOfDirectory(atPath: h.home.appendingPathComponent(".Trash").path)
+            #expect(trash.contains { $0.hasPrefix("macmosh-release.") }) }
+
+        /// Decision 10: the draft release's title is "MacMosh <version>, first public preview".
+        @Test func thePrintedCommandsAreNeverRun() throws {
+            let h = try ReleaseHarness(); defer { h.cleanUp() }
+            let out = h.run(["0.1.0"])
+            let head = h.git(["rev-parse", "HEAD"]).stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+            let sha = try String(contentsOf: h.repo.appendingPathComponent("dist/release/0.1.0/MacMosh-0.1.0.zip.sha256"), encoding: .utf8).prefix(64)
+            for line in ["  git tag -a v0.1.0 -m \"MacMosh 0.1.0\" \(head)", "  git push origin v0.1.0",
+                         "  gh release create v0.1.0 dist/release/0.1.0/MacMosh-0.1.0.zip dist/release/0.1.0/MacMosh-0.1.0.zip.sha256 --draft --verify-tag --title \"MacMosh 0.1.0, first public preview\" --generate-notes",
+                         "  version \"0.1.0\"", "  sha256 \"\(sha)\"", "  depends_on arch: :arm64",
+                         "  desc \"Menu bar app for mosh and tmux sessions on another Mac\""] {
+                #expect(out.stdout.contains(line + "\n"), "\(line)") }
+            #expect(!h.calls.contains { $0.hasPrefix("gh ") || $0.hasPrefix("security ") || $0.hasPrefix("git tag") || $0.hasPrefix("git push") })
+            #expect(h.git(["tag", "-l"]).stdout.isEmpty)
+            #expect(h.git(["ls-remote", "--tags", "origin"]).stdout.isEmpty) }
     }
 }

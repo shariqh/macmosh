@@ -190,4 +190,115 @@ if [ "$rehearsal" -eq 1 ]; then
     exit 0
 fi
 
-stop "sending to Apple is not written yet."
+# Sending. notarytool's exit code for an Invalid answer or a timeout is not documented, so the script reads its
+# documented normal output instead: the first "id:" line and the last "status:" line.
+echo "release.sh: sending for-notary.zip to Apple's notary service; it usually answers within 5 to 15 minutes, and this waits up to 30"
+xcrun notarytool submit "$out/for-notary.zip" --keychain-profile "$MACMOSH_NOTARY_PROFILE" --wait --timeout 30m --no-progress \
+    > "$out/notary-submit.txt" 2>&1 || true
+id=$(awk '/^ *id: / { print $2; exit }' "$out/notary-submit.txt")
+status=$(awk '/^ *status: / { sub(/^ *status: /, ""); sub(/[ \t\r]+$/, ""); answer = $0 } END { print answer }' "$out/notary-submit.txt")
+if [ -z "$id" ]; then
+    cat "$out/notary-submit.txt" >&2
+    stop "notarytool could not send for-notary.zip to Apple; what it said is in $out/notary-submit.txt."
+fi
+if [ -z "$status" ] || [ "$status" = "In Progress" ]; then
+    stop "Apple had not finished after 30 minutes; submission $id goes on without this script. Ask later with: xcrun notarytool info $id --keychain-profile \"\$MACMOSH_NOTARY_PROFILE\""
+fi
+
+# Apple's log is kept and its issues shown even when the answer is Accepted.
+if ! xcrun notarytool log "$id" --keychain-profile "$MACMOSH_NOTARY_PROFILE" "$out/notary-log.json"; then
+    stop "could not download Apple's notary log for submission $id, so nothing was stapled."
+fi
+issues=$(plutil -extract issues raw -o - "$out/notary-log.json" 2>/dev/null || true)
+case "$issues" in
+    "" | *[!0-9]*) issues=0 ;;
+esac
+if [ "$issues" -eq 0 ]; then
+    echo "release.sh: Apple's notary log lists no issues."
+else
+    echo "release.sh: Apple's notary log lists $issues issue(s):"
+    i=0
+    while [ "$i" -lt "$issues" ]; do
+        severity=$(plutil -extract "issues.$i.severity" raw -o - "$out/notary-log.json" 2>/dev/null || true)
+        where=$(plutil -extract "issues.$i.path" raw -o - "$out/notary-log.json" 2>/dev/null || true)
+        message=$(plutil -extract "issues.$i.message" raw -o - "$out/notary-log.json" 2>/dev/null || true)
+        echo "  $severity: $where: $message"
+        i=$((i + 1))
+    done
+fi
+if [ "$status" != Accepted ]; then
+    stop "Apple's answer is $status, not Accepted, so nothing was stapled; the whole log is in $out/notary-log.json."
+fi
+echo "release.sh: Apple accepted submission $id"
+
+# Stapling: a zip cannot carry the ticket, so it goes on the app, and the zip people download is made afterwards.
+if ! xcrun stapler staple "$app"; then
+    stop "xcrun stapler could not staple the ticket to $app."
+fi
+if ! xcrun stapler validate "$app"; then
+    stop "the ticket stapled to $app did not validate."
+fi
+
+# Gatekeeper, the check a Mac makes when a downloaded app first opens. Its answer names the certificate's owner.
+if ! spctl --assess --type execute -vv "$app" > "$out/gatekeeper.txt" 2>&1; then
+    source=$(grep -m 1 '^source=' "$out/gatekeeper.txt" || true)
+    stop "Gatekeeper did not accept $app ($source); its whole answer is in $out/gatekeeper.txt."
+fi
+echo "release.sh: Gatekeeper: accepted ($(grep -m 1 '^source=' "$out/gatekeeper.txt" || true))"
+
+# The zip people download, made from the stapled app.
+zip_name="MacMosh-$version.zip"
+ditto -c -k --keepParent "$app" "$out/$zip_name"
+
+# The same checks on a copy unpacked from that zip, in a folder of its own that goes to the Trash at the end. The
+# template is given in full: mktemp -t would use the per-user temporary folder before TMPDIR.
+base=${TMPDIR:-/tmp}
+check=$(mktemp -d "${base%/}/macmosh-release.XXXXXXXX")
+tidy() {
+    if [ -n "${check:-}" ] && [ -d "$check" ]; then
+        mkdir -p "$HOME/.Trash" || true
+        mv "$check" "$HOME/.Trash/" || true
+    fi
+}
+trap tidy EXIT
+copy="$check/MacMosh.app"
+verdict=""
+if ! ditto -x -k "$out/$zip_name" "$check" || ! codesign --verify --deep --strict --verbose=2 "$copy"; then
+    verdict="did not verify"
+elif ! xcrun stapler validate "$copy"; then
+    verdict="has no valid ticket"
+elif ! spctl --assess --type execute -vv "$copy" > "$out/gatekeeper-download.txt" 2>&1; then
+    verdict="was not accepted by Gatekeeper ($(grep -m 1 '^source=' "$out/gatekeeper-download.txt" || true))"
+fi
+if [ -n "$verdict" ]; then
+    mv "$out/$zip_name" "$out/NOT-FOR-RELEASE-$zip_name"
+    stop "the copy unpacked from $zip_name $verdict, so the zip is renamed NOT-FOR-RELEASE-$zip_name and has no checksum."
+fi
+
+# The checksum, in shasum's own format, as the cask's sha256 wants it.
+(cd "$out" && shasum -a 256 "$zip_name") > "$out/$zip_name.sha256"
+sha=$(awk '{ print $1; exit }' "$out/$zip_name.sha256")
+commit=$(git rev-parse HEAD)
+
+# Printed, never run: the owner says yes first.
+printf '%s\n' "release.sh: done. MacMosh $version is notarized, stapled and checked."
+printf '%s\n' "  zip:      $out/$zip_name"
+printf '%s\n' "  checksum: $out/$zip_name.sha256 (SHA-256 $sha)"
+printf '%s\n' "release.sh: nothing was tagged, pushed or published. After the owner says yes, these make the tag and a draft release:"
+printf '%s\n' "  git tag -a v$version -m \"MacMosh $version\" $commit"
+printf '%s\n' "  git push origin v$version"
+printf '%s\n' "  gh release create v$version $out/$zip_name $out/$zip_name.sha256 --draft --verify-tag --title \"MacMosh $version, first public preview\" --generate-notes"
+printf '%s\n' "release.sh: the cask for the tap (Casks/macmosh.rb, issue #37):"
+printf '%s\n' "cask \"macmosh\" do"
+printf '%s\n' "  version \"$version\""
+printf '%s\n' "  sha256 \"$sha\""
+printf '%s\n' "  url \"https://github.com/shariqh/macmosh/releases/download/v#{version}/MacMosh-#{version}.zip\""
+printf '%s\n' "  name \"MacMosh\""
+printf '%s\n' "  desc \"Menu bar app for mosh and tmux sessions on another Mac\""
+printf '%s\n' "  homepage \"https://github.com/shariqh/macmosh\""
+printf '%s\n' "  depends_on arch: :arm64"
+printf '%s\n' "  depends_on macos: :sequoia"
+printf '%s\n' "  depends_on formula: \"mosh\""
+printf '%s\n' "  app \"MacMosh.app\""
+printf '%s\n' "  binary \"#{appdir}/MacMosh.app/Contents/Helpers/macmosh\""
+printf '%s\n' "end"
