@@ -12,7 +12,7 @@ import SwiftUI
 /// https://developer.apple.com/documentation/swiftui/image/init(nsimage:)): "Creates a SwiftUI image from an AppKit
 /// image instance." It is decoration, hidden from VoiceOver: Apple, accessibilityHidden(_:) (macOS 11.0,
 /// https://developer.apple.com/documentation/swiftui/view/accessibilityhidden(_:)): "Specifies whether to hide this
-/// view from system accessibility features." Each credit line wraps at a narrow window instead of being cut: Apple,
+/// view from system accessibility features." Each credit line may wrap at a narrow window, though no picture shows it yet: Apple,
 /// fixedSize(horizontal:vertical:) (macOS 10.15,
 /// https://developer.apple.com/documentation/swiftui/view/fixedsize(horizontal:vertical:)): "Fixes this view at its
 /// ideal size in the specified dimensions."
