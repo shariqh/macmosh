@@ -11,6 +11,20 @@ private func expectRefusal(_ h: ReleaseHarness, _ arguments: [String], _ sentenc
     #expect(h.calls.allSatisfy { $0.hasPrefix("git ") }, "\(h.calls)", sourceLocation: sourceLocation)
 }
 
+/// The build and the checks before sending, in order; `dist/X/` is `dist/rehearsal/` or `dist/release/`.
+private let checks = ["build-app.sh --into dist/X/0.1.0",
+    "codesign --verify --deep --strict --verbose=2 dist/X/0.1.0/MacMosh.app",
+    "codesign --display --entitlements - --xml dist/X/0.1.0/MacMosh.app",
+    "codesign --display --verbose=2 dist/X/0.1.0/MacMosh.app",
+    "codesign --display --entitlements - --xml dist/X/0.1.0/MacMosh.app/Contents/Helpers/macmosh",
+    "codesign --display --verbose=2 dist/X/0.1.0/MacMosh.app/Contents/Helpers/macmosh",
+    "lipo -archs dist/X/0.1.0/MacMosh.app/Contents/MacOS/MacMosh",
+    "lipo -archs dist/X/0.1.0/MacMosh.app/Contents/Helpers/macmosh",
+    "ditto -c -k --keepParent dist/X/0.1.0/MacMosh.app dist/X/0.1.0/for-notary.zip"]
+
+/// Every stand-in call but git's.
+private func steps(_ h: ReleaseHarness) -> [String] { h.calls.filter { !$0.hasPrefix("git ") } }
+
 extension HostScriptTests {
     /// scripts/release.sh, run as a copy in a throwaway repository with stand-ins for every outside tool (issue #36).
     @Suite struct ReleaseScriptTests {
@@ -97,5 +111,52 @@ extension HostScriptTests {
                 #expect(!code.hasPrefix("git tag") && !code.hasPrefix("git push") && !code.hasPrefix("gh "), "\(line)") }
             let check = try String(contentsOf: HostHarness.repoRoot().appendingPathComponent("scripts/check.sh"), encoding: .utf8)
             #expect(check.contains("\nshellcheck scripts/release.sh\n")) }
+
+        @Test func aRehearsalSendsNothing() throws {
+            let h = try ReleaseHarness(); defer { h.cleanUp() }
+            _ = h.git(["checkout", "-q", "-b", "try"]); _ = h.git(["tag", "v0.1.0"])
+            let out = h.run(["--rehearsal", "0.1.0"], environment: ["MACMOSH_NOTARY_PROFILE": nil])
+            #expect(out.exitCode == 0, "\(out.stderr)")
+            #expect(out.stdout.hasSuffix("release.sh: rehearsal finished. Nothing was sent to Apple's notary service, and nothing in dist/rehearsal/0.1.0 is a release.\n"))
+            #expect(steps(h) == checks.map { $0.replacingOccurrences(of: "dist/X/", with: "dist/rehearsal/") })
+            let folder = h.repo.appendingPathComponent("dist/rehearsal/0.1.0")
+            let names = try FileManager.default.contentsOfDirectory(atPath: folder.path)
+            for name in ["MacMosh.app", "for-notary.zip", "REHEARSAL.txt", "signature-app.txt", "signature-command.txt"] {
+                #expect(names.contains(name), "\(name)") }
+            #expect(!names.contains { $0.hasPrefix("MacMosh-") || $0.hasSuffix(".sha256") })
+            #expect(!FileManager.default.fileExists(atPath: h.repo.appendingPathComponent("dist/release").path)) }
+
+        @Test func aRehearsalPutsTheLastOneInTheTrash() throws {
+            let h = try ReleaseHarness(); defer { h.cleanUp() }
+            #expect(h.run(["--rehearsal", "0.1.0"]).exitCode == 0)
+            #expect(h.run(["--rehearsal", "0.1.0"]).exitCode == 0)
+            let trash = try FileManager.default.contentsOfDirectory(atPath: h.home.appendingPathComponent(".Trash").path)
+            #expect(trash.filter { $0.hasPrefix("rehearsal-0.1.0-") }.count == 1) }
+
+        @Test(arguments: [
+            ("verify-fails", "the signature of dist/release/0.1.0/MacMosh.app did not verify (codesign --verify --deep --strict)."),
+            ("extra-entitlement", "the entitlements on MacMosh.app are not exactly those of App/MacMosh.entitlements."),
+            ("no-runtime", "MacMosh.app does not have the hardened runtime switched on."),
+            ("no-timestamp", "MacMosh.app has no secure timestamp."),
+            ("helper-no-timestamp", "Contents/Helpers/macmosh has no secure timestamp."),
+            ("intel", "Contents/MacOS/MacMosh is built for x86_64 arm64; the first release is for Apple silicon (arm64) only."),
+            ("home-path", "Contents/Helpers/macmosh contains a folder path from the Mac that built it (the text /Users/)."),
+            ("sample-menu", "Contents/MacOS/MacMosh contains MACMOSH_SAMPLE_MENU, so it is not a release build."),
+            ("wrong-version", "MacMosh.app says version 0.0.9, not 0.1.0.")])
+        func aFailedCheckStopsBeforeAnythingIsSent(fault: String, sentence: String) throws {
+            let h = try ReleaseHarness(); defer { h.cleanUp() }
+            let out = h.run(["0.1.0"], fault: fault)
+            #expect(out.exitCode == 1)
+            #expect(out.stderr.split(separator: "\n").last.map(String.init) == "release.sh: stopped: " + sentence)
+            #expect(!steps(h).contains { $0.hasPrefix("xcrun ") || $0.hasPrefix("spctl ") || $0.hasPrefix("ditto ") }) }
+
+        /// What names the certificate's owner stays in dist/, which git ignores.
+        @Test func theSigningNameStaysInDist() throws {
+            let h = try ReleaseHarness(); defer { h.cleanUp() }
+            let out = h.run(["0.1.0"])
+            #expect(out.exitCode == 0, "\(out.stderr)")
+            #expect(!(out.stdout + out.stderr).contains("Stand-in Signer"))
+            let signature = try String(contentsOf: h.repo.appendingPathComponent("dist/release/0.1.0/signature-app.txt"), encoding: .utf8)
+            #expect(signature.contains("Authority=Stand-in Signer (TEAM000000)")) }
     }
 }

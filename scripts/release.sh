@@ -32,6 +32,12 @@ refuse() {
     exit 1
 }
 
+# After the build has started.
+stop() {
+    echo "release.sh: stopped: $1" >&2
+    exit 1
+}
+
 rehearsal=0
 case "$#" in
     1)
@@ -104,5 +110,84 @@ if [ "$rehearsal" -eq 0 ]; then
     fi
 fi
 
-# Task 3: the build and the checks before sending.
-exit 0
+out="dist/release/$version"
+if [ "$rehearsal" -eq 1 ]; then
+    out="dist/rehearsal/$version"
+fi
+app="$out/MacMosh.app"
+
+# The build. A rehearsal's last folder goes to the Trash first, under a name of its own.
+if [ "$rehearsal" -eq 1 ] && [ -e "$out" ]; then
+    mkdir -p "$HOME/.Trash"
+    last="$HOME/.Trash/rehearsal-$version-$(date +%Y%m%d-%H%M%S)"
+    n=1
+    while [ -e "$last" ]; do
+        last="$HOME/.Trash/rehearsal-$version-$(date +%Y%m%d-%H%M%S)-$n"
+        n=$((n + 1))
+    done
+    mv "$out" "$last"
+    echo "release.sh: the last rehearsal of $version is in the Trash"
+fi
+echo "release.sh: building MacMosh $version into $out"
+if ! scripts/build-app.sh --into "$out"; then
+    stop "scripts/build-app.sh failed; its own message is above."
+fi
+
+# The checks before anything is sent. codesign's and spctl's longer answers name the certificate's owner, so they
+# go to files in $out (which git ignores); the terminal gets only the verdict.
+if ! codesign --verify --deep --strict --verbose=2 "$app"; then
+    stop "the signature of $app did not verify (codesign --verify --deep --strict)."
+fi
+plutil -convert xml1 -o "$out/entitlements-expected.xml" App/MacMosh.entitlements
+for item in app command; do
+    if [ "$item" = app ]; then
+        path=$app
+        name=MacMosh.app
+    else
+        path="$app/Contents/Helpers/macmosh"
+        name=Contents/Helpers/macmosh
+    fi
+    codesign --display --entitlements - --xml "$path" > "$out/entitlements-$item.plist" 2>/dev/null || true
+    if ! plutil -convert xml1 -o "$out/entitlements-$item.xml" "$out/entitlements-$item.plist" >/dev/null 2>&1 ||
+        ! cmp -s "$out/entitlements-$item.xml" "$out/entitlements-expected.xml"; then
+        stop "the entitlements on $name are not exactly those of App/MacMosh.entitlements."
+    fi
+    codesign --display --verbose=2 "$path" > "$out/signature-$item.txt" 2>&1 || true
+    # A basic regular expression, in which ( is a plain character.
+    if ! grep -q '^CodeDirectory .*flags=0x[0-9a-f]*([^)]*runtime' "$out/signature-$item.txt"; then
+        stop "$name does not have the hardened runtime switched on."
+    fi
+    if ! grep -q '^Timestamp=' "$out/signature-$item.txt"; then
+        stop "$name has no secure timestamp."
+    fi
+done
+for name in Contents/MacOS/MacMosh Contents/Helpers/macmosh; do
+    archs=$(lipo -archs "$app/$name" 2>/dev/null || true)
+    if [ "$archs" != arm64 ]; then
+        stop "$name is built for $archs; the first release is for Apple silicon (arm64) only."
+    fi
+    # The match is never printed: it would show a folder name from the Mac that built it.
+    if LC_ALL=C grep -qaF /Users/ "$app/$name"; then
+        stop "$name contains a folder path from the Mac that built it (the text /Users/)."
+    fi
+    if LC_ALL=C grep -qaF MACMOSH_SAMPLE_MENU "$app/$name"; then
+        stop "$name contains MACMOSH_SAMPLE_MENU, so it is not a release build."
+    fi
+done
+found=$(plutil -extract CFBundleShortVersionString raw -o - "$app/Contents/Info.plist" 2>/dev/null || true)
+if [ "$found" != "$version" ]; then
+    stop "MacMosh.app says version $found, not $version."
+fi
+echo "release.sh: checks passed: signature, entitlements, hardened runtime, timestamp, arm64 only, no /Users/, no sample menu, version $version"
+
+# The zip for Apple: notarytool takes a zip, and ditto keeps the bundle's signature intact in it.
+ditto -c -k --keepParent "$app" "$out/for-notary.zip"
+
+if [ "$rehearsal" -eq 1 ]; then
+    finished="release.sh: rehearsal finished. Nothing was sent to Apple's notary service, and nothing in $out is a release."
+    echo "$finished" > "$out/REHEARSAL.txt"
+    echo "$finished"
+    exit 0
+fi
+
+stop "sending to Apple is not written yet."
