@@ -5,7 +5,7 @@ This runbook explains how to make a copy of MacMosh that anyone can download and
 Two rules hold everywhere in this page:
 
 - A secret (a password or a key) is typed only into a tool's own prompt, never on a command line, and never given to an agent.
-- The agent runs every rehearsal. You are at the Mac for the first real run, because that is when the Mac's keychain is first asked for the notary login.
+- The agent runs every rehearsal. You are at the Mac for the first real run, or looking at its screen through Screen Sharing, because that is when the Mac's keychain is first asked for the notary login and a prompt may appear on the screen.
 
 ## 1. What a release is
 
@@ -80,7 +80,13 @@ You also need your Team ID, a 10-character code for your developer team. Apple's
 3. You should see notarytool check the login with Apple before it saves it (it does this by default). What it prints when it saves is not recorded yet: tell the agent, so it can go in this runbook. Before you pass it on, replace any name, email address or Team ID in it with <name>, <email> or <Team ID>. If Apple turns the login down, see "If something's off".
 4. In the Terminal where you release, run `export MACMOSH_NOTARY_PROFILE=macmosh-notary`. It lasts only for that Terminal window, so you type it again in each new window, unless you add that line to your own shell file yourself. It holds only the profile's name, not the password.
 5. Check that `MACMOSH_SIGN_IDENTITY` is set in that window, without printing it: `[ -n "$MACMOSH_SIGN_IDENTITY" ] && echo set || echo missing`. You should see `set`. It holds your signing certificate's name, as it does for `scripts/build-app.sh`; this page never writes that name.
-   If you see `missing`: the variable comes from your own shell file, where you set it yourself to the certificate's name as Keychain Access shows it. Open a new Terminal window after you add it. Never paste that name to an agent, and never write it in this repository.
+   If you see `missing`, run this in the same window. It reads the certificate's name from your keychain into the variable and prints nothing:
+
+   ```
+   export MACMOSH_SIGN_IDENTITY="$(security find-identity -v -p codesigning | awk -F'"' '/Developer ID Application/ && !seen { print $2; seen = 1 }')"
+   ```
+
+   Then run the check again; you should see `set`. `security` is macOS's own tool for the keychain; `find-identity` lists the certificates that can sign code, and the rest keeps the first Developer ID one. It lasts only for that window. Never paste the name to an agent, and never write it in this repository.
 
 ## 3. Each release
 
