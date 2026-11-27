@@ -16,7 +16,61 @@ private func pixelSize(_ relativePath: String) throws -> [Int] {
     return [properties[kCGImagePropertyPixelWidth] as? Int ?? -1, properties[kCGImagePropertyPixelHeight] as? Int ?? -1]
 }
 
+/// Runs scripts/build-app.sh with every MACMOSH_* variable removed, for its refusals only: past 10 seconds it is
+/// stopped and the test fails, so a refusal that slipped through and started a build cannot run on.
+private func runBuildScript(_ arguments: [String]) throws -> (exitCode: Int32, stdout: String, stderr: String) {
+    let process = Process()
+    process.executableURL = repoRoot().appendingPathComponent("scripts/build-app.sh")
+    process.arguments = arguments
+    process.currentDirectoryURL = repoRoot()
+    process.environment = ProcessInfo.processInfo.environment.filter { !$0.key.hasPrefix("MACMOSH_") }
+    let out = Pipe(), err = Pipe()
+    process.standardOutput = out
+    process.standardError = err
+    try process.run()
+    let deadline = Date().addingTimeInterval(10)
+    while process.isRunning {
+        if Date() > deadline {
+            process.terminate()
+            Issue.record("build-app.sh ran past 10 seconds")
+            break
+        }
+        Thread.sleep(forTimeInterval: 0.02)
+    }
+    process.waitUntilExit()
+    let stdout = String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+    let stderr = String(decoding: err.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+    return (process.terminationStatus, stdout, stderr)
+}
+
 @Suite struct AppBundleTests {
+    /// The release script builds into dist/release/<version>, never over dist/MacMosh.app (issue #36).
+    @Test func theBuildScriptBuildsIntoAFolderUnderDist() throws {
+        let script = try String(contentsOf: repoRoot().appendingPathComponent("scripts/build-app.sh"), encoding: .utf8)
+        for part in ["usage: scripts/build-app.sh [--adhoc | --debug] [--into <folder under dist/>]", "app=\"$into/MacMosh.app\"",
+                     "--into takes a folder under dist/, such as dist/release/0.1.0", "while [ \"$#\" -gt 0 ]"] {
+            #expect(script.contains(part), "\(part)") }
+        let parse = try #require(script.range(of: "while [ \"$#\" -gt 0 ]"))
+        let version = try #require(script.range(of: "version=$(sed -n"))
+        #expect(parse.lowerBound < version.lowerBound) }
+
+    /// Each refusal comes before the version read, so it builds nothing and writes nothing.
+    @Test func theBuildScriptRefusesABadInto() throws {
+        let script = try String(contentsOf: repoRoot().appendingPathComponent("scripts/build-app.sh"), encoding: .utf8)
+        try #require(script.contains("while [ \"$#\" -gt 0 ]"), "no new parser yet; running the script now would build")
+        for (arguments, line) in [(["--into", "/tmp/elsewhere"], "build-app.sh: FAILED: --into takes a folder under dist/, such as dist/release/0.1.0"),
+                                  (["--into", "dist/../elsewhere"], "build-app.sh: FAILED: --into takes a folder under dist/, such as dist/release/0.1.0"),
+                                  // dist/. and dist// are dist/ itself, so they would build over dist/MacMosh.app.
+                                  (["--into", "dist/."], "build-app.sh: FAILED: --into takes a folder under dist/, such as dist/release/0.1.0"),
+                                  (["--into", "dist//"], "build-app.sh: FAILED: --into takes a folder under dist/, such as dist/release/0.1.0"),
+                                  (["--into", "dist/./x"], "build-app.sh: FAILED: --into takes a folder under dist/, such as dist/release/0.1.0"),
+                                  (["--into", "dist/"], "build-app.sh: FAILED: --into takes a folder under dist/, such as dist/release/0.1.0"),
+                                  (["--into", ""], "usage: scripts/build-app.sh [--adhoc | --debug] [--into <folder under dist/>]"),
+                                  (["--into"],"usage: scripts/build-app.sh [--adhoc | --debug] [--into <folder under dist/>]"),
+                                  (["--debug", "--into", "dist/x"], "usage: scripts/build-app.sh [--adhoc | --debug] [--into <folder under dist/>]")] {
+            let out = try runBuildScript(arguments)
+            #expect(out.exitCode == 2 && out.stderr == line + "\n" && out.stdout.isEmpty, "\(arguments)") } }
+
     @Test func theInfoPlistSaysWhatTheDesignSays() throws {
         let plist = try readPlist("App/Info.plist")
         #expect(plist?["CFBundleIdentifier"] as? String == "io.github.shariqh.macmosh")
