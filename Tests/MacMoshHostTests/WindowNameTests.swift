@@ -127,11 +127,27 @@ extension HostScriptTests {
         }
     }
 
-    /// A desk with `count` windows, showing its first.
-    private func deskWithWindows(_ h: HostHarness, _ name: String, _ count: Int, permanent: Bool = false) throws -> (String, [String]) {
+    /// Whether every window that tmux names by itself already has its program's name, and that program is no longer
+    /// tmux's own forked process. Right after a window is made, its shell may not have started: tmux then reads the
+    /// program as "tmux", names the window so, and renames it a moment later. On a busy runner that moment was long
+    /// enough for a test to record "tmux" as the name before, and "bash" as the name after (issue 193).
+    private func namesHaveSettled(_ h: HostHarness, _ sid: String) -> Bool {
+        let lines = h.tmux(["list-windows", "-t", sid + ":", "-F", "#{window_name}\t#{pane_current_command}\t#{automatic-rename}"])
+            .stdout.split(separator: "\n")
+        return !lines.isEmpty && lines.allSatisfy { line in
+            let parts = line.split(separator: "\t", omittingEmptySubsequences: false)
+            guard parts.count == 3 else { return false }
+            return parts[2] != "1" || (parts[0] == parts[1] && parts[1] != "tmux")
+        }
+    }
+
+    /// A desk with `count` windows, showing its first, returned once its windows' names have settled.
+    private func deskWithWindows(_ h: HostHarness, _ name: String, _ count: Int, permanent: Bool = false,
+                                 line: UInt = #line) throws -> (String, [String]) {
         #expect(h.run(["desk-new", name, h.home.path] + (permanent ? ["--permanent"] : [])).exitCode == 0)
         let id = try sid(h, name)
         for _ in 1..<count { _ = h.tmux(["new-window", "-d", "-t", id + ":"]) }
+        try wait(h, line: line) { namesHaveSettled(h, id) }
         return (id, windowIDs(h, id))
     }
 
