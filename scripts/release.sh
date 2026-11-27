@@ -9,6 +9,7 @@
 #                                              cask text for the owner to approve
 #   scripts/release.sh --rehearsal <version>   the same build and checks on any branch, into
 #                                              dist/rehearsal/<version>, up to the zip for Apple; sends nothing
+#                                              to the notary service (signing still asks Apple's timestamp server)
 #
 # It publishes nothing: it never tags, never pushes, never makes a release and never touches the tap. It never
 # signs anything itself (scripts/build-app.sh does), never stores a credential, and never deletes: an old

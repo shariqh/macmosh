@@ -38,7 +38,7 @@ What `scripts/release.sh <version>` does, in order:
 
 Everything goes in `dist/release/<version>/`, which git ignores. The files that name the certificate's owner (codesign's and Gatekeeper's longer answers) stay there and are never printed.
 
-`scripts/release.sh --rehearsal <version>` does steps 2 and 3 and makes the zip for Apple, on any branch, and sends nothing. It writes to `dist/rehearsal/<version>/` and moves the previous rehearsal of that version to the Trash.
+`scripts/release.sh --rehearsal <version>` does steps 2 and 3 and makes the zip for Apple, on any branch, and sends nothing to Apple's notary service. It writes to `dist/rehearsal/<version>/` and moves the previous rehearsal of that version to the Trash.
 
 ## 2. Once only: the notary login (yours alone)
 
@@ -56,7 +56,7 @@ Apple's notary service needs a login. You save it once in your Mac's keychain, u
 
 Use the app-specific password unless your Apple Account is not on the team that owns the signing certificate.
 
-You also need your Team ID, a 10-character code for your developer team. Apple's page on where to find it is https://developer.apple.com/help/account/manage-your-team/locate-your-team-id/. Its text shows only in a browser, so this runbook does not quote it (not found).
+You also need your Team ID, a 10-character code for your developer team. Apple's page on where to find it is https://developer.apple.com/help/account/manage-your-team/locate-your-team-id/. Open that page in your browser; it shows where the Team ID is.
 
 ### Steps
 
@@ -75,21 +75,22 @@ You also need your Team ID, a 10-character code for your developer team. Apple's
    xcrun notarytool store-credentials "macmosh-notary" --key "<path to the .p8 file>" --key-id "<key ID>" --issuer "<issuer ID>"
    ```
 
-   Never add the password option to that command: a password on a command line is kept in the shell's history.
-   Never add the sync option either: it copies the login to iCloud Keychain, onto your other devices.
-3. You should see notarytool check the login with Apple before it saves it (it does this by default). What it prints when it saves is not recorded yet: tell the agent, so it can go in this runbook. If Apple turns the login down, see "If something's off".
+   Never add `--password` to that command: a password on a command line is kept in the shell's history.
+   Never add `--sync` either: it copies the login to iCloud Keychain, onto your other devices.
+3. You should see notarytool check the login with Apple before it saves it (it does this by default). What it prints when it saves is not recorded yet: tell the agent, so it can go in this runbook. Before you pass it on, replace any name, email address or Team ID in it with <name>, <email> or <Team ID>. If Apple turns the login down, see "If something's off".
 4. In the Terminal where you release, run `export MACMOSH_NOTARY_PROFILE=macmosh-notary`. It lasts only for that Terminal window, so you type it again in each new window, unless you add that line to your own shell file yourself. It holds only the profile's name, not the password.
-5. Check that `MACMOSH_SIGN_IDENTITY` is set in that window, without printing it: `[ -n "$MACMOSH_SIGN_IDENTITY" ] && echo set`. You should see `set`. It holds your signing certificate's name, as it does for `scripts/build-app.sh`; this page never writes that name.
+5. Check that `MACMOSH_SIGN_IDENTITY` is set in that window, without printing it: `[ -n "$MACMOSH_SIGN_IDENTITY" ] && echo set || echo missing`. You should see `set`. It holds your signing certificate's name, as it does for `scripts/build-app.sh`; this page never writes that name.
+   If you see `missing`: the variable comes from your own shell file, where you set it yourself to the certificate's name as Keychain Access shows it. Open a new Terminal window after you add it. Never paste that name to an agent, and never write it in this repository.
 
 ## 3. Each release
 
-1. **The agent rehearses.** The agent runs `scripts/release.sh --rehearsal <version>` on your Mac, where `MACMOSH_SIGN_IDENTITY` is set, and reads the output. A rehearsal signs with your Developer ID key but sends nothing to Apple.
+1. **The agent rehearses.** The agent runs `scripts/release.sh --rehearsal <version>` on your Mac, where `MACMOSH_SIGN_IDENTITY` is set, and reads the output. A rehearsal signs with your Developer ID key but sends nothing to Apple's notary service. Signing does ask Apple's timestamp server for the time, so a rehearsal needs the internet.
    It should end with `release.sh: rehearsal finished. Nothing was sent to Apple's notary service, and nothing in dist/rehearsal/<version> is a release.`
 2. **You get main ready.** The pull requests for this version are merged, `main` here is the same commit as `origin/main`, and nothing is left uncommitted. The agent can check this for you.
 3. **You run the release, at the Mac.** In a Terminal with both variables set (section 2, steps 4 and 5), from the repository folder, run `scripts/release.sh <version>`, for example `scripts/release.sh 0.1.0`.
    You should see the build, then `release.sh: checks passed: …`, then `release.sh: sending for-notary.zip to Apple's notary service …`.
-   A keychain prompt may appear, the first time, for the signing key or for the notary profile. Its exact wording is not known yet. Read it before you answer, and tell the agent what it said, so this first real run records it here.
-4. **You wait for Apple.** It usually answers within 5 to 15 minutes. The script waits up to 30. Nothing prints while it waits.
+   A keychain prompt may appear, the first time, for the notary profile. Its exact wording is not known yet. Read it before you answer, and tell the agent what it said, so this first real run records it here. Before you pass it on, replace any name, email address or Team ID in it with <name>, <email> or <Team ID>; the agent records only that wording.
+4. **You wait for Apple.** It usually answers within 5 to 15 minutes. The script waits up to 30. Nothing prints while it waits. In the first minute, glance at the screen for a keychain prompt (it can hide behind other windows); after that, the silence is Apple's wait.
 5. **You read the end.** A finished run ends with `release.sh: done. MacMosh <version> is notarized, stapled and checked.`, the zip and its checksum, `release.sh: Gatekeeper: accepted (…)` above them, and then the printed commands and the cask.
 6. **You say yes or no to the tag and the draft release.** The printed `git tag`, `git push` and `gh release create … --draft` lines make the tag and a draft release, which is saved but not published. The coordinator runs them only after your yes.
 7. **Separate yeses later.** Publishing the draft release, and adding the printed cask to the tap (issue #37), each wait for their own yes. Before you are asked to publish, the coordinator rewrites the draft's notes, and the agent tests a download on a Mac with no MacMosh on it.
@@ -136,12 +137,14 @@ Each line starts with what the script printed after `release.sh: refused:` or `r
 - *notarytool could not send for-notary.zip to Apple …* : what notarytool said is printed above and kept in `notary-submit.txt`. If it names the login, save the login again (section 2).
 - *Apple had not finished after 30 minutes …* : Apple goes on without the script. Run the `xcrun notarytool info …` line it printed later; when it says Accepted, ask the agent how to go on.
 - *could not download Apple's notary log …* : try again later; nothing was stapled.
-- *Apple's answer is …, not Accepted …* : the issues are printed above and the whole log is in `notary-log.json`. Ask the agent to fix them; then run again with a new version.
+- *Apple's answer is …, not Accepted …* : the issues are printed above and the whole log is in `notary-log.json`. Ask the agent to fix them. Once the fix is on main, move `dist/release/<version>` to the Trash and run the same version again: nothing was tagged.
 - *xcrun stapler could not staple the ticket …* or *the ticket stapled to … did not validate.* : Apple accepted the app, but the ticket did not go on. Ask the agent.
 - *Gatekeeper did not accept …* : its answer is in `gatekeeper.txt`. Ask the agent.
 - *the copy unpacked from MacMosh-….zip …, so the zip is renamed NOT-FOR-RELEASE-…* : the zip people would download is broken. Do not publish it. Ask the agent.
 
 **Other:**
 
-- A run sits silent right after `build-app.sh: signing with the Developer ID certificate`, or right after `release.sh: sending for-notary.zip …` for more than a minute or two: it may be waiting for a click on a keychain prompt, perhaps behind another window. Look for it on the screen.
+- A run sits silent right after `release.sh: sending for-notary.zip …`: see section 3, step 4.
+- A run sits silent right after `build-app.sh: signing with the Developer ID certificate`: this is unlikely, since signed builds already run on this Mac with no prompt. It may be waiting for a click on a keychain prompt, perhaps behind another window. Look for it on the screen.
+- Signing fails during a rehearsal or a release with no internet: signing asks Apple's timestamp server for the time. Connect, then run again.
 - notarytool says the login is wrong when you save it, or later: an app-specific password stops working when your Apple Account password changes. Make a new one and save it again (section 2).
