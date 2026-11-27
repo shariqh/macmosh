@@ -22,6 +22,9 @@
 // tile's middle at 162 of 256 and its sides 14 pixels away. The light M's unlit tiles are near white, the dark
 // M's near #34322F, so the luminance tells which M the system drew. When the sample is not opaque it missed the
 // icon (a margin, or nothing drawn), and the line reads "tile <light|dark> transparent <alpha>" instead.
+// It also prints "lit <light|dark> #RRGGBB <luminance>" (or "lit <light|dark> transparent <alpha>"): the 7 by 7 pixels
+// at (125, 125), the middle of the centre tile, row 2 column 2, lit in both Ms whichever way a bitmap's rows run. The
+// light M's centre is about #E2713A, the dark M's #F29343 (IconArt.lit); a grey or tinted generic icon is neither.
 //
 //   icontool --styles <out.png> <scale> <Default.png> <Dark.png> <ClearLight.png> <ClearDark.png> <TintedLight.png>
 //            <TintedDark.png>
@@ -69,18 +72,29 @@ func write(_ rep: NSBitmapImageRep, _ url: URL, _ label: String) {
 
 /// The middle of an unlit tile of the icon, drawn alone at 256 pixels (see the header).
 func tile(_ name: String, _ image: NSImage) {
+    sample("tile", name, image, rows: 159...165)
+}
+
+/// The middle of the centre tile, row 2 column 2, lit in both Ms (see the header).
+func lit(_ name: String, _ image: NSImage) {
+    sample("lit", name, image, rows: 125...131)
+}
+
+/// The mean of the 7 by 7 pixels at columns 125 to 131 and those rows of the icon drawn alone at 256 pixels, printed
+/// as "<label> <name> #RRGGBB <luminance>", or "<label> <name> transparent <alpha>" when it is not opaque.
+func sample(_ label: String, _ name: String, _ image: NSImage, rows: ClosedRange<Int>) {
     let rep = bitmap(256, 256, 1) { image.draw(in: NSRect(x: 0, y: 0, width: 256, height: 256)) }
     var sum: [CGFloat] = [0, 0, 0, 0]
-    for x in 125...131 { for y in 159...165 {
+    for x in 125...131 { for y in rows {
         guard let c = rep.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else { continue }
         sum[0] += c.redComponent; sum[1] += c.greenComponent; sum[2] += c.blueComponent; sum[3] += c.alphaComponent } }
     let mean = sum.map { $0 / 49 }
     if mean[3] < 0.95 {
-        print(String(format: "tile %@ transparent %.2f", name, mean[3]))
+        print(String(format: "%@ %@ transparent %.2f", label, name, mean[3]))
         return
     }
     let luminance = 0.2126 * mean[0] + 0.7152 * mean[1] + 0.0722 * mean[2]
-    print(String(format: "tile %@ #%02X%02X%02X %.2f", name, Int((mean[0] * 255).rounded()),
+    print(String(format: "%@ %@ #%02X%02X%02X %.2f", label, name, Int((mean[0] * 255).rounded()),
                  Int((mean[1] * 255).rounded()), Int((mean[2] * 255).rounded()), luminance))
 }
 
@@ -166,6 +180,6 @@ let sheet = bitmap(width, height, scale) {
 reps("light", light)
 reps("dark", dark)
 reps("icns", icns)
-NSAppearance(named: .aqua)!.performAsCurrentDrawingAppearance { tile("light", light) }
-NSAppearance(named: .darkAqua)!.performAsCurrentDrawingAppearance { tile("dark", dark) }
+NSAppearance(named: .aqua)!.performAsCurrentDrawingAppearance { tile("light", light); lit("light", light) }
+NSAppearance(named: .darkAqua)!.performAsCurrentDrawingAppearance { tile("dark", dark); lit("dark", dark) }
 write(sheet, URL(fileURLWithPath: args[2]), "sheet")

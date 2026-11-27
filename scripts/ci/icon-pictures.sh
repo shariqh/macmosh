@@ -41,11 +41,13 @@
 #                                       rendered all six and icontool drew the sheet; NOT-SHOWN when no ictool
 #                                       is found or none renders, FAIL only when icontool cannot draw six renders
 #   the system draws the dark M in the Dark icon style   (darkstyle only) the workflow's setting reads back
-#                                       RegularDark and the unlit tile icontool reads in the system's icon, drawn
-#                                       under aqua, is dark (luminance under 0.35); NOT-SHOWN otherwise, with the
-#                                       setting, what it reads and the readings
+#                                       RegularDark, the unlit tile icontool reads in the system's icon, drawn
+#                                       under aqua, is dark (luminance under 0.35), and its lit centre tile is warm
+#                                       (lit_warm: red at least 0.7 and red minus blue at least 0.35), as both Ms'
+#                                       are and a grey or tinted generic dark icon's is not; NOT-SHOWN otherwise,
+#                                       with the setting, what it reads and the readings (issue 183)
 # In every mode the log says which M the system's icon shows under each drawing appearance (icontool's "tile"
-# lines). It exits 1 when any check is FAIL, and never on how a picture looks: a person reads the pictures.
+# and "lit" lines). It exits 1 when any check is FAIL, and never on how a picture looks: a person reads the pictures.
 set -uo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -172,7 +174,20 @@ which_m() {
     line=$(grep -m1 "^tile $1 #" "$LOG") || { echo "no reading"; return; }
     awk -v l="$line" 'BEGIN { split(l, f, " "); printf "%s, the %s M", f[3], (f[4] < 0.35 ? "dark" : "light") }'
 }
-say "reading: the system's icon drawn under aqua shows $(which_m light); under darkAqua $(which_m dark)"
+# lit_warm <light|dark>: whether icontool's "lit" reading, the middle of the M's centre tile, is warm: red at least 0.7
+# and red minus blue at least 0.35, on channels from 0 to 1. Both Ms' centres are (the light M's about #E2713A, the
+# dark M's #F29343, IconArt.lit); a grey or tinted icon's is not.
+lit_warm() {
+    local line hex r b
+    line=$(grep -m1 "^lit $1 #" "$LOG") || { echo "no reading"; return; }
+    hex=$(cut -d' ' -f3 <<< "$line")
+    [[ "$hex" =~ ^#[0-9A-F]{6}$ ]] || { echo "no reading"; return; }
+    r=$((16#${hex:1:2}))
+    b=$((16#${hex:5:2}))
+    # 0.7 and 0.35 of 255, rounded up: 179 and 90.
+    if [ "$r" -ge 179 ] && [ $((r - b)) -ge 90 ]; then echo "warm $hex"; else echo "not warm $hex"; fi
+}
+say "reading: the system's icon drawn under aqua shows $(which_m light), its lit tile $(lit_warm light); under darkAqua $(which_m dark), its lit tile $(lit_warm dark)"
 
 # 6. Finder pictures: the app revealed, then a picture of the screen. What it shows is read by a person.
 # Two pictures, 3 and 15 seconds after the reveal: Finder may still be loading its icons at the first.
@@ -253,12 +268,13 @@ if [ "$appearance" = darkstyle ]; then
     theme=$(defaults read -g AppleIconAppearanceTheme 2>/dev/null || echo unset)
     tried="the workflow wrote AppleIconAppearanceTheme (a guessed name, not Apple's) as RegularDark; it reads $theme"
     reading=$(which_m light)
+    warm=$(lit_warm light)
     if [ "$theme" != RegularDark ]; then
-        result "$check" NOT-SHOWN "the style was not set: $tried; under aqua the system's icon shows $reading"
-    elif [[ "$reading" == *"the dark M" ]]; then
-        result "$check" PASS "under aqua the system's icon shows $reading ($os-icon-sheet-2x.png); $tried"
+        result "$check" NOT-SHOWN "the style was not set: $tried; under aqua the system's icon shows $reading, its lit tile $warm"
+    elif [[ "$reading" == *"the dark M" ]] && [[ "$warm" == "warm "* ]]; then
+        result "$check" PASS "under aqua the system's icon shows $reading, its lit tile $warm ($os-icon-sheet-2x.png); $tried"
     else
-        result "$check" NOT-SHOWN "under aqua the system's icon shows $reading, under darkAqua $(which_m dark); $tried"
+        result "$check" NOT-SHOWN "under aqua the system's icon shows $reading, its lit tile $warm; under darkAqua $(which_m dark), its lit tile $(lit_warm dark); $tried"
     fi
 fi
 

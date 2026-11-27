@@ -48,4 +48,12 @@ import Testing
     @Test func theTableNeedsNothingButTheStandardLibrary() throws {
         let source = try String(contentsOf: repoRoot().appendingPathComponent("Sources/MacMoshKit/Look/IconArt.swift"), encoding: .utf8)
         #expect(!source.split(separator: "\n").contains { $0.hasPrefix("import ") }) }
+    /// Issue 183: the M's cells are written once, here; the Add a Mac tile and the menu-bar mark read them.
+    @Test func theMIsWrittenOnce() throws {
+        let sources = repoRoot().appendingPathComponent("Sources")
+        let files = try #require(FileManager.default.enumerator(at: sources, includingPropertiesForKeys: nil))
+        for case let url as URL in files where url.pathExtension == "swift" && url.lastPathComponent != "IconArt.swift" {
+            let text = try String(contentsOf: url, encoding: .utf8)
+            #expect(!text.contains("LetterM") && !text.contains("(column == 1 || column == 3)"), "\(url.lastPathComponent)") }
+        #expect(MenuBarMark.of(symbol: "checkmark.circle").drawn == Set(IconArt.mCells)) }
 }
