@@ -60,7 +60,13 @@ private func runBuildScript(_ arguments: [String]) throws -> (exitCode: Int32, s
         try #require(script.contains("while [ \"$#\" -gt 0 ]"), "no new parser yet; running the script now would build")
         for (arguments, line) in [(["--into", "/tmp/elsewhere"], "build-app.sh: FAILED: --into takes a folder under dist/, such as dist/release/0.1.0"),
                                   (["--into", "dist/../elsewhere"], "build-app.sh: FAILED: --into takes a folder under dist/, such as dist/release/0.1.0"),
-                                  (["--into"], "usage: scripts/build-app.sh [--adhoc | --debug] [--into <folder under dist/>]"),
+                                  // dist/. and dist// are dist/ itself, so they would build over dist/MacMosh.app.
+                                  (["--into", "dist/."], "build-app.sh: FAILED: --into takes a folder under dist/, such as dist/release/0.1.0"),
+                                  (["--into", "dist//"], "build-app.sh: FAILED: --into takes a folder under dist/, such as dist/release/0.1.0"),
+                                  (["--into", "dist/./x"], "build-app.sh: FAILED: --into takes a folder under dist/, such as dist/release/0.1.0"),
+                                  (["--into", "dist/"], "build-app.sh: FAILED: --into takes a folder under dist/, such as dist/release/0.1.0"),
+                                  (["--into", ""], "usage: scripts/build-app.sh [--adhoc | --debug] [--into <folder under dist/>]"),
+                                  (["--into"],"usage: scripts/build-app.sh [--adhoc | --debug] [--into <folder under dist/>]"),
                                   (["--debug", "--into", "dist/x"], "usage: scripts/build-app.sh [--adhoc | --debug] [--into <folder under dist/>]")] {
             let out = try runBuildScript(arguments)
             #expect(out.exitCode == 2 && out.stderr == line + "\n" && out.stdout.isEmpty, "\(arguments)") } }

@@ -58,8 +58,9 @@ if [ -n "$into" ]; then
             exit 2
             ;;
     esac
+    # A `.` or `..` part, or an empty one (`dist//`), could name dist/ itself or a folder outside it.
     case "/$into/" in
-        */../*)
+        */../* | */./* | *//?*)
             echo "build-app.sh: FAILED: --into takes a folder under dist/, such as dist/release/0.1.0" >&2
             exit 2
             ;;
