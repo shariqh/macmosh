@@ -7,6 +7,9 @@
 #   scripts/build-app.sh --debug    a debug build in dist/debug/MacMosh.app, signed ad hoc, for CI's
 #                                   pictures of the menu (.github/workflows/menu-pictures.yml). Only a
 #                                   debug build can show a sample menu (MACMOSH_SAMPLE_MENU).
+#   scripts/build-app.sh --into dist/release/0.1.0
+#                                   builds and signs as the first line does, into that folder; scripts/release.sh
+#                                   uses it. --adhoc may go with it, --debug may not.
 #
 # The app's icon is the committed App/Assets.car (the layered icon, light and dark) and App/AppIcon.iconset
 # (the light M), packed into AppIcon.icns with iconutil (block A, below). No Xcode is needed for it:
@@ -19,20 +22,49 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 root=$(pwd -P)
 
+usage() {
+    echo "usage: scripts/build-app.sh [--adhoc | --debug] [--into <folder under dist/>]" >&2
+    exit 2
+}
+
+# Every word is read before anything else runs, so a refusal builds nothing and writes nothing.
 adhoc=0
 config=release
-case "${1:-}" in
-    "") ;;
-    --adhoc) adhoc=1 ;;
-    --debug)
-        adhoc=1
-        config=debug
-        ;;
-    *)
-        echo "usage: scripts/build-app.sh [--adhoc | --debug]" >&2
-        exit 2
-        ;;
-esac
+into=""
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --adhoc) adhoc=1 ;;
+        --debug)
+            adhoc=1
+            config=debug
+            ;;
+        --into)
+            if [ "$#" -lt 2 ] || [ -z "$2" ]; then
+                usage
+            fi
+            into=$2
+            shift
+            ;;
+        *) usage ;;
+    esac
+    shift
+done
+if [ -n "$into" ]; then
+    [ "$config" = release ] || usage
+    case "$into" in
+        dist/?*) ;;
+        *)
+            echo "build-app.sh: FAILED: --into takes a folder under dist/, such as dist/release/0.1.0" >&2
+            exit 2
+            ;;
+    esac
+    case "/$into/" in
+        */../*)
+            echo "build-app.sh: FAILED: --into takes a folder under dist/, such as dist/release/0.1.0" >&2
+            exit 2
+            ;;
+    esac
+fi
 if [ -z "${MACMOSH_SIGN_IDENTITY:-}" ]; then
     adhoc=1
 fi
@@ -40,6 +72,9 @@ fi
 app="dist/MacMosh.app"
 if [ "$config" = debug ]; then
     app="dist/debug/MacMosh.app"
+fi
+if [ -n "$into" ]; then
+    app="$into/MacMosh.app"
 fi
 entitlements="App/MacMosh.entitlements"
 
