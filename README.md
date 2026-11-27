@@ -25,7 +25,7 @@ The pictures show made-up sample data. The menu under the M in the menu bar show
 
 - **Desks that keep running.** [mosh](https://mosh.org) (a replacement for ssh, the usual way to type commands on another Mac, that survives Wi-Fi drops and a closed lid) carries the connection. [tmux](https://github.com/tmux/tmux/wiki) (a program on the workhorse that keeps each desk alive while nobody is connected) keeps the work going. A desk can come back by itself after the workhorse restarts and someone logs in.
 - **The workhorse's state in plain words**, in the menu and the window: `Ready`, `Ready, sign-ins off`, `Waiting for login`, `Locked after a restart`, `Can't verify it` or `Can't reach it`, and, while a Mac is being set up, states such as `Not paired` and `Needs setting up`.
-- **Getting back in after a restart, on your home network.** The `Unlock disk…` button opens a terminal tab where you type the Mac's password into ssh; MacMosh never sees it. Then `Log in…` opens Screen Sharing at the login window. Away from home, a restarted workhorse is out of reach until someone logs in at it, unless you set up an add-on the design describes.
+- **Getting back in after a restart, on your home network.** The `Unlock disk…` button opens a terminal tab where you type the Mac's password into ssh; MacMosh never sees it. Then `Log in…` opens Screen Sharing at the login window. Away from home, a restarted workhorse is out of reach until someone logs in at it. A guide for unlocking it from anywhere is planned.
 - **Lid-closed mode** for a laptop workhorse. It changes a power setting Apple doesn't document. The setting was tested by hand on one MacBook Pro: with the lid closed, on power and with no display, it stayed awake and reachable for 43 minutes. The menu button itself was not part of that test. Read [docs/lid-closed.md](docs/lid-closed.md) before you depend on it.
 - **Adding a Mac, and a checklist that sets it up.** `Add a Mac…` pairs the daily Mac with the workhorse. `Finish setting up…` installs what the workhorse needs, and `Run the checklist…` checks both Macs again at any time. The steps are under [First use](#first-use).
 - **Three ways to connect**, chosen per workhorse in Settings under Connection.
@@ -69,7 +69,7 @@ In Apple's Terminal, each tab opens as a window. Use Mosh unless you have a reas
 
 ## Build it from source
 
-You need a Mac with Xcode and [Homebrew](https://brew.sh). The package asks for Swift 6 or later; CI builds it with Xcode 26.
+You need a Mac with Xcode and [Homebrew](https://brew.sh). The package asks for Swift 6 or later; CI builds it on macOS 15 and macOS 26.
 
 1. **Install the two tools the checks use.** Run `brew install tmux shellcheck`. tmux runs in the tests; shellcheck checks the shell scripts.
 2. **Clone the repository.** Run `git clone https://github.com/shariqh/macmosh.git`. Git makes a folder called `macmosh`.
@@ -99,7 +99,7 @@ macOS asks once per terminal app, the first time MacMosh opens a tab there, and 
 
 MacMosh is built in the open: every change is a pull request, and most have their own GitHub issue. An AI coding agent does the building under the author's direction. [docs/build-log.md](docs/build-log.md) is the author's build diary. The design is [docs/superpowers/specs/2026-11-18-macmosh-v1-design.md](docs/superpowers/specs/2026-11-18-macmosh-v1-design.md).
 
-## License
+## Licence
 
 MIT. See [LICENSE](LICENSE).
 
